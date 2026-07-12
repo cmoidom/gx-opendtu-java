@@ -61,7 +61,7 @@ public final class ControlLoop {
             return null;
         }
         ModbusGridConfig modbus = config.grid().modbus();
-        return new ModbusBatterySoc(modbus.host(), modbus.port(), modbus.unitId());
+        return new ModbusBatterySoc(modbus.host(), modbus.port(), modbus.unitId(), config.battery().voltageUnitId());
     }
 
     /** {warning, recommendedPct} -- recommendedPct is null unless warning is true. */
@@ -113,6 +113,8 @@ public final class ControlLoop {
             LiveState liveState,
             Double socPct,
             Double batteryPowerW,
+            Double batteryVoltageV,
+            Double batteryCurrentA,
             boolean dryRun,
             boolean verboseTraces,
             double minInverterPct,
@@ -177,6 +179,8 @@ public final class ControlLoop {
                     decision.targetW(),
                     invertersPayload,
                     batteryPowerW,
+                    batteryVoltageV,
+                    batteryCurrentA,
                     floorWarning.warning(),
                     floorWarning.recommendedPct());
         }
@@ -417,6 +421,8 @@ public final class ControlLoop {
 
                 Double socPct = null;
                 Double batteryPowerW = null;
+                Double batteryVoltageV = null;
+                Double batteryCurrentA = null;
                 boolean injectionActive = true;
                 if (batteryReader != null) {
                     try {
@@ -445,6 +451,16 @@ public final class ControlLoop {
                     } catch (BatterySocUnavailableException e) {
                         batteryPowerW = null; // dashboard display only, not safety-critical
                     }
+                    try {
+                        batteryVoltageV = batteryReader.readVoltageV();
+                    } catch (BatterySocUnavailableException e) {
+                        batteryVoltageV = null; // not configured, or read failed -- dashboard display only
+                    }
+                    try {
+                        batteryCurrentA = batteryReader.readCurrentA();
+                    } catch (BatterySocUnavailableException e) {
+                        batteryCurrentA = null; // dashboard display only
+                    }
 
                     if (configPath != null
                             && (lastPersistedActive == null || hysteresis.isActive() != lastPersistedActive)) {
@@ -468,6 +484,8 @@ public final class ControlLoop {
                             null,
                             offStateInvertersPayload(client, serials, nominalPowerW, nameBySerial),
                             batteryPowerW,
+                            batteryVoltageV,
+                            batteryCurrentA,
                             false,
                             null);
                     if (config.logging().verboseTraces()) {
@@ -494,6 +512,8 @@ public final class ControlLoop {
                                 null,
                                 manualOverridePayload(client, serials, overridePct, nominalPowerW, nameBySerial),
                                 batteryPowerW,
+                                batteryVoltageV,
+                                batteryCurrentA,
                                 false,
                                 null);
                     } else {
@@ -509,6 +529,8 @@ public final class ControlLoop {
                                     liveState,
                                     socPct,
                                     batteryPowerW,
+                                    batteryVoltageV,
+                                    batteryCurrentA,
                                     dryRun,
                                     config.logging().verboseTraces(),
                                     config.control().minInverterPct(),

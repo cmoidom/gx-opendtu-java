@@ -50,4 +50,45 @@ class StateStoreTest {
         Files.writeString(statePath, "{\"other_key\": true}");
         assertThat(StateStore.loadInjectionActive(configPath)).isNull();
     }
+
+    @Test
+    void injectionModeRoundtrips(@TempDir Path tmpDir) {
+        Path configPath = tmpDir.resolve("config.json");
+        assertThat(StateStore.loadInjectionMode(configPath)).isNull();
+
+        StateStore.saveInjectionMode(configPath, InjectionModeOverride.Mode.OFF);
+        assertThat(StateStore.loadInjectionMode(configPath)).isEqualTo(InjectionModeOverride.Mode.OFF);
+
+        StateStore.saveInjectionMode(configPath, InjectionModeOverride.Mode.ON);
+        assertThat(StateStore.loadInjectionMode(configPath)).isEqualTo(InjectionModeOverride.Mode.ON);
+    }
+
+    @Test
+    void loadInjectionModeReturnsNullOnInvalidValue(@TempDir Path tmpDir) throws Exception {
+        Path configPath = tmpDir.resolve("config.json");
+        Files.writeString(tmpDir.resolve("state.json"), "{\"injection_mode\": \"BOGUS\"}");
+        assertThat(StateStore.loadInjectionMode(configPath)).isNull();
+    }
+
+    @Test
+    void savingInjectionActiveDoesNotClobberInjectionMode(@TempDir Path tmpDir) {
+        // Regression test: both fields live in the same state.json -- a
+        // naive "overwrite the whole file" save of one must not erase the
+        // other (this is exactly the class of bug that left the dashboard's
+        // mode selector silently reverting to AUTO after every restart).
+        Path configPath = tmpDir.resolve("config.json");
+        StateStore.saveInjectionMode(configPath, InjectionModeOverride.Mode.ON);
+        StateStore.saveInjectionActive(configPath, true);
+        assertThat(StateStore.loadInjectionMode(configPath)).isEqualTo(InjectionModeOverride.Mode.ON);
+        assertThat(StateStore.loadInjectionActive(configPath)).isTrue();
+    }
+
+    @Test
+    void savingInjectionModeDoesNotClobberInjectionActive(@TempDir Path tmpDir) {
+        Path configPath = tmpDir.resolve("config.json");
+        StateStore.saveInjectionActive(configPath, false);
+        StateStore.saveInjectionMode(configPath, InjectionModeOverride.Mode.OFF);
+        assertThat(StateStore.loadInjectionActive(configPath)).isFalse();
+        assertThat(StateStore.loadInjectionMode(configPath)).isEqualTo(InjectionModeOverride.Mode.OFF);
+    }
 }

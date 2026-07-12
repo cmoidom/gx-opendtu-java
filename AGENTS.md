@@ -32,6 +32,13 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   adresse** (`modbus/RegisterCodec.combineBigEndianUint32`). Toute nouvelle
   lecture de registre 32 bits doit passer par ce codec, pas réinventer
   l'assemblage inline.
+- **Tension batterie (registre 259) : PAS sur l'agrégat système** --
+  contrairement au SOC/puissance/courant batterie (registres 843/842/841,
+  tous sur `unit_id`, l'agrégat `com.victronenergy.system`), la tension vit
+  sur le service **propre du moniteur de batterie** (`com.victronenergy.battery`),
+  à un unit ID différent par installation (`battery.voltage_unit_id`,
+  voir `battery/ModbusBatterySoc.java`). Ne pas supposer qu'un futur registre
+  batterie est forcément sur l'agrégat système sans vérifier.
 - **Client Modbus TCP maison, pas de bibliothèque tierce** : le client
   (`modbus/ModbusTcpClient.java`) a été écrit à la main précisément pour
   éviter le risque de casse d'API qu'une dépendance externe (type pymodbus

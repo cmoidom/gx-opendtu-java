@@ -61,7 +61,7 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, true, false, 0.0, null);
+                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, true, false, 0.0, null);
         assertThat(client.absoluteCalls).isEmpty();
     }
 
@@ -73,7 +73,7 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, false, false, 0.0, null);
+                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, false, false, 0.0, null);
         assertThat(client.absoluteCalls).hasSize(2);
     }
 
@@ -144,7 +144,7 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         List<String> logs = captureLogs(() -> ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, true, true, 0.0, null));
+                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, true, true, 0.0, null));
         assertThat(logs).anyMatch(m -> m.contains("grid_meter="));
     }
 
@@ -156,7 +156,7 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         List<String> logs = captureLogs(() -> ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, true, false, 0.0, null));
+                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, true, false, 0.0, null));
         assertThat(logs).noneMatch(m -> m.contains("grid_meter="));
     }
 

@@ -110,7 +110,8 @@ public final class ConfigLoader {
                         batteryRaw.path("enabled").asBoolean(false),
                         batteryRaw.path("activate_at_pct").asDouble(100.0),
                         batteryRaw.path("deactivate_below_pct").asDouble(98.0),
-                        batteryRaw.path("export_confirms_full_w").asDouble(50.0)),
+                        batteryRaw.path("export_confirms_full_w").asDouble(50.0),
+                        nullableInt(batteryRaw, "voltage_unit_id")),
                 new WebConfig(webRaw.path("port").asInt(8080)),
                 new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(true)),
                 new StatsConfig(
@@ -145,5 +146,10 @@ public final class ConfigLoader {
             throw new IllegalArgumentException(errorMessage);
         }
         return child.asDouble();
+    }
+
+    private static Integer nullableInt(JsonNode node, String field) {
+        JsonNode child = node.path(field);
+        return child.isMissingNode() || child.isNull() ? null : child.asInt();
     }
 }

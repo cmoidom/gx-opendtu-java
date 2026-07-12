@@ -4,6 +4,7 @@ import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
+import gxopendtu.state.StateStore;
 import gxopendtu.stats.StatsStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,10 +27,11 @@ class WebUiServerTest {
     private StatsStore statsStore;
     private HttpClient http;
     private String baseUrl;
+    private Path configPath;
 
     @BeforeEach
     void setUp(@TempDir Path tmpDir) throws IOException {
-        Path configPath = tmpDir.resolve("config.json");
+        configPath = tmpDir.resolve("config.json");
         Files.writeString(
                 configPath,
                 """
@@ -106,6 +108,15 @@ class WebUiServerTest {
     void overrideModeChangesReflectInStatusJson() throws Exception {
         assertThat(post("/override/mode", "mode=ON").statusCode()).isEqualTo(200);
         assertThat(get("/status.json").body()).contains("\"injection_mode\":\"ON\"");
+    }
+
+    @Test
+    void overrideModeSurvivesRestart() throws Exception {
+        // Regression test for the mode silently reverting to AUTO on every
+        // restart: /override/mode must persist to state.json, not just update
+        // the in-memory InjectionModeOverride.
+        assertThat(post("/override/mode", "mode=OFF").statusCode()).isEqualTo(200);
+        assertThat(StateStore.loadInjectionMode(configPath)).isEqualTo(InjectionModeOverride.Mode.OFF);
     }
 
     @Test

@@ -52,7 +52,7 @@ public final class WebUiServer {
                     "/status.json", new StatusJsonHandler(liveState, energyHistory, manualOverride, injectionMode));
             server.createContext("/fetch-inverters", new FetchInvertersHandler());
 
-            OverrideHandlers overrideHandlers = new OverrideHandlers(manualOverride, injectionMode);
+            OverrideHandlers overrideHandlers = new OverrideHandlers(manualOverride, injectionMode, configPath);
             server.createContext("/override/pct", overrideHandlers.pctHandler());
             server.createContext("/override/pct/clear", overrideHandlers.pctClearHandler());
             server.createContext("/override/mode", overrideHandlers.modeHandler());

@@ -5,10 +5,12 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.ManualOverride;
+import gxopendtu.state.StateStore;
 
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -25,10 +27,12 @@ final class OverrideHandlers {
 
     private final ManualOverride manualOverride;
     private final InjectionModeOverride injectionMode;
+    private final Path configPath;
 
-    OverrideHandlers(ManualOverride manualOverride, InjectionModeOverride injectionMode) {
+    OverrideHandlers(ManualOverride manualOverride, InjectionModeOverride injectionMode, Path configPath) {
         this.manualOverride = manualOverride;
         this.injectionMode = injectionMode;
+        this.configPath = configPath;
     }
 
     HttpHandler pctHandler() {
@@ -94,6 +98,9 @@ final class OverrideHandlers {
                     sendJson(exchange, 400, Map.of("error", "mode invalide"));
                     return;
                 }
+                // Survives a restart -- otherwise the mode selector would
+                // silently revert to AUTO next time the process starts.
+                StateStore.saveInjectionMode(configPath, injectionMode.getMode());
                 LOG.warning("mode de regulation change via la page de config: " + mode);
                 Map<String, Object> response = new LinkedHashMap<>();
                 response.put("ok", true);

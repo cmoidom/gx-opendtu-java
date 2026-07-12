@@ -7,6 +7,7 @@ import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
+import gxopendtu.state.StateStore;
 import gxopendtu.stats.StatsStore;
 import gxopendtu.webui.WebUiServer;
 
@@ -60,6 +61,14 @@ public final class Main {
         HourlyEnergyHistory energyHistory = new HourlyEnergyHistory();
         ManualOverride manualOverride = new ManualOverride();
         InjectionModeOverride injectionMode = new InjectionModeOverride();
+        // Restore the sticky AUTO/ON/OFF mode across restarts, same as the
+        // hysteresis latch itself (see ControlLoop.run) -- otherwise the
+        // dashboard's mode selector silently reverts to AUTO on every
+        // restart even if the user had explicitly forced ON or OFF.
+        InjectionModeOverride.Mode persistedMode = StateStore.loadInjectionMode(configPath);
+        if (persistedMode != null) {
+            injectionMode.setMode(persistedMode);
+        }
         StatsStore statsStore = new StatsStore(configPath.resolveSibling("stats.db"));
 
         WebUiServer.start(

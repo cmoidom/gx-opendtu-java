@@ -142,6 +142,19 @@ perdu à chaque redémarrage du service : c'est une vue en direct sur les
 30 dernières minutes, pas un historique persistant -- voir `stats/StatsStore`
 ci-dessous pour la persistance long terme.
 
+**Graphique SOC/tension/courant (exception délibérée à "jamais de double
+axe")** : `dashboard.html`'s `drawChart()` supporte un mode multi-axes
+(`opts.axes`, un axe par unité -- %, V, A) utilisé uniquement par le
+graphique "SOC batterie", qui superpose SOC (axe gauche, 0-100%), tension
+batterie (axe droit) et courant batterie (deuxième axe droit empilé), chacun
+dans sa propre couleur de graduation pour rester lisible. C'est un écart
+assumé par rapport à la règle usuelle "jamais d'axe Y double" : demandé
+explicitement par l'utilisateur (trois grandeurs de la même batterie, sur le
+même pas de temps, plutôt que trois graphiques séparés à comparer visuellement).
+Les graphiques à un seul axe (réseau/batterie, puissance par onduleur)
+utilisent toujours un unique axe Y classique -- `opts.axes` absent construit
+un axe "default" synthétique en interne, donc leur code n'a pas changé.
+
 ### Persistance long terme des courbes (`stats/StatsStore`)
 
 `stats/StatsStore.java` persiste les courbes du tableau de bord (réseau
@@ -156,7 +169,10 @@ milliers de lignes sur 2 ans à 5 min d'intervalle) ne justifie pas
 l'infrastructure d'une vraie base time-series.
 
 Trois tables : `samples` (grid_raw_w, grid_ema_w, soc_pct, battery_power_w,
-injection_control, une ligne par `t`), `inverter_samples` (une ligne par
+battery_voltage_v, battery_current_a, injection_control, une ligne par `t`
+-- les deux dernières colonnes ajoutées après coup via une migration
+`ALTER TABLE` idempotente au démarrage, `ensureColumn`, pour ne pas casser un
+`stats.db` déjà déployé), `inverter_samples` (une ligne par
 onduleur par `t`), `hourly_energy` (miroir persistant de
 `HourlyEnergyHistory.snapshot()`, réécrit intégralement -- `INSERT OR
 REPLACE` -- à chaque écriture, donc auto-cicatrisant si une écriture a été
@@ -347,14 +363,27 @@ par cycle de décision dans `ControlLoop.run` :
   redevient vrai). Le fail-safe (perte du compteur réseau) est vérifié plus
   haut dans la boucle et `continue` avant d'atteindre cette logique.
 
-## Persistance de l'hystérèse batterie (`state.json`)
+## Persistance de l'hystérèse batterie et du mode (`state.json`)
 
-`state/StateStore.java` écrit `{"injection_active": bool}` dans `state.json`,
-à côté de `config.json`, chaque fois que `hysteresis.isActive()` change de
-valeur. Lu au démarrage pour initialiser `BatteryFullHysteresis(active=...)` ;
+`state/StateStore.java` écrit dans `state.json`, à côté de `config.json` :
+`injection_active` (bool), chaque fois que `hysteresis.isActive()` change de
+valeur, lu au démarrage pour initialiser `BatteryFullHysteresis(active=...)` ;
 en l'absence d'état persisté, démarre à `true` (curtailment) plutôt que
 `false` -- une lecture SOC réelle corrige ça en un cycle si la batterie n'est
-en fait pas pleine.
+en fait pas pleine. Et `injection_mode` ("AUTO"/"ON"/"OFF"), écrit par
+`webui/OverrideHandlers` à chaque changement via `POST /override/mode`, lu au
+démarrage dans `Main.java` pour restaurer `InjectionModeOverride`.
+
+Les deux champs partagent le même fichier -- chaque écriture relit d'abord le
+contenu existant et fusionne (`StateStore.loadRaw`/`writeRaw`), pour qu'une
+sauvegarde de l'un n'écrase jamais l'autre. **Corrige un bug hérité du projet
+Python d'origine** : son README affirme que le mode "survit à un
+redémarrage", mais `src/state_store.py` n'a jamais persisté que
+`injection_active` -- après tout redémarrage (y compris "Enregistrer et
+appliquer"), le sélecteur de mode du tableau de bord revenait silencieusement
+à AUTO même si `ON`/`OFF` avait été explicitement choisi, et en AUTO le
+prochain cycle de décision pouvait alors faire basculer le verrou lui-même
+sans aucune indication visible du changement.
 
 ## API OpenDTU utilisée
 
@@ -395,8 +424,18 @@ variantes).
   `energy_unit_id` optionnel (défaut = `unit_id`).
 - **`battery/ModbusBatterySoc`** : registre **843** = SOC (`uint16`, 0-100%,
   pas de conversion de signe), registre **842** = puissance batterie
-  (`int16`, positif = charge, négatif = décharge). Utilisé seulement pour
-  l'affichage tableau de bord -- l'hystérèse ON/OFF ne se base que sur le SOC.
+  (`int16`, positif = charge, négatif = décharge), registre **841** = courant
+  batterie (`int16`, échelle 10 → A, même convention de signe que la
+  puissance). Ces trois registres vivent sur l'agrégat système (`unit_id`,
+  défaut 100). Registre **259** = tension batterie (`uint16`, échelle 100 →
+  V) : contrairement au SOC/puissance/courant, ce registre appartient au
+  service **propre du moniteur de batterie** (`com.victronenergy.battery`),
+  pas à l'agrégat système -- d'où `battery.voltage_unit_id` (optionnel,
+  souvent `225` sur une install Victron typique ; voir
+  `config/config.example.json`). Sans cette config, `readVoltageV()` lève
+  `BatterySocUnavailableException` et le tableau de bord affiche simplement
+  la série tension comme absente. Utilisé seulement pour l'affichage tableau
+  de bord -- l'hystérèse ON/OFF ne se base que sur le SOC.
 - **`modbus/RegisterCodec.java`** isole la logique pure (`toSigned16`,
   `combineBigEndianUint32`) : les registres 32 bits ont le **mot de poids
   fort au registre de plus basse adresse** -- oublier cette conversion est un

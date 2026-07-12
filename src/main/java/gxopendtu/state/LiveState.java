@@ -30,6 +30,8 @@ public final class LiveState {
 
     private Double socPct;
     private Double batteryPowerW;
+    private Double batteryVoltageV;
+    private Double batteryCurrentA;
     private String injectionControl;
     private Double consigneW;
     private List<Map<String, Object>> inverters = List.of();
@@ -51,12 +53,16 @@ public final class LiveState {
             Double consigneW,
             List<Map<String, Object>> inverters,
             Double batteryPowerW,
+            Double batteryVoltageV,
+            Double batteryCurrentA,
             boolean minInverterFloorWarning,
             Double recommendedMinInverterPct) {
         lock.lock();
         try {
             this.socPct = socPct;
             this.batteryPowerW = batteryPowerW;
+            this.batteryVoltageV = batteryVoltageV;
+            this.batteryCurrentA = batteryCurrentA;
             this.injectionControl = injectionControl;
             this.consigneW = consigneW;
             this.inverters = inverters == null ? List.of() : List.copyOf(inverters);
@@ -68,7 +74,7 @@ public final class LiveState {
     }
 
     public void updateDecision(Double socPct, String injectionControl, Double consigneW, List<Map<String, Object>> inverters) {
-        updateDecision(socPct, injectionControl, consigneW, inverters, null, false, null);
+        updateDecision(socPct, injectionControl, consigneW, inverters, null, null, null, false, null);
     }
 
     /** Called once per fast-loop tick -- this sets the sampling rate of the history buffer. */
@@ -81,6 +87,8 @@ public final class LiveState {
             sample.put("grid_ema_w", gridEmaW);
             sample.put("soc_pct", socPct);
             sample.put("battery_power_w", batteryPowerW);
+            sample.put("battery_voltage_v", batteryVoltageV);
+            sample.put("battery_current_a", batteryCurrentA);
             sample.put("injection_control", injectionControl);
             sample.put("consigne_w", consigneW);
             sample.put("inverters", inverters);
