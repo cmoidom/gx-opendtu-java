@@ -280,9 +280,15 @@ function niceNum(range, round) {
   return niceFraction * Math.pow(10, exponent);
 }
 
-function niceScale(min, max, targetTicks) {
+// minStep guards against a step finer than the axis' own display precision
+// (e.g. battery voltage's register resolution is 0.01 V) -- without it, a
+// nearly-flat series can get a step like 0.005, and two adjacent ticks that
+// differ by less than the formatter's decimals (toFixed(2)) print as the
+// same label twice.
+function niceScale(min, max, targetTicks, minStep) {
   if (min === max) { min -= 1; max += 1; }
-  const step = niceNum((max - min) / Math.max(1, targetTicks - 1), true);
+  let step = niceNum((max - min) / Math.max(1, targetTicks - 1), true);
+  if (minStep && step < minStep) step = minStep;
   return { min: Math.floor(min / step) * step, max: Math.ceil(max / step) * step, step: step };
 }
 
@@ -345,7 +351,7 @@ function drawChart(canvas, seriesList, opts) {
     let dataMin = axis.min !== undefined ? axis.min : (pointsForRange.length ? Math.min.apply(null, pointsForRange.map(p => p.v)) : 0);
     let dataMax = axis.max !== undefined ? axis.max : (pointsForRange.length ? Math.max.apply(null, pointsForRange.map(p => p.v)) : 1);
     if (axis.includeZero) { dataMin = Math.min(dataMin, 0); dataMax = Math.max(dataMax, 0); }
-    const scale = niceScale(dataMin, dataMax, 5);
+    const scale = niceScale(dataMin, dataMax, 5, axis.minStep);
     const yMin = scale.min, yMax = scale.max;
     axisScales[axis.id] = {
       yMin, yMax, step: scale.step, hasData: axisPoints.length > 0,
@@ -763,8 +769,8 @@ function renderCharts() {
   ], Object.assign({
     axes: [
       { id: 'soc', side: 'left', min: 0, max: 100, format: fmtPct },
-      { id: 'volt', side: 'right', format: fmtVolt, color: cssVar('--series-2') },
-      { id: 'amp', side: 'right', format: fmtAmp, color: cssVar('--series-3'), includeZero: true },
+      { id: 'volt', side: 'right', format: fmtVolt, color: cssVar('--series-2'), minStep: 0.01 },
+      { id: 'amp', side: 'right', format: fmtAmp, color: cssVar('--series-3'), includeZero: true, minStep: 0.1 },
     ],
   }, viewOpts));
 
