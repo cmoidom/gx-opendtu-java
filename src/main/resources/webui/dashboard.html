@@ -118,8 +118,7 @@ synchronise sur les trois graphiques temporels.</p>
     <span><span class="dot" style="background:var(--series-2)"></span>Tension batterie</span>
     <span><span class="dot" style="background:var(--series-3)"></span>Courant batterie</span>
   </div>
-  <p class="hint">Courant : positif = charge, negatif = decharge. Tension/courant absents si
-  <code>battery.voltage_unit_id</code> n'est pas configure.</p>
+  <p class="hint">Courant : positif = charge, negatif = decharge.</p>
 </div>
 
 <h2>Puissance reseau et batterie</h2>
@@ -256,7 +255,7 @@ function fmtEnergy(v) {
   return Math.abs(v) < 1 ? Math.round(v * 1000) + ' Wh' : v.toFixed(2) + ' kWh';
 }
 function fmtHour(h) { return new Date(h * 1000).toLocaleTimeString([], { hour: '2-digit' }); }
-function fmtVolt(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' V'; }
+function fmtVolt(v) { return (v === null || v === undefined) ? '-' : v.toFixed(2) + ' V'; }
 function fmtAmp(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' A'; }
 
 // "Nice numbers" axis rounding (Heckbert's algorithm): picks bounds/step
@@ -336,8 +335,8 @@ function drawChart(canvas, seriesList, opts) {
   // series (mixing units across axes would produce a nonsensical range),
   // falling back to that axis' full history if the window contains none of
   // its points (e.g. panned past the data). An axis with no data at all
-  // (e.g. battery_voltage_v when battery.voltage_unit_id isn't configured)
-  // is left out of tick drawing below rather than showing an arbitrary scale.
+  // (e.g. battery_voltage_v if the Modbus read keeps failing) is left out
+  // of tick drawing below rather than showing an arbitrary scale.
   const axisScales = {};
   axes.forEach(axis => {
     const axisPoints = seriesList.filter(s => s.axis === axis.id).flatMap(s => s.points);
