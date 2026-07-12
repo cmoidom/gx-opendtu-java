@@ -1,0 +1,135 @@
+package gxopendtu.webui;
+
+import gxopendtu.state.HourlyEnergyHistory;
+import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.LiveState;
+import gxopendtu.state.ManualOverride;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class WebUiServerTest {
+
+    private WebUiServer server;
+    private HttpClient http;
+    private String baseUrl;
+
+    @BeforeEach
+    void setUp(@TempDir Path tmpDir) throws IOException {
+        Path configPath = tmpDir.resolve("config.json");
+        Files.writeString(
+                configPath,
+                """
+                {
+                  "opendtu": { "base_url": "http://192.168.1.50" },
+                  "grid": { "modbus": { "host": "192.168.1.10" } },
+                  "inverters": [ { "serial": "111", "nominal_power_w": 600 } ]
+                }
+                """);
+        server = WebUiServer.start(
+                configPath, 0, new LiveState(), new HourlyEnergyHistory(), new ManualOverride(), new InjectionModeOverride());
+        http = HttpClient.newHttpClient();
+        baseUrl = "http://127.0.0.1:" + server.port();
+    }
+
+    @AfterEach
+    void tearDown() {
+        server.stop();
+    }
+
+    private HttpResponse<String> get(String path) throws Exception {
+        return http.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + path)).GET().build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> post(String path, String form) throws Exception {
+        return http.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + path))
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(form))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void configPageServesForm() throws Exception {
+        HttpResponse<String> response = get("/");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("gx-opendtu-java - configuration");
+        assertThat(response.body()).contains("192.168.1.50");
+    }
+
+    @Test
+    void unknownPathReturns404() throws Exception {
+        assertThat(get("/nope").statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void dashboardServesStaticPage() throws Exception {
+        HttpResponse<String> response = get("/dashboard");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("tableau de bord");
+    }
+
+    @Test
+    void statusJsonReturnsExpectedShape() throws Exception {
+        HttpResponse<String> response = get("/status.json");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body())
+                .contains("\"history\"")
+                .contains("\"hourly_energy\"")
+                .contains("\"injection_mode\":\"AUTO\"");
+    }
+
+    @Test
+    void overrideModeChangesReflectInStatusJson() throws Exception {
+        assertThat(post("/override/mode", "mode=ON").statusCode()).isEqualTo(200);
+        assertThat(get("/status.json").body()).contains("\"injection_mode\":\"ON\"");
+    }
+
+    @Test
+    void overrideModeRejectsInvalidValue() throws Exception {
+        assertThat(post("/override/mode", "mode=BOGUS").statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void overridePctRejectsInvalidValue() throws Exception {
+        assertThat(post("/override/pct", "pct=42").statusCode()).isEqualTo(400);
+    }
+
+    @Test
+    void overridePctSetsAndClears() throws Exception {
+        assertThat(post("/override/pct", "pct=50").statusCode()).isEqualTo(200);
+        assertThat(get("/status.json").body()).contains("\"pct\":50.0");
+        assertThat(post("/override/pct/clear", "").statusCode()).isEqualTo(200);
+        assertThat(get("/status.json").body()).contains("\"manual_override\":null");
+    }
+
+    @Test
+    void saveWritesConfigJsonWithoutRestarting() throws Exception {
+        String form = "opendtu.base_url=http://192.168.1.99&grid.modbus.host=192.168.1.20"
+                + "&inverter_serial=222&inverter_nominal_power_w=400";
+        HttpResponse<String> response = post("/save", form);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("Configuration enregistree");
+    }
+
+    @Test
+    void saveRejectsInvalidConfigWith400() throws Exception {
+        // no inverters at all -> ConfigLoader.parseConfig rejects it
+        String form = "opendtu.base_url=http://192.168.1.99&grid.modbus.host=192.168.1.20";
+        HttpResponse<String> response = post("/save", form);
+        assertThat(response.statusCode()).isEqualTo(400);
+    }
+}
