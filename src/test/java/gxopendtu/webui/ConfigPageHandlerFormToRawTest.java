@@ -23,7 +23,6 @@ class ConfigPageHandlerFormToRawTest {
                 Map.entry("grid.ema_alpha", List.of("0.5")),
                 Map.entry("grid.modbus.host", List.of("192.168.1.10")),
                 Map.entry("grid.modbus.port", List.of("502")),
-                Map.entry("grid.modbus.unit_id", List.of("100")),
                 Map.entry("control.kp", List.of("0.4")),
                 Map.entry("control.min_inverter_pct", List.of("10")),
                 Map.entry("capacity_probe.step_w", List.of("10")),
@@ -74,31 +73,4 @@ class ConfigPageHandlerFormToRawTest {
         assertThat(config.logging().verboseTraces()).isTrue();
     }
 
-    @Test
-    void energyUnitIdBlankIsOmittedNotZero() {
-        Map<String, List<String>> form = Map.of(
-                "opendtu.base_url", List.of("http://x"),
-                "grid.modbus.host", List.of("10.0.0.1"),
-                "grid.modbus.energy_unit_id", List.of(""),
-                "inverter_serial", List.of("a"),
-                "inverter_nominal_power_w", List.of("100"),
-                "inverter_name", List.of(""));
-
-        AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
-        assertThat(config.grid().modbus().energyUnitId()).isNull();
-    }
-
-    @Test
-    void energyUnitIdRoundTripsWhenProvided() {
-        Map<String, List<String>> form = Map.of(
-                "opendtu.base_url", List.of("http://x"),
-                "grid.modbus.host", List.of("10.0.0.1"),
-                "grid.modbus.energy_unit_id", List.of("30"),
-                "inverter_serial", List.of("a"),
-                "inverter_nominal_power_w", List.of("100"),
-                "inverter_name", List.of(""));
-
-        AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
-        assertThat(config.grid().modbus().energyUnitId()).isEqualTo(30);
-    }
 }

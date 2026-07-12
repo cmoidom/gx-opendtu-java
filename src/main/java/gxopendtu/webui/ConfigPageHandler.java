@@ -248,11 +248,6 @@ final class ConfigPageHandler implements HttpHandler {
         ObjectNode modbus = MAPPER.createObjectNode();
         modbus.put("host", first(form, "grid.modbus.host", "").trim());
         modbus.put("port", (int) Double.parseDouble(first(form, "grid.modbus.port", "502")));
-        modbus.put("unit_id", (int) Double.parseDouble(first(form, "grid.modbus.unit_id", "100")));
-        String energyUnitId = first(form, "grid.modbus.energy_unit_id", "").trim();
-        if (!energyUnitId.isEmpty()) {
-            modbus.put("energy_unit_id", (int) Double.parseDouble(energyUnitId));
-        }
         grid.set("modbus", modbus);
         raw.set("grid", grid);
 
@@ -421,17 +416,6 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <input type=\"text\" name=\"grid.modbus.host\" value=\"" + val(raw, "grid.modbus.host", "") + "\" required>\n"
                 + "    <label>Port Modbus</label>\n"
                 + "    <input type=\"number\" name=\"grid.modbus.port\" value=\"" + val(raw, "grid.modbus.port", "502") + "\">\n"
-                + "    <label>Unit ID</label>\n"
-                + "    <input type=\"number\" name=\"grid.modbus.unit_id\" value=\"" + val(raw, "grid.modbus.unit_id", "100") + "\">\n"
-                + "    <p class=\"hint\">100 = agregat systeme Victron (com.victronenergy.system), toujours disponible "
-                + "sans configuration specifique au site -- a changer seulement si votre installation Victron utilise "
-                + "un autre unit ID pour cet agregat.</p>\n"
-                + "    <label>Unit ID energie cumulee (optionnel)</label>\n"
-                + "    <input type=\"number\" step=\"1\" min=\"0\" name=\"grid.modbus.energy_unit_id\" value=\"" + val(raw, "grid.modbus.energy_unit_id", "") + "\">\n"
-                + "    <p class=\"hint\">Les compteurs d'energie cumulee (import/export total, graphique \"Energie reseau "
-                + "par heure\") vivent sur le service Modbus propre du compteur reseau (com.victronenergy.grid), pas "
-                + "forcement sur l'agregat systeme ci-dessus -- laisser vide si votre compteur reseau partage le meme "
-                + "unit ID que l'agregat (cas le plus courant), sinon indiquer l'unit ID propre du compteur.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

@@ -28,19 +28,25 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   Unit ID 100 = service agrégat `com.victronenergy.system`, toujours
   disponible sans configuration par site ; ne pas remplacer par l'unit ID du
   compteur lui-même (variable par installation) sans une bonne raison.
+- **Aucun unit ID Modbus n'est configurable via `config.json`** : décision
+  explicite (2026-07-13) -- `grid.modbus.unit_id` et
+  `grid.modbus.energy_unit_id` ont existé comme options puis ont été
+  retirés, remplacés par des constantes (`ModbusConstants.SYSTEM_UNIT_ID`
+  pour les deux, la tension batterie a sa propre constante `VOLTAGE_UNIT_ID`
+  = 225). Seuls `host`/`port` restent dans `config.json`. Ne pas
+  réintroduire un champ de config pour un unit ID sans en rediscuter --
+  ajouter plutôt une nouvelle constante si une future install en a besoin.
 - **Registres 32 bits Modbus : mot de poids fort au registre de plus basse
   adresse** (`modbus/RegisterCodec.combineBigEndianUint32`). Toute nouvelle
   lecture de registre 32 bits doit passer par ce codec, pas réinventer
   l'assemblage inline.
 - **Tension batterie (registre 259) : PAS sur l'agrégat système** --
   contrairement au SOC/puissance/courant batterie (registres 843/842/841,
-  tous sur `unit_id`, l'agrégat `com.victronenergy.system`), la tension vit
-  sur le service **propre du moniteur de batterie** (`com.victronenergy.battery`),
+  tous sur l'agrégat `com.victronenergy.system`), la tension vit sur le
+  service **propre du moniteur de batterie** (`com.victronenergy.battery`),
   unit ID **225**, une constante (`VOLTAGE_UNIT_ID` dans
-  `battery/ModbusBatterySoc.java`), volontairement pas une option de
-  `config.json` : spécifique à cette install, pas un réglage par
-  déploiement. Ne pas supposer qu'un futur registre batterie est forcément
-  sur l'agrégat système sans vérifier.
+  `battery/ModbusBatterySoc.java`). Ne pas supposer qu'un futur registre
+  batterie est forcément sur l'agrégat système sans vérifier.
 - **Client Modbus TCP maison, pas de bibliothèque tierce** : le client
   (`modbus/ModbusTcpClient.java`) a été écrit à la main précisément pour
   éviter le risque de casse d'API qu'une dépendance externe (type pymodbus

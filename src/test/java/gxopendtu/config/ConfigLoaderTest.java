@@ -26,7 +26,7 @@ class ConfigLoaderTest {
                 "export_setpoint_w": 30,
                 "read_interval_s": 2,
                 "ema_alpha": 0.5,
-                "modbus": { "host": "192.168.1.10", "port": 502, "unit_id": 100 }
+                "modbus": { "host": "192.168.1.10", "port": 502 }
               },
               "control": { "kp": 0.4, "ki": 0.05, "decision_interval_s": 5,
                            "step_absolute_w": 100, "step_relative_pct": 10, "min_change_w": 5 },
@@ -46,8 +46,6 @@ class ConfigLoaderTest {
         assertThat(config.opendtu().baseUrl()).isEqualTo("http://192.168.1.50"); // trailing slash stripped
         assertThat(config.opendtu().username()).isNull();
         assertThat(config.grid().modbus().host()).isEqualTo("192.168.1.10");
-        assertThat(config.grid().modbus().unitId()).isEqualTo(100);
-        assertThat(config.grid().modbus().energyUnitId()).isNull(); // resolved to unitId by ModbusGridMeter, not here
         assertThat(config.control().minInverterPct()).isEqualTo(5.0); // default, absent from FULL_CONFIG
         assertThat(config.web().port()).isEqualTo(8080);
         assertThat(config.logging().verboseTraces()).isTrue();
@@ -102,16 +100,4 @@ class ConfigLoaderTest {
                 .hasMessageContaining("config.grid.modbus.host is required");
     }
 
-    @Test
-    void energyUnitIdIsPreservedWhenExplicitlySet() {
-        String raw = """
-                {
-                  "opendtu": { "base_url": "http://x" },
-                  "grid": { "modbus": { "host": "10.0.0.1", "energy_unit_id": 30 } },
-                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
-                }
-                """;
-        AppConfig config = ConfigLoader.parseConfig(json(raw));
-        assertThat(config.grid().modbus().energyUnitId()).isEqualTo(30);
-    }
 }

@@ -39,15 +39,13 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
     private static final int VOLTAGE_REGISTER = 259;
     private static final int VOLTAGE_UNIT_ID = 225;
 
-    private final int unitId;
     private final ModbusTcpClient client;
 
-    public ModbusBatterySoc(String host, int port, int unitId) {
-        this(host, port, unitId, Duration.ofSeconds(5));
+    public ModbusBatterySoc(String host, int port) {
+        this(host, port, Duration.ofSeconds(5));
     }
 
-    public ModbusBatterySoc(String host, int port, int unitId, Duration timeout) {
-        this.unitId = unitId;
+    public ModbusBatterySoc(String host, int port, Duration timeout) {
         this.client = new ModbusTcpClient(host, port, timeout);
     }
 
@@ -62,17 +60,17 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
 
     @Override
     public double readSocPct() {
-        return readRegister(unitId, SOC_REGISTER);
+        return readRegister(ModbusConstants.SYSTEM_UNIT_ID, SOC_REGISTER);
     }
 
     @Override
     public double readPowerW() {
-        return RegisterCodec.toSigned16(readRegister(unitId, POWER_REGISTER));
+        return RegisterCodec.toSigned16(readRegister(ModbusConstants.SYSTEM_UNIT_ID, POWER_REGISTER));
     }
 
     @Override
     public double readCurrentA() {
-        return RegisterCodec.toSigned16(readRegister(unitId, CURRENT_REGISTER)) / 10.0;
+        return RegisterCodec.toSigned16(readRegister(ModbusConstants.SYSTEM_UNIT_ID, CURRENT_REGISTER)) / 10.0;
     }
 
     @Override

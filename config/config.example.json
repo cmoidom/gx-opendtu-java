@@ -8,8 +8,7 @@
     "ema_alpha": 0.5,
     "modbus": {
       "host": "192.168.1.10",
-      "port": 502,
-      "unit_id": 100
+      "port": 502
     }
   },
   "control": {

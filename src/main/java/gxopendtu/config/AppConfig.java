@@ -26,12 +26,7 @@ public record AppConfig(
 
     public record OpenDTUConfig(String baseUrl, String username, String password) {}
 
-    /**
-     * unitId always 100 (com.victronenergy.system aggregate) unless overridden.
-     * energyUnitId is nullable: resolved to unitId by ModbusGridMeter if unset,
-     * exactly like src/grid_meter_modbus.py's ModbusGridMeter.__init__.
-     */
-    public record ModbusGridConfig(String host, int port, int unitId, Integer energyUnitId) {}
+    public record ModbusGridConfig(String host, int port) {}
 
     public record GridConfig(double exportSetpointW, double readIntervalS, double emaAlpha, ModbusGridConfig modbus) {}
 

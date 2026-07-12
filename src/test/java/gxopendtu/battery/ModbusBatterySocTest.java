@@ -16,7 +16,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondWithRegisters(87);
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThat(reader.readSocPct()).isEqualTo(87.0);
             }
         }
@@ -28,7 +28,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondPerAddress(byAddress::get);
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThat(reader.readPowerW()).isEqualTo(250.0);
             }
         }
@@ -41,7 +41,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondPerAddress(byAddress::get);
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThat(reader.readPowerW()).isEqualTo(-300.0);
             }
         }
@@ -54,7 +54,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondPerAddress(byAddress::get);
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThat(reader.readCurrentA()).isEqualTo(15.0);
             }
         }
@@ -67,7 +67,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondPerAddress(byAddress::get);
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThat(reader.readCurrentA()).isEqualTo(-20.0);
             }
         }
@@ -81,7 +81,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondPerAddress(byAddress::get);
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThat(reader.readVoltageV()).isEqualTo(51.23);
             }
         }
@@ -92,7 +92,7 @@ class ModbusBatterySocTest {
         try (FakeModbusServer server = new FakeModbusServer()) {
             server.respondWithException(2); // illegal data address
             try (ModbusBatterySoc reader =
-                    new ModbusBatterySoc("127.0.0.1", server.port(), 100, Duration.ofSeconds(2))) {
+                    new ModbusBatterySoc("127.0.0.1", server.port(), Duration.ofSeconds(2))) {
                 assertThatThrownBy(reader::readVoltageV).isInstanceOf(BatterySocUnavailableException.class);
             }
         }

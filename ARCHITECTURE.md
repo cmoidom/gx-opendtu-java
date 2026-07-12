@@ -495,26 +495,31 @@ Python avec `pymodbus` (mot-clé d'unit ID renommé `unit=`/`slave=`/`device_id=
 selon les versions, voir son `_read_holding_registers` avec repli sur trois
 variantes).
 
-- **`grid/ModbusGridMeter`** : unit ID 100 (`ModbusConstants.SYSTEM_UNIT_ID`,
+- **Aucun unit ID Modbus n'est configurable** (`config.json` ne porte que
+  `grid.modbus.host`/`port`) : tous sont des constantes dans le code,
+  spécifiques à cette installation Victron, pas des réglages par
+  déploiement -- décision explicite pour éviter des champs de config qui
+  n'auraient jamais besoin de changer en pratique.
+- **`grid/ModbusGridMeter`** : unit ID **100** (`ModbusConstants.SYSTEM_UNIT_ID`,
   agrégat `com.victronenergy.system`, toujours disponible sans configuration
   par site), registre **820** = puissance active Grid L1 (`int16`, W,
   négatif = injection). Énergie cumulée : registres **2634/2636** ("Total
-  Energy from/to net", `uint32`, échelle 100 → kWh) -- appartiennent au
-  service **propre du compteur réseau**, pas à l'agrégat système, d'où
-  `energy_unit_id` optionnel (défaut = `unit_id`).
+  Energy from/to net", `uint32`, échelle 100 → kWh) -- appartiennent en
+  théorie au service **propre du compteur réseau** (pas forcément le même
+  unit ID que l'agrégat système sur toute installation), mais sur celle-ci
+  il partage l'unit ID de l'agrégat système, donc pas de constante séparée.
 - **`battery/ModbusBatterySoc`** : registre **843** = SOC (`uint16`, 0-100%,
   pas de conversion de signe), registre **842** = puissance batterie
   (`int16`, positif = charge, négatif = décharge), registre **841** = courant
   batterie (`int16`, échelle 10 → A, même convention de signe que la
-  puissance). Ces trois registres vivent sur l'agrégat système (`unit_id`,
-  défaut 100). Registre **259** = tension batterie (`uint16`, échelle 100 →
-  V) : contrairement au SOC/puissance/courant, ce registre appartient au
-  service **propre du moniteur de batterie** (`com.victronenergy.battery`),
-  pas à l'agrégat système -- unit ID **225** (constante `VOLTAGE_UNIT_ID`
-  dans `ModbusBatterySoc.java`, pas une option de `config.json` : spécifique
-  à cette install Victron, pas un réglage par déploiement). Utilisé
-  seulement pour l'affichage tableau de bord -- l'hystérèse ON/OFF ne se
-  base que sur le SOC.
+  puissance). Ces trois registres vivent sur l'agrégat système (unit ID
+  100, `ModbusConstants.SYSTEM_UNIT_ID`). Registre **259** = tension
+  batterie (`uint16`, échelle 100 → V) : contrairement au SOC/puissance/
+  courant, ce registre appartient au service **propre du moniteur de
+  batterie** (`com.victronenergy.battery`), pas à l'agrégat système -- unit
+  ID **225** (constante `VOLTAGE_UNIT_ID` dans `ModbusBatterySoc.java`).
+  Utilisé seulement pour l'affichage tableau de bord -- l'hystérèse ON/OFF
+  ne se base que sur le SOC.
 - **`modbus/RegisterCodec.java`** isole la logique pure (`toSigned16`,
   `combineBigEndianUint32`) : les registres 32 bits ont le **mot de poids
   fort au registre de plus basse adresse** -- oublier cette conversion est un

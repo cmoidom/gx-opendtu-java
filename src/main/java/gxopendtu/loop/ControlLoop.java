@@ -53,7 +53,7 @@ public final class ControlLoop {
 
     private static GridMeter makeGridReader(AppConfig config) {
         ModbusGridConfig modbus = config.grid().modbus();
-        return new ModbusGridMeter(modbus.host(), modbus.port(), modbus.unitId(), modbus.energyUnitId());
+        return new ModbusGridMeter(modbus.host(), modbus.port());
     }
 
     private static BatterySoc makeBatteryReader(AppConfig config) {
@@ -61,7 +61,7 @@ public final class ControlLoop {
             return null;
         }
         ModbusGridConfig modbus = config.grid().modbus();
-        return new ModbusBatterySoc(modbus.host(), modbus.port(), modbus.unitId());
+        return new ModbusBatterySoc(modbus.host(), modbus.port());
     }
 
     /** {warning, recommendedPct} -- recommendedPct is null unless warning is true. */

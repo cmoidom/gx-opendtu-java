@@ -76,12 +76,7 @@ public final class ConfigLoader {
         if (modbusRaw.path("host").isMissingNode()) {
             throw new IllegalArgumentException("config.grid.modbus.host is required");
         }
-        JsonNode energyUnitIdRaw = modbusRaw.path("energy_unit_id");
-        ModbusGridConfig modbusCfg = new ModbusGridConfig(
-                modbusRaw.path("host").asText(),
-                modbusRaw.path("port").asInt(502),
-                modbusRaw.path("unit_id").asInt(100),
-                energyUnitIdRaw.isMissingNode() || energyUnitIdRaw.isNull() ? null : energyUnitIdRaw.asInt());
+        ModbusGridConfig modbusCfg = new ModbusGridConfig(modbusRaw.path("host").asText(), modbusRaw.path("port").asInt(502));
 
         String username = textOrNull(opendtuRaw, "username");
         String password = textOrNull(opendtuRaw, "password");
