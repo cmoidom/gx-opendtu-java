@@ -97,8 +97,9 @@ config (`makeGridReader`/`makeBatteryReader`, privés) -- il n'y a plus de
 choix D-Bus/Modbus à faire (c'est toujours Modbus).
 
 `webui/` démarre un `com.sun.net.httpserver.HttpServer` (JDK, aucune
-dépendance) sur `config.web.port` (8080 par défaut, `config.web.enabled`
-pour désactiver). `HttpServer.start()` lance son propre thread d'écoute et
+dépendance) sur `config.web.port` (8080 par défaut) -- toujours actif,
+contrairement au projet Python d'origine, pas d'option pour le désactiver.
+`HttpServer.start()` lance son propre thread d'écoute et
 retourne immédiatement -- pas besoin d'envelopper manuellement dans un
 thread, contrairement à `threading.Thread(target=server.serve_forever)`
 côté Python. Il lit/écrit directement `config.json` mais ne touche pas à
@@ -137,8 +138,57 @@ de décision (`updateDecision`, reporté sur chaque échantillon rapide jusqu'au
 prochain cycle de décision). `webui/StatusJsonHandler` le lit seulement --
 expose `GET /status.json?since=<epoch>` (récupération incrémentale) et
 la page `/dashboard`, qui interroge cet endpoint toutes les 2s. L'état est
-perdu à chaque redémarrage du service : c'est une vue en direct, pas un
-historique persistant.
+perdu à chaque redémarrage du service : c'est une vue en direct sur les
+30 dernières minutes, pas un historique persistant -- voir `stats/StatsStore`
+ci-dessous pour la persistance long terme.
+
+### Persistance long terme des courbes (`stats/StatsStore`)
+
+`stats/StatsStore.java` persiste les courbes du tableau de bord (réseau
+brut/EMA, SOC, puissance batterie, puissance par onduleur, énergie horaire)
+dans un fichier **SQLite** (`stats.db`, à côté de `config.json`/`state.json`)
+-- indépendamment de `LiveState`/`HourlyEnergyHistory`, qui restent
+éphémères et servent uniquement la vue temps réel (~30min/48h en mémoire).
+Aucun service externe (pas d'InfluxDB) : un seul fichier, une seule
+dépendance légère (`org.xerial:sqlite-jdbc`), cohérent avec la philosophie
+"un seul jar déployable" du projet -- le volume réel (quelques centaines de
+milliers de lignes sur 2 ans à 5 min d'intervalle) ne justifie pas
+l'infrastructure d'une vraie base time-series.
+
+Trois tables : `samples` (grid_raw_w, grid_ema_w, soc_pct, battery_power_w,
+injection_control, une ligne par `t`), `inverter_samples` (une ligne par
+onduleur par `t`), `hourly_energy` (miroir persistant de
+`HourlyEnergyHistory.snapshot()`, réécrit intégralement -- `INSERT OR
+REPLACE` -- à chaque écriture, donc auto-cicatrisant si une écriture a été
+manquée). `INSERT OR REPLACE` partout : idempotent, une même clé (`t`,
+`t+serial`, ou `hour`) écrase la ligne existante plutôt que de dupliquer.
+
+**Cadence délibérément plus grossière que la vue temps réel** :
+`config.stats.interval_s` (défaut 300s = 5 min) gate l'écriture depuis
+`ControlLoop.run` -- des courbes qui couvrent des mois/années n'ont pas
+besoin d'une résolution à la seconde, et ça garde l'écriture disque et la
+taille de la base ~5x plus légères qu'à 1 min (compromis explicite,
+résolution invisible de toute façon sur un graphique de cette portée).
+`config.stats.retention_days` (défaut 730 ≈ 2 ans) borne la taille de la
+base indépendamment de la durée de fonctionnement : une purge (`DELETE ...
+WHERE t < cutoff`) tourne une fois par jour dans la même boucle.
+
+**Écriture immédiate sur "Enregistrer et appliquer"** : `webui/ConfigPageHandler`
+appelle `statsStore.persistSnapshot(liveState, energyHistory)` juste avant
+de programmer `System.exit(1)` -- sans ça, un redémarrage perdrait jusqu'à
+un intervalle complet (5 min par défaut) d'historique à chaque fois. Cet
+appel relit simplement le dernier échantillon déjà en mémoire dans
+`LiveState` (`snapshotSince(0).latest()`) : la page web n'a jamais besoin
+d'accéder directement aux lectures de la boucle de contrôle.
+
+Toutes les opérations SQLite passent par un même `ReentrantLock` : `StatsStore`
+est appelé depuis deux threads (la boucle de contrôle, et les threads HTTP du
+serveur web pour le flush immédiat), et bien que SQLite sérialise déjà les
+écritures au niveau fichier, le verrou évite qu'une opération multi-requêtes
+(le batch insert par onduleur, par exemple) ne s'entrelace avec un appel
+concurrent. Une erreur d'écriture/purge est loguée et absorbée, jamais
+propagée : un accroc de persistance long terme ne doit jamais interrompre la
+boucle de contrôle en direct.
 
 Quand `injection_control=OFF` (charge batterie prioritaire),
 `ControlLoop.run` n'appelle pas `decisionCycle` -- `offStateInvertersPayload`

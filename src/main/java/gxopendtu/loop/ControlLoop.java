@@ -24,6 +24,7 @@ import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.state.StateStore;
+import gxopendtu.stats.StatsStore;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,6 +45,8 @@ import java.util.stream.Collectors;
 public final class ControlLoop {
 
     private static final int FAILSAFE_AFTER_CONSECUTIVE_FAILURES = 3;
+    private static final double SECONDS_PER_DAY = 86400.0;
+    private static final double PRUNE_INTERVAL_S = SECONDS_PER_DAY;
     private static final Logger LOG = Logger.getLogger("gx-opendtu-zero-export");
 
     private ControlLoop() {}
@@ -335,7 +338,8 @@ public final class ControlLoop {
             HourlyEnergyHistory energyHistory,
             Path configPath,
             ManualOverride manualOverride,
-            InjectionModeOverride injectionMode) {
+            InjectionModeOverride injectionMode,
+            StatsStore statsStore) {
         GridMeter gridReader = makeGridReader(config);
         BatterySoc batteryReader = makeBatteryReader(config);
 
@@ -376,6 +380,8 @@ public final class ControlLoop {
 
         double lastDecisionTime = 0.0;
         double lastProbeTime = 0.0;
+        double lastStatsWriteTime = 0.0;
+        double lastPruneTime = 0.0;
         int consecutiveGridFailures = 0;
         boolean releasedForCharging = false;
         Double lastOverridePctSent = null;
@@ -518,6 +524,19 @@ public final class ControlLoop {
             if (now - lastProbeTime >= config.capacityProbe().intervalS()) {
                 lastProbeTime = now;
                 capacity.probeTick();
+            }
+
+            // Long-term stats: deliberately much coarser than the live
+            // read/decision cadences above -- see StatsStore's javadoc.
+            if (now - lastStatsWriteTime >= config.stats().intervalS()) {
+                lastStatsWriteTime = now;
+                statsStore.persistSnapshot(liveState, energyHistory);
+            }
+            if (now - lastPruneTime >= PRUNE_INTERVAL_S) {
+                lastPruneTime = now;
+                double cutoffEpochSeconds =
+                        System.currentTimeMillis() / 1000.0 - config.stats().retentionDays() * SECONDS_PER_DAY;
+                statsStore.pruneOlderThan(cutoffEpochSeconds);
             }
 
             sleepSeconds(config.grid().readIntervalS());

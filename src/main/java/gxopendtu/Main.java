@@ -7,6 +7,7 @@ import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
+import gxopendtu.stats.StatsStore;
 import gxopendtu.webui.WebUiServer;
 
 import java.nio.file.Path;
@@ -59,13 +60,13 @@ public final class Main {
         HourlyEnergyHistory energyHistory = new HourlyEnergyHistory();
         ManualOverride manualOverride = new ManualOverride();
         InjectionModeOverride injectionMode = new InjectionModeOverride();
+        StatsStore statsStore = new StatsStore(configPath.resolveSibling("stats.db"));
 
-        if (config.web().enabled()) {
-            WebUiServer.start(configPath, config.web().port(), liveState, energyHistory, manualOverride, injectionMode);
-            LOG.info("page de configuration disponible sur http://0.0.0.0:" + config.web().port() + "/");
-        }
+        WebUiServer.start(
+                configPath, config.web().port(), liveState, energyHistory, manualOverride, injectionMode, statsStore);
+        LOG.info("page de configuration disponible sur http://0.0.0.0:" + config.web().port() + "/");
 
-        ControlLoop.run(config, dryRun, liveState, energyHistory, configPath, manualOverride, injectionMode);
+        ControlLoop.run(config, dryRun, liveState, energyHistory, configPath, manualOverride, injectionMode, statsStore);
     }
 
     private static void printUsage() {

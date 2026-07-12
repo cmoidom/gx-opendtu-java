@@ -80,6 +80,12 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   par un seuil unique -- c'est exactement le yoyo à éviter. Voir
   `BatteryHysteresisTest.noYoyoAround100OnceActive` et
   `doesNotReactivateUntilBackTo100AfterDeactivating`.
+- **`StatsStore` ne doit jamais interrompre la boucle de contrôle** :
+  `recordSample`/`upsertHourlyEnergy`/`pruneOlderThan` attrapent et loguent
+  toute `SQLException` plutôt que de la laisser remonter (seule l'ouverture
+  de la base, dans le constructeur, a le droit de lever). Ne pas retirer ce
+  garde-fou -- un accroc de persistance long terme (disque plein, fichier
+  verrouillé) ne doit jamais faire planter `ControlLoop.run`.
 
 ## Frontière testable / non testable
 
@@ -101,6 +107,9 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   un vrai Cerbo GX/OpenDTU. La logique pure de décodage
   (`modbus/RegisterCodec.java`) est en revanche testée directement, sans
   socket.
+- `stats/StatsStore.java` est testé contre un **vrai fichier SQLite temporaire**
+  (`@TempDir`, pas de mock JDBC) -- schéma, insert/upsert/purge vérifiés en
+  relisant la base via une connexion JDBC séparée dans les tests.
 - Avant d'affirmer qu'un détail de l'API OpenDTU est correct, vérifier
   contre la version réellement installée sur le firmware cible : ce projet
   (comme son origine Python) a été conçu à partir de documentation publique

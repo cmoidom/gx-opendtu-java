@@ -32,11 +32,14 @@
     "export_confirms_full_w": 50
   },
   "web": {
-    "enabled": true,
     "port": 8080
   },
   "logging": {
     "verbose_traces": true
+  },
+  "stats": {
+    "interval_s": 300,
+    "retention_days": 730
   },
   "inverters": [
     { "serial": "114181801234", "nominal_power_w": 600 },

@@ -79,8 +79,8 @@ Pour activer la priorité de charge batterie :
 
 Une page web intégrée (`gxopendtu.webui`, aucune dépendance supplémentaire
 hors JDK) permet d'éditer tous les paramètres, y compris l'ajout/suppression
-d'onduleurs. Activée par défaut sur le port 8080 :
-`http://<ip-du-service>:8080/`.
+d'onduleurs. Toujours active (pas d'option pour la désactiver), sur le port
+8080 par défaut (`web.port`, configurable) : `http://<ip-du-service>:8080/`.
 
 - **"Enregistrer"** écrit `config.json` sans rien redémarrer (les
   changements ne sont pris en compte qu'au prochain redémarrage manuel).
@@ -103,6 +103,28 @@ trois graphiques temporels avec zoom/pan synchronisé, tableau détaillé par
 onduleur, graphique en barres "énergie réseau par heure". Repris quasiment
 tel quel du projet Python (JS/CSS/HTML déjà 100% côté client, aucune
 dépendance externe -- tracé en `<canvas>` HTML5 fait main).
+
+### Historique long terme (`stats.db`)
+
+Les courbes du tableau de bord (réseau, SOC, batterie, par onduleur, énergie
+horaire) sont aussi persistées dans un fichier SQLite (`stats.db`, à côté de
+`config.json`), indépendamment de la vue temps réel (~30min/48h en mémoire,
+perdue à chaque redémarrage). Voir `ARCHITECTURE.md` pour le détail.
+
+Réglages dans `config.json` (section `stats`, éditables aussi depuis la page
+de config) :
+```json
+"stats": { "interval_s": 300, "retention_days": 730 }
+```
+- `interval_s` (défaut 300 = 5 min) : cadence d'écriture -- volontairement
+  bien plus lente que la boucle de contrôle, une résolution fine n'apporte
+  rien sur des courbes qui couvrent des mois/années.
+- `retention_days` (défaut 730 ≈ 2 ans) : purge automatique au-delà,
+  quotidiennement.
+
+Une écriture immédiate a lieu aussi à chaque "Enregistrer et appliquer" (le
+dernier état connu est persisté juste avant le redémarrage), donc un
+redémarrage ne perd jamais plus d'un intervalle complet d'historique.
 
 ## Compilation et déploiement
 

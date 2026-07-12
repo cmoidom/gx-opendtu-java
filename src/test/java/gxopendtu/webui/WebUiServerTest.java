@@ -4,6 +4,7 @@ import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
+import gxopendtu.stats.StatsStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WebUiServerTest {
 
     private WebUiServer server;
+    private StatsStore statsStore;
     private HttpClient http;
     private String baseUrl;
 
@@ -37,8 +39,15 @@ class WebUiServerTest {
                   "inverters": [ { "serial": "111", "nominal_power_w": 600 } ]
                 }
                 """);
+        statsStore = new StatsStore(tmpDir.resolve("stats.db"));
         server = WebUiServer.start(
-                configPath, 0, new LiveState(), new HourlyEnergyHistory(), new ManualOverride(), new InjectionModeOverride());
+                configPath,
+                0,
+                new LiveState(),
+                new HourlyEnergyHistory(),
+                new ManualOverride(),
+                new InjectionModeOverride(),
+                statsStore);
         http = HttpClient.newHttpClient();
         baseUrl = "http://127.0.0.1:" + server.port();
     }
@@ -46,6 +55,7 @@ class WebUiServerTest {
     @AfterEach
     void tearDown() {
         server.stop();
+        statsStore.close();
     }
 
     private HttpResponse<String> get(String path) throws Exception {

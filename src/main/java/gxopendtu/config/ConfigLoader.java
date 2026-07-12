@@ -10,6 +10,7 @@ import gxopendtu.config.AppConfig.InverterConfig;
 import gxopendtu.config.AppConfig.LoggingConfig;
 import gxopendtu.config.AppConfig.ModbusGridConfig;
 import gxopendtu.config.AppConfig.OpenDTUConfig;
+import gxopendtu.config.AppConfig.StatsConfig;
 import gxopendtu.config.AppConfig.WebConfig;
 
 import java.io.IOException;
@@ -69,6 +70,7 @@ public final class ConfigLoader {
         JsonNode batteryRaw = raw.path("battery");
         JsonNode webRaw = raw.path("web");
         JsonNode loggingRaw = raw.path("logging");
+        JsonNode statsRaw = raw.path("stats");
 
         JsonNode modbusRaw = gridRaw.path("modbus");
         if (modbusRaw.path("host").isMissingNode()) {
@@ -109,8 +111,10 @@ public final class ConfigLoader {
                         batteryRaw.path("activate_at_pct").asDouble(100.0),
                         batteryRaw.path("deactivate_below_pct").asDouble(98.0),
                         batteryRaw.path("export_confirms_full_w").asDouble(50.0)),
-                new WebConfig(webRaw.path("enabled").asBoolean(true), webRaw.path("port").asInt(8080)),
+                new WebConfig(webRaw.path("port").asInt(8080)),
                 new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(true)),
+                new StatsConfig(
+                        statsRaw.path("interval_s").asDouble(300.0), statsRaw.path("retention_days").asInt(730)),
                 inverters);
     }
 

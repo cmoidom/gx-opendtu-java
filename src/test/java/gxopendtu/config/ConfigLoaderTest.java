@@ -49,12 +49,28 @@ class ConfigLoaderTest {
         assertThat(config.grid().modbus().unitId()).isEqualTo(100);
         assertThat(config.grid().modbus().energyUnitId()).isNull(); // resolved to unitId by ModbusGridMeter, not here
         assertThat(config.control().minInverterPct()).isEqualTo(5.0); // default, absent from FULL_CONFIG
-        assertThat(config.web().enabled()).isTrue();
         assertThat(config.web().port()).isEqualTo(8080);
         assertThat(config.logging().verboseTraces()).isTrue();
+        assertThat(config.stats().intervalS()).isEqualTo(300.0); // default
+        assertThat(config.stats().retentionDays()).isEqualTo(730); // default, ~2 years
         assertThat(config.inverters()).hasSize(2);
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
         assertThat(config.totalNominalPowerW()).isEqualTo(980.0);
+    }
+
+    @Test
+    void statsIntervalAndRetentionCanBeOverridden() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "stats": { "interval_s": 60, "retention_days": 30 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        AppConfig config = ConfigLoader.parseConfig(json(raw));
+        assertThat(config.stats().intervalS()).isEqualTo(60.0);
+        assertThat(config.stats().retentionDays()).isEqualTo(30);
     }
 
     @Test

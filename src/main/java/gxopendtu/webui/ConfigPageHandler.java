@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import gxopendtu.config.ConfigLoader;
+import gxopendtu.state.HourlyEnergyHistory;
+import gxopendtu.state.LiveState;
+import gxopendtu.stats.StatsStore;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -41,9 +44,15 @@ final class ConfigPageHandler implements HttpHandler {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Path configPath;
+    private final LiveState liveState;
+    private final HourlyEnergyHistory energyHistory;
+    private final StatsStore statsStore;
 
-    ConfigPageHandler(Path configPath) {
+    ConfigPageHandler(Path configPath, LiveState liveState, HourlyEnergyHistory energyHistory, StatsStore statsStore) {
         this.configPath = configPath;
+        this.liveState = liveState;
+        this.energyHistory = energyHistory;
+        this.statsStore = statsStore;
     }
 
     @Override
@@ -94,6 +103,10 @@ final class ConfigPageHandler implements HttpHandler {
             LOG.warning(
                     "redemarrage demande via la page de configuration (bouton appliquer) -- "
                             + "le superviseur du service va le relancer");
+            // Persist the latest known state immediately -- otherwise a
+            // restart could lose up to one full stats.interval_s of
+            // long-term history (see StatsStore/ControlLoop.run).
+            statsStore.persistSnapshot(liveState, energyHistory);
             // Delayed so the response above has time to flush to the client's
             // socket before the process exits.
             Thread exitThread = new Thread(() -> {
@@ -231,6 +244,11 @@ final class ConfigPageHandler implements HttpHandler {
         probe.put("interval_s", Double.parseDouble(first(form, "capacity_probe.interval_s", "30")));
         raw.set("capacity_probe", probe);
 
+        ObjectNode stats = MAPPER.createObjectNode();
+        stats.put("interval_s", Double.parseDouble(first(form, "stats.interval_s", "300")));
+        stats.put("retention_days", (int) Double.parseDouble(first(form, "stats.retention_days", "730")));
+        raw.set("stats", stats);
+
         ObjectNode battery = MAPPER.createObjectNode();
         battery.put("enabled", form.containsKey("battery.enabled"));
         battery.put("activate_at_pct", Double.parseDouble(first(form, "battery.activate_at_pct", "100")));
@@ -240,7 +258,6 @@ final class ConfigPageHandler implements HttpHandler {
         raw.set("battery", battery);
 
         ObjectNode web = MAPPER.createObjectNode();
-        web.put("enabled", form.containsKey("web.enabled"));
         web.put("port", (int) Double.parseDouble(first(form, "web.port", "8080")));
         raw.set("web", web);
 
@@ -302,7 +319,6 @@ final class ConfigPageHandler implements HttpHandler {
 
         String invertersHtml = inverterRowsHtml(dig(raw, "inverters"));
         boolean batteryEnabled = dig(raw, "battery.enabled").asBoolean(false);
-        boolean webEnabled = dig(raw, "web.enabled").asBoolean(true);
         boolean verboseTraces = dig(raw, "logging.verbose_traces").asBoolean(true);
 
         return "<!doctype html>\n"
@@ -397,6 +413,18 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"
+                + "    <legend>Statistiques long terme (stats)</legend>\n"
+                + "    <label>Intervalle d'ecriture (s)</label>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + val(raw, "stats.interval_s", "300") + "\" required>\n"
+                + "    <label>Retention (jours)</label>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + val(raw, "stats.retention_days", "730") + "\" required>\n"
+                + "    <p class=\"hint\">Courbes (reseau, SOC, batterie, par onduleur) et energie horaire persistees dans "
+                + "stats.db pour l'historique long terme, independamment du tableau de bord temps reel (~30min/48h en memoire). "
+                + "Ecrit a cet intervalle, plus immediatement a chaque \"Enregistrer et appliquer\". Les donnees plus "
+                + "vieilles que la retention sont purgees automatiquement.</p>\n"
+                + "  </fieldset>\n"
+                + "\n"
+                + "  <fieldset>\n"
                 + "    <legend>Batterie (priorite charge)</legend>\n"
                 + "    <label><input type=\"checkbox\" name=\"battery.enabled\"" + (batteryEnabled ? " checked" : "") + "> Activer</label>\n"
                 + "    <label>Seuil d'activation SOC (%)</label>\n"
@@ -430,7 +458,6 @@ final class ConfigPageHandler implements HttpHandler {
                 + "\n"
                 + "  <fieldset>\n"
                 + "    <legend>Page de configuration (web)</legend>\n"
-                + "    <label><input type=\"checkbox\" name=\"web.enabled\"" + (webEnabled ? " checked" : "") + "> Activer cette page</label>\n"
                 + "    <label>Port</label>\n"
                 + "    <input type=\"number\" name=\"web.port\" value=\"" + val(raw, "web.port", "8080") + "\" required>\n"
                 + "    <p class=\"hint\">Necessite un redemarrage du service pour prendre effet.</p>\n"

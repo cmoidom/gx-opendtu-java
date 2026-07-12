@@ -17,6 +17,7 @@ public record AppConfig(
         BatteryConfig battery,
         WebConfig web,
         LoggingConfig logging,
+        StatsConfig stats,
         List<InverterConfig> inverters) {
 
     public double totalNominalPowerW() {
@@ -51,11 +52,23 @@ public record AppConfig(
     /** name is display-only (dashboard legend/table) -- never used to address the inverter. */
     public record InverterConfig(String serial, double nominalPowerW, String name) {}
 
-    public record WebConfig(boolean enabled, int port) {}
+    /** The config page + live dashboard are always on -- only the port is configurable. */
+    public record WebConfig(int port) {}
 
     /**
      * verboseTraces gates only the per-cycle state line, never errors/warnings
      * or one-off actions (fail-safe, charge-priority release, restart request).
      */
     public record LoggingConfig(boolean verboseTraces) {}
+
+    /**
+     * Long-term (multi-year) persistence of dashboard curves to a local
+     * SQLite file (stats.db, next to config.json) -- separate from the
+     * in-memory LiveState/HourlyEnergyHistory ring buffers used for the live
+     * view, which stay ephemeral. intervalS gates how often a sample is
+     * written (deliberately coarser than the live view's read_interval_s --
+     * long-term trend curves don't need per-tick resolution). retentionDays
+     * bounds the database size regardless of uptime.
+     */
+    public record StatsConfig(double intervalS, int retentionDays) {}
 }

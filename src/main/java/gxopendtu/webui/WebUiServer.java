@@ -5,6 +5,7 @@ import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
+import gxopendtu.stats.StatsStore;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -35,7 +36,8 @@ public final class WebUiServer {
             LiveState liveState,
             HourlyEnergyHistory energyHistory,
             ManualOverride manualOverride,
-            InjectionModeOverride injectionMode) {
+            InjectionModeOverride injectionMode,
+            StatsStore statsStore) {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
             server.setExecutor(Executors.newCachedThreadPool(r -> {
@@ -44,7 +46,7 @@ public final class WebUiServer {
                 return thread;
             }));
 
-            server.createContext("/", new ConfigPageHandler(configPath));
+            server.createContext("/", new ConfigPageHandler(configPath, liveState, energyHistory, statsStore));
             server.createContext("/dashboard", new DashboardHandler());
             server.createContext(
                     "/status.json", new StatusJsonHandler(liveState, energyHistory, manualOverride, injectionMode));
