@@ -126,6 +126,32 @@ class StatsStoreTest {
     }
 
     @Test
+    void loadHourlyEnergyReturnsChronologicalOrderSinceCutoff(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.upsertHourlyEnergy(List.of(
+                    Map.of("hour", 0.0, "from_kwh", 1.0, "to_kwh", 0.1),
+                    Map.of("hour", 7200.0, "from_kwh", 2.0, "to_kwh", 0.2),
+                    Map.of("hour", 3600.0, "from_kwh", 3.0, "to_kwh", 0.3)));
+
+            List<Map<String, Object>> rows = store.loadHourlyEnergy(1000.0);
+
+            assertThat(rows).hasSize(2); // the hour=0 bucket is before the cutoff
+            assertThat(rows.get(0).get("hour")).isEqualTo(3600.0);
+            assertThat(rows.get(0).get("from_kwh")).isEqualTo(3.0);
+            assertThat(rows.get(1).get("hour")).isEqualTo(7200.0);
+        }
+    }
+
+    @Test
+    void loadHourlyEnergyEmptyDatabaseReturnsEmptyList(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            assertThat(store.loadHourlyEnergy(0.0)).isEmpty();
+        }
+    }
+
+    @Test
     void reopeningExistingDatabaseReusesSchema(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         try (StatsStore store = new StatsStore(dbPath)) {

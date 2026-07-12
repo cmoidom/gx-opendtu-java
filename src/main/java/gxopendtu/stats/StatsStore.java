@@ -213,6 +213,37 @@ public final class StatsStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Hourly energy buckets since {@code sinceEpochSeconds} (chronological
+     * order), in the same map shape {@link HourlyEnergyHistory#snapshot()}
+     * produces -- used to seed {@code HourlyEnergyHistory} at startup so the
+     * "Energie reseau par heure" bar chart doesn't reset to empty on every
+     * restart, same reasoning as {@link #loadRecentSamples}.
+     */
+    public List<Map<String, Object>> loadHourlyEnergy(double sinceEpochSeconds) {
+        lock.lock();
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT hour, from_kwh, to_kwh FROM hourly_energy WHERE hour >= ? ORDER BY hour")) {
+            stmt.setLong(1, Math.round(sinceEpochSeconds));
+            List<Map<String, Object>> rows = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> bucket = new LinkedHashMap<>();
+                    bucket.put("hour", (double) rs.getLong("hour"));
+                    bucket.put("from_kwh", rs.getDouble("from_kwh"));
+                    bucket.put("to_kwh", rs.getDouble("to_kwh"));
+                    rows.add(bucket);
+                }
+            }
+            return rows;
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to load hourly energy for dashboard backfill", e);
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Row count of the {@code samples} table -- shown on the config page alongside {@link #sizeBytes()}. */
     public long sampleCount() {
         lock.lock();

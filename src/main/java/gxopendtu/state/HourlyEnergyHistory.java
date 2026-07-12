@@ -82,6 +82,34 @@ public final class HourlyEnergyHistory {
         }
     }
 
+    /**
+     * Repopulates the bucket deque from persisted long-term history (see
+     * {@code stats.StatsStore#loadHourlyEnergy}), called once at startup --
+     * otherwise the "Energie reseau par heure" chart resets to empty on
+     * every restart, same reasoning as {@code LiveState#seedHistory}.
+     * {@code buckets} must already be in chronological order (oldest
+     * first). Deliberately leaves {@code lastFromKwh}/{@code lastToKwh}
+     * unset: the next real {@link #record} call has no cumulative-counter
+     * baseline to diff against yet regardless of this seed, so it correctly
+     * falls into the same "first reading" branch a fresh restart already
+     * handles.
+     */
+    public void seedBuckets(List<Map<String, Object>> buckets) {
+        if (buckets == null || buckets.isEmpty()) {
+            return;
+        }
+        lock.lock();
+        try {
+            this.buckets.clear();
+            for (Map<String, Object> bucket : buckets) {
+                addBucket(new MutableBucket(
+                        (Double) bucket.get("hour"), (Double) bucket.get("from_kwh"), (Double) bucket.get("to_kwh")));
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void addBucket(MutableBucket bucket) {
         if (buckets.size() >= maxBuckets) {
             buckets.removeFirst();

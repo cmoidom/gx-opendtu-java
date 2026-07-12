@@ -409,13 +409,14 @@ function drawChart(canvas, seriesList, opts) {
   seriesList.forEach(s => {
     if (!s.points.length) return;
     const pix = axisScales[s.axis].pix;
+    const gapThreshold = gapBreakThreshold(s.points);
     ctx.strokeStyle = s.color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     let started = false;
     let prevT = null;
     s.points.forEach(p => {
-      const gap = prevT !== null && (p.t - prevT) > 60;  // don't connect across long OFF-state gaps
+      const gap = prevT !== null && (p.t - prevT) > gapThreshold;  // don't connect across long OFF-state gaps
       const x = xPix(p.t), y = pix(p.v);
       if (!started || gap) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
       prevT = p.t;
@@ -481,6 +482,24 @@ function drawChart(canvas, seriesList, opts) {
   canvas._chartData = {
     seriesList, tMin, tMax, dataTMin, dataTMax, padding, plotW, plotH, axisById,
   };
+}
+
+// How far apart two consecutive samples can be before drawChart treats them
+// as a genuine gap (e.g. an OFF-state pause, a restart) rather than drawing
+// a connecting line -- derived from each series' own typical spacing rather
+// than a fixed constant, since that spacing varies a lot: ~2s for live data
+// (grid.read_interval_s), but ~5min for history backfilled from stats.db at
+// startup (see LiveState.seedHistory/stats.interval_s). A fixed 60s
+// threshold tuned for the former would treat every single backfilled point
+// as its own isolated, invisible segment. Floored at 60s so plain live data
+// keeps its original behavior.
+function gapBreakThreshold(points) {
+  if (points.length < 2) return 60;
+  const gaps = [];
+  for (let i = 1; i < points.length; i++) gaps.push(points[i].t - points[i - 1].t);
+  gaps.sort((a, b) => a - b);
+  const median = gaps[Math.floor(gaps.length / 2)];
+  return Math.max(60, median * 4);
 }
 
 /** Nearest sample to time t across a series' points, or null if the series is empty. */

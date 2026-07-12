@@ -75,6 +75,9 @@ public final class Main {
         // restart, a crash) shows completely empty charts until enough new
         // samples accumulate live -- see LiveState.seedHistory's javadoc.
         liveState.seedHistory(statsStore.loadRecentSamples(LiveState.DEFAULT_MAX_SAMPLES));
+        double energyHistoryCutoff =
+                System.currentTimeMillis() / 1000.0 - HourlyEnergyHistory.DEFAULT_RETAIN_HOURS * 3600.0;
+        energyHistory.seedBuckets(statsStore.loadHourlyEnergy(energyHistoryCutoff));
         // Flush the latest known state on SIGTERM (systemctl stop/restart,
         // update.sh, VM reboot) so a restart never loses more than the
         // in-memory samples since the last periodic write, rather than up to

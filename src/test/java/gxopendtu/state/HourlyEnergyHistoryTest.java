@@ -72,4 +72,42 @@ class HourlyEnergyHistoryTest {
         }
         assertThat(history.snapshot()).hasSize(3); // retainHours + 1 (in-progress hour)
     }
+
+    @Test
+    void seedBucketsPopulatesSnapshotInOrder() {
+        HourlyEnergyHistory history = new HourlyEnergyHistory();
+        history.seedBuckets(List.of(
+                Map.of("hour", 1704110400.0, "from_kwh", 3.0, "to_kwh", 0.5),
+                Map.of("hour", 1704114000.0, "from_kwh", 2.0, "to_kwh", 0.2)));
+
+        List<Map<String, Object>> snap = history.snapshot();
+        assertThat(snap).hasSize(2);
+        assertThat(snap.get(0).get("hour")).isEqualTo(1704110400.0);
+        assertThat(snap.get(0).get("from_kwh")).isEqualTo(3.0);
+        assertThat(snap.get(1).get("hour")).isEqualTo(1704114000.0);
+    }
+
+    @Test
+    void seedBucketsThenRecordReconcilesLikeAFreshRestart() {
+        HourlyEnergyHistory history = new HourlyEnergyHistory();
+        history.seedBuckets(List.of(Map.of("hour", 1704110400.0, "from_kwh", 3.0, "to_kwh", 0.5)));
+
+        // The next real reading has no cumulative-counter baseline yet
+        // (lastFromKwh/lastToKwh weren't seeded) -- same "first reading"
+        // no-bogus-delta behavior as a plain fresh restart.
+        history.record(500.0, 200.0, 1704110700.0);
+        List<Map<String, Object>> snap = history.snapshot();
+        assertThat(snap).hasSize(1);
+        assertThat(snap.get(0).get("from_kwh")).isEqualTo(3.0); // unchanged, no bogus delta added
+    }
+
+    @Test
+    void seedBucketsWithEmptyListIsNoOp() {
+        HourlyEnergyHistory history = new HourlyEnergyHistory();
+        history.record(100.0, 50.0, 1704110400.0);
+
+        history.seedBuckets(List.of());
+
+        assertThat(history.snapshot()).hasSize(1);
+    }
 }

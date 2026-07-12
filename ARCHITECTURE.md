@@ -226,6 +226,36 @@ fonctionnement normal. `consigne_w`, `min_inverter_floor_warning` et
 (propres à la boucle de décision, pas pertinents sur un historique long
 terme) -- `loadRecentSamples` les renvoie donc à leur valeur "non défini".
 
+**`HourlyEnergyHistory` est backfillée de la même façon** : le graphique
+"Energie reseau par heure" lit `HourlyEnergyHistory` (mémoire, 48h), pas
+`stats.db`, donc sans backfill il se serait vidé à chaque redémarrage
+exactement comme `LiveState` avant `seedHistory`. `Main.main` appelle
+`energyHistory.seedBuckets(statsStore.loadHourlyEnergy(cutoff))` juste après
+le `seedHistory` de `LiveState`, avec `cutoff` = maintenant -
+`HourlyEnergyHistory.DEFAULT_RETAIN_HOURS` (48h). `seedBuckets` repeuple le
+tampon mais laisse volontairement `lastFromKwh`/`lastToKwh` à `null` :
+`record()` n'a de toute façon aucune base de comparaison cumulative tant que
+la boucle de contrôle n'a pas fait sa première vraie lecture après le
+redémarrage, donc la seule différence avec un démarrage à froid est que le
+tampon contient déjà l'historique des heures précédentes au lieu d'être vide.
+
+**Ne rompt pas les courbes du dashboard sur les données rechargées**
+(`dashboard.html`, `gapBreakThreshold`) : `drawChart` refuse de relier deux
+points par une ligne si l'écart entre eux dépasse un certain seuil (pour ne
+pas tracer un trait pendant une vraie coupure OFF/panne) -- ce seuil était
+une constante fixe de 60s, calibrée pour la cadence du direct
+(`grid.read_interval_s`, ~2s). Les points rechargés depuis `stats.db` au
+démarrage sont espacés de `stats.interval_s` (5 min par défaut, donc bien
+plus de 60s d'écart) : avec un seuil fixe, **chaque point rechargé devenait
+son propre segment isolé et invisible**, et seul le petit paquet de points
+du direct (dense, en fin de fenêtre) restait visible -- symptôme observé en
+prod : graphiques qui semblent vides après un redémarrage alors que
+`_chartData` contient bien les points. Le seuil est maintenant calculé par
+série à partir de la médiane des écarts réels de cette série (× 4, plancher
+60s) : ~2s de médiane pour du direct pur donne toujours un seuil de 60s
+(comportement inchangé), ~5 min de médiane pour de l'historique rechargé
+donne un seuil de ~20 min qui relie correctement les points.
+
 **Taille et nombre de lignes affichés sur la page de config** :
 `ConfigPageHandler` affiche `statsStore.sizeBytes()` (taille du fichier
 `stats.db` principal, sans les fichiers annexes `-wal`/`-shm` du mode WAL)
