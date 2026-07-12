@@ -197,6 +197,42 @@ appel relit simplement le dernier échantillon déjà en mémoire dans
 `LiveState` (`snapshotSince(0).latest()`) : la page web n'a jamais besoin
 d'accéder directement aux lectures de la boucle de contrôle.
 
+**Flush avant arrêt (tout chemin de redémarrage, pas seulement `/apply`)** :
+`Main.main` enregistre un `Runtime.getRuntime().addShutdownHook(...)` qui
+appelle `statsStore.persistSnapshot(...)` puis `statsStore.close()` à la
+réception de `SIGTERM` -- couvre `systemctl restart`/`stop`, `update.sh`, un
+redémarrage de VM, pas seulement le bouton "Enregistrer et appliquer" de la
+page de config (qui, lui, flush explicitement avant son propre
+`System.exit(1)`, voir ci-dessus). Sans ce hook, un simple `systemctl
+restart gx-opendtu-zero-export` pouvait perdre jusqu'à un `stats.interval_s`
+complet (5 min par défaut) d'historique long terme.
+
+**Recharge de `LiveState` au démarrage (`LiveState.seedHistory`)** : le
+tableau de bord live (`/status.json`) ne lit **que** `LiveState` (mémoire),
+jamais `stats.db` -- donc sans backfill, chaque redémarrage du process
+(`update.sh`, `systemctl restart`, un crash) affichait des graphiques
+complètement vides jusqu'à ré-accumuler ~30 min de données en direct, même
+si `stats.db` contenait 2 ans d'historique juste à côté. `Main.main` appelle
+`liveState.seedHistory(statsStore.loadRecentSamples(LiveState.DEFAULT_MAX_SAMPLES))`
+juste après avoir ouvert `StatsStore`, avant de démarrer `WebUiServer`/
+`ControlLoop` : les `DEFAULT_MAX_SAMPLES` (900) échantillons les plus
+récents de `stats.db` repeuplent le tampon circulaire, à la résolution de
+`stats.interval_s` (plus grossière que le direct) -- ces échantillons
+"grossiers" se font évincer naturellement par les échantillons "fins" du
+direct au fur et à mesure (le tampon est borné à 900 entrées), donc la
+transition est invisible après quelques dizaines de minutes de
+fonctionnement normal. `consigne_w`, `min_inverter_floor_warning` et
+`recommended_min_inverter_pct` ne sont pas persistés dans `stats.db`
+(propres à la boucle de décision, pas pertinents sur un historique long
+terme) -- `loadRecentSamples` les renvoie donc à leur valeur "non défini".
+
+**Taille et nombre de lignes affichés sur la page de config** :
+`ConfigPageHandler` affiche `statsStore.sizeBytes()` (taille du fichier
+`stats.db` principal, sans les fichiers annexes `-wal`/`-shm` du mode WAL)
+et `statsStore.sampleCount()` (nombre de lignes de la table `samples`) à
+côté des champs `stats.interval_s`/`stats.retention_days`, pour donner une
+idée concrète de la croissance de la base sans avoir à s'y connecter en SSH.
+
 Toutes les opérations SQLite passent par un même `ReentrantLock` : `StatsStore`
 est appelé depuis deux threads (la boucle de contrôle, et les threads HTTP du
 serveur web pour le flush immédiat), et bien que SQLite sérialise déjà les

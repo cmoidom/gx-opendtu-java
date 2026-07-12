@@ -169,4 +169,65 @@ class StatsStoreTest {
             assertThat(rs.getDouble("battery_current_a")).isEqualTo(-5.0);
         }
     }
+
+    @Test
+    void loadRecentSamplesReturnsChronologicalOrderWithInvertersAttached(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordSample(1_000.0, 10.0, 11.0, 80.0, -50.0, 51.2, -1.0, "ON", Map.of("a", 100.0, "b", 50.0));
+            store.recordSample(1_300.0, 20.0, 21.0, 81.0, -40.0, 51.3, -0.8, "ON", Map.of("a", 110.0));
+
+            List<Map<String, Object>> rows = store.loadRecentSamples(10);
+
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).get("t")).isEqualTo(1000.0); // oldest first
+            assertThat(rows.get(0).get("soc_pct")).isEqualTo(80.0);
+            assertThat(rows.get(0).get("battery_voltage_v")).isEqualTo(51.2);
+            assertThat(rows.get(0).get("battery_current_a")).isEqualTo(-1.0);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> firstInverters = (List<Map<String, Object>>) rows.get(0).get("inverters");
+            assertThat(firstInverters).hasSize(2);
+
+            assertThat(rows.get(1).get("t")).isEqualTo(1300.0);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> secondInverters = (List<Map<String, Object>>) rows.get(1).get("inverters");
+            assertThat(secondInverters).hasSize(1);
+        }
+    }
+
+    @Test
+    void loadRecentSamplesRespectsLimit(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordSample(1_000.0, 1.0, 1.0, null, null, null, null, "ON", Map.of());
+            store.recordSample(2_000.0, 2.0, 2.0, null, null, null, null, "ON", Map.of());
+            store.recordSample(3_000.0, 3.0, 3.0, null, null, null, null, "ON", Map.of());
+
+            List<Map<String, Object>> rows = store.loadRecentSamples(2);
+
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).get("t")).isEqualTo(2000.0); // most recent 2, oldest first
+            assertThat(rows.get(1).get("t")).isEqualTo(3000.0);
+        }
+    }
+
+    @Test
+    void loadRecentSamplesEmptyDatabaseReturnsEmptyList(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            assertThat(store.loadRecentSamples(10)).isEmpty();
+        }
+    }
+
+    @Test
+    void sampleCountAndSizeBytesReflectWrittenData(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            assertThat(store.sampleCount()).isZero();
+            store.recordSample(1_000.0, 1.0, 1.0, null, null, null, null, "ON", Map.of());
+            store.recordSample(2_000.0, 2.0, 2.0, null, null, null, null, "ON", Map.of());
+            assertThat(store.sampleCount()).isEqualTo(2);
+            assertThat(store.sizeBytes()).isPositive();
+        }
+    }
 }

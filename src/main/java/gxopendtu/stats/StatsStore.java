@@ -3,6 +3,8 @@ package gxopendtu.stats;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.LiveState;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -11,6 +13,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +51,10 @@ public final class StatsStore implements AutoCloseable {
 
     private final ReentrantLock lock = new ReentrantLock();
     private final Connection connection;
+    private final Path dbPath;
 
     public StatsStore(Path dbPath) {
+        this.dbPath = dbPath;
         try {
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
             try (Statement statement = connection.createStatement()) {
@@ -135,6 +141,109 @@ public final class StatsStore implements AutoCloseable {
             }
         }
         recordSample(t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA, injectionControl, inverterActualW);
+    }
+
+    /**
+     * The most recent {@code limit} samples (oldest first), in the same map
+     * shape {@link LiveState#recordGrid}/{@code updateDecision} produce --
+     * used to seed {@code LiveState}'s in-memory ring buffer at startup so
+     * the dashboard doesn't show empty charts right after a restart (see
+     * {@code LiveState.seedHistory}). {@code consigne_w},
+     * {@code min_inverter_floor_warning} and {@code recommended_min_inverter_pct}
+     * aren't persisted to stats.db (control-loop-only, not meaningful for a
+     * coarse long-term view), so they come back as their "not set" default.
+     */
+    public List<Map<String, Object>> loadRecentSamples(int limit) {
+        lock.lock();
+        try {
+            List<Map<String, Object>> rows = new ArrayList<>();
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "SELECT t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
+                            + "battery_current_a, injection_control FROM samples ORDER BY t DESC LIMIT ?")) {
+                stmt.setInt(1, limit);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, Object> sample = new LinkedHashMap<>();
+                        sample.put("t", (double) rs.getLong("t"));
+                        sample.put("grid_raw_w", rs.getDouble("grid_raw_w"));
+                        sample.put("grid_ema_w", rs.getDouble("grid_ema_w"));
+                        sample.put("soc_pct", nullableColumn(rs, "soc_pct"));
+                        sample.put("battery_power_w", nullableColumn(rs, "battery_power_w"));
+                        sample.put("battery_voltage_v", nullableColumn(rs, "battery_voltage_v"));
+                        sample.put("battery_current_a", nullableColumn(rs, "battery_current_a"));
+                        sample.put("injection_control", rs.getString("injection_control"));
+                        sample.put("consigne_w", null);
+                        sample.put("inverters", List.of());
+                        sample.put("min_inverter_floor_warning", false);
+                        sample.put("recommended_min_inverter_pct", null);
+                        rows.add(sample);
+                    }
+                }
+            }
+            Collections.reverse(rows); // DESC query -> chronological order, oldest first
+            if (rows.isEmpty()) {
+                return rows;
+            }
+
+            long minT = Math.round((Double) rows.get(0).get("t"));
+            Map<Long, List<Map<String, Object>>> invertersByT = new LinkedHashMap<>();
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "SELECT t, serial, actual_w FROM inverter_samples WHERE t >= ? ORDER BY t")) {
+                stmt.setLong(1, minT);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        long t = rs.getLong("t");
+                        Map<String, Object> inv = new LinkedHashMap<>();
+                        inv.put("serial", rs.getString("serial"));
+                        inv.put("actual_w", rs.getDouble("actual_w"));
+                        invertersByT.computeIfAbsent(t, k -> new ArrayList<>()).add(inv);
+                    }
+                }
+            }
+            for (Map<String, Object> sample : rows) {
+                long t = Math.round((Double) sample.get("t"));
+                sample.put("inverters", invertersByT.getOrDefault(t, List.of()));
+            }
+            return rows;
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to load recent stats for dashboard backfill", e);
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Row count of the {@code samples} table -- shown on the config page alongside {@link #sizeBytes()}. */
+    public long sampleCount() {
+        lock.lock();
+        try (Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery("SELECT COUNT(*) FROM samples")) {
+            rs.next();
+            return rs.getLong(1);
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to count stats rows", e);
+            return -1;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * On-disk size of the main stats.db file (not counting the WAL/SHM
+     * sidecar files SQLite's WAL journal mode creates) -- shown on the
+     * config page alongside {@link #sampleCount()}.
+     */
+    public long sizeBytes() {
+        try {
+            return Files.size(dbPath);
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    private static Double nullableColumn(ResultSet rs, String column) throws SQLException {
+        double v = rs.getDouble(column);
+        return rs.wasNull() ? null : v;
     }
 
     void recordSample(

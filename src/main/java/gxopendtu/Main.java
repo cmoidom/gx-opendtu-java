@@ -70,6 +70,20 @@ public final class Main {
             injectionMode.setMode(persistedMode);
         }
         StatsStore statsStore = new StatsStore(configPath.resolveSibling("stats.db"));
+        // Seed the live dashboard's in-memory ring buffer from the persisted
+        // long-term stats DB, otherwise every restart (update.sh, systemctl
+        // restart, a crash) shows completely empty charts until enough new
+        // samples accumulate live -- see LiveState.seedHistory's javadoc.
+        liveState.seedHistory(statsStore.loadRecentSamples(LiveState.DEFAULT_MAX_SAMPLES));
+        // Flush the latest known state on SIGTERM (systemctl stop/restart,
+        // update.sh, VM reboot) so a restart never loses more than the
+        // in-memory samples since the last periodic write, rather than up to
+        // a full stats.interval_s (default 5 min) -- covers every restart
+        // path, not just the ones that go through the config page's /apply.
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            statsStore.persistSnapshot(liveState, energyHistory);
+            statsStore.close();
+        }, "stats-shutdown-flush"));
 
         WebUiServer.start(
                 configPath, config.web().port(), liveState, energyHistory, manualOverride, injectionMode, statsStore);

@@ -77,6 +77,44 @@ public final class LiveState {
         updateDecision(socPct, injectionControl, consigneW, inverters, null, null, null, false, null);
     }
 
+    /**
+     * Repopulates the history buffer from persisted long-term samples (see
+     * {@code stats.StatsStore#loadRecentSamples}), called once at startup
+     * before the control loop's first tick -- otherwise the dashboard shows
+     * completely empty charts for a while after every restart, since this
+     * buffer is normally rebuilt live from scratch. {@code samples} must
+     * already be in chronological order (oldest first).
+     */
+    @SuppressWarnings("unchecked")
+    public void seedHistory(List<Map<String, Object>> samples) {
+        if (samples == null || samples.isEmpty()) {
+            return;
+        }
+        lock.lock();
+        try {
+            history.clear();
+            for (Map<String, Object> sample : samples) {
+                if (history.size() >= maxSamples) {
+                    history.removeFirst();
+                }
+                history.addLast(Collections.unmodifiableMap(sample));
+            }
+            Map<String, Object> last = samples.get(samples.size() - 1);
+            this.socPct = (Double) last.get("soc_pct");
+            this.batteryPowerW = (Double) last.get("battery_power_w");
+            this.batteryVoltageV = (Double) last.get("battery_voltage_v");
+            this.batteryCurrentA = (Double) last.get("battery_current_a");
+            this.injectionControl = (String) last.get("injection_control");
+            this.consigneW = (Double) last.get("consigne_w");
+            Object lastInverters = last.get("inverters");
+            this.inverters = lastInverters instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
+            this.minInverterFloorWarning = Boolean.TRUE.equals(last.get("min_inverter_floor_warning"));
+            this.recommendedMinInverterPct = (Double) last.get("recommended_min_inverter_pct");
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Called once per fast-loop tick -- this sets the sampling rate of the history buffer. */
     public void recordGrid(double gridRawW, double gridEmaW) {
         lock.lock();

@@ -77,7 +77,7 @@ final class ConfigPageHandler implements HttpHandler {
             exchange.sendResponseHeaders(404, -1);
             return;
         }
-        sendHtml(exchange, 200, renderPage(loadRaw(configPath), "", ""));
+        sendHtml(exchange, 200, renderPage(loadRaw(configPath), "", "", statsInfo()));
     }
 
     private void handlePost(HttpExchange exchange, String path) throws IOException {
@@ -94,12 +94,12 @@ final class ConfigPageHandler implements HttpHandler {
             ConfigLoader.parseConfig(raw); // validate before writing
             writeRaw(configPath, raw);
         } catch (RuntimeException e) {
-            sendHtml(exchange, 400, renderPage(raw, e.getMessage(), ""));
+            sendHtml(exchange, 400, renderPage(raw, e.getMessage(), "", statsInfo()));
             return;
         }
 
         if (path.equals("/apply")) {
-            sendHtml(exchange, 200, renderPage(raw, "", "Configuration enregistree, redemarrage du service en cours..."));
+            sendHtml(exchange, 200, renderPage(raw, "", "Configuration enregistree, redemarrage du service en cours...", statsInfo()));
             LOG.warning(
                     "redemarrage demande via la page de configuration (bouton appliquer) -- "
                             + "le superviseur du service va le relancer");
@@ -122,7 +122,30 @@ final class ConfigPageHandler implements HttpHandler {
             return;
         }
 
-        sendHtml(exchange, 200, renderPage(raw, "", "Configuration enregistree. Redemarrez le service pour l'appliquer."));
+        sendHtml(exchange, 200, renderPage(raw, "", "Configuration enregistree. Redemarrez le service pour l'appliquer.", statsInfo()));
+    }
+
+    private String statsInfo() {
+        long bytes = statsStore.sizeBytes();
+        long rows = statsStore.sampleCount();
+        String sizeLabel = bytes >= 0 ? formatBytes(bytes) : "taille inconnue";
+        String rowsLabel = rows >= 0 ? rows + " lignes" : "nombre de lignes inconnu";
+        return sizeLabel + ", " + rowsLabel;
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " o";
+        }
+        double kb = bytes / 1024.0;
+        if (kb < 1024) {
+            return String.format("%.1f Ko", kb);
+        }
+        double mb = kb / 1024.0;
+        if (mb < 1024) {
+            return String.format("%.1f Mo", mb);
+        }
+        return String.format("%.2f Go", mb / 1024.0);
     }
 
     private static JsonNode loadRaw(Path configPath) {
@@ -309,7 +332,7 @@ final class ConfigPageHandler implements HttpHandler {
         return sb.toString();
     }
 
-    private static String renderPage(JsonNode raw, String error, String message) {
+    private static String renderPage(JsonNode raw, String error, String message, String statsInfo) {
         String banner = "";
         if (error != null && !error.isEmpty()) {
             banner = "<div class=\"banner error\">" + escape(error) + "</div>";
@@ -422,6 +445,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "stats.db pour l'historique long terme, independamment du tableau de bord temps reel (~30min/48h en memoire). "
                 + "Ecrit a cet intervalle, plus immediatement a chaque \"Enregistrer et appliquer\". Les donnees plus "
                 + "vieilles que la retention sont purgees automatiquement.</p>\n"
+                + "    <p class=\"hint\">stats.db : " + escape(statsInfo) + "</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

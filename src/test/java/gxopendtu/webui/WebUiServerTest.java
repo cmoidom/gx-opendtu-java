@@ -83,6 +83,18 @@ class WebUiServerTest {
     }
 
     @Test
+    void configPageShowsStatsDbSizeAndRowCount() throws Exception {
+        LiveState liveState = new LiveState();
+        liveState.recordGrid(10.0, 9.0);
+        statsStore.persistSnapshot(liveState, new HourlyEnergyHistory());
+
+        HttpResponse<String> response = get("/");
+
+        assertThat(response.body()).contains("stats.db : ");
+        assertThat(response.body()).contains("1 lignes");
+    }
+
+    @Test
     void unknownPathReturns404() throws Exception {
         assertThat(get("/nope").statusCode()).isEqualTo(404);
     }
