@@ -176,6 +176,14 @@ public final class StatsStore implements AutoCloseable {
                         sample.put("inverters", List.of());
                         sample.put("min_inverter_floor_warning", false);
                         sample.put("recommended_min_inverter_pct", null);
+                        // Tells the dashboard this point comes from stats.db's
+                        // coarser interval, not the live ~2s cadence -- see
+                        // dashboard.html's gap-break logic: two consecutive
+                        // backfilled points are always connected by a line,
+                        // regardless of how far apart they are, since a
+                        // stats.interval_s-sized gap between them is normal,
+                        // not a genuine outage.
+                        sample.put("backfilled", true);
                         rows.add(sample);
                     }
                 }

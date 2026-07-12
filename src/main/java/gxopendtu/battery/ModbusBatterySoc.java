@@ -9,7 +9,7 @@ import java.time.Duration;
 
 /**
  * Reads the Cerbo GX's aggregated battery SOC/power/current over Modbus TCP,
- * and (optionally) battery voltage from the battery monitor's own service.
+ * plus battery voltage from the battery monitor's own service.
  *
  * SOC/power/current all live on the fixed system-aggregate unit ID already
  * used for grid power ({@link ModbusConstants#SYSTEM_UNIT_ID},
@@ -22,11 +22,11 @@ import java.time.Duration;
  *
  * Voltage (register 259, uint16, scale 100 -> V, path /Dc/0/Voltage) lives
  * on the battery monitor's OWN service (com.victronenergy.battery), NOT the
- * system aggregate -- its unit ID is that monitor's per-install VRM device
- * instance (voltageUnitId), not guaranteed stable across hardware changes,
- * unlike the fixed unit 100 used for everything else here. Optional: if not
- * configured, readVoltageV() always reports unavailable (dashboard display
- * only, never gates the charge-priority hysteresis, which is SOC-only).
+ * system aggregate -- unit ID {@link #VOLTAGE_UNIT_ID} (225), this install's
+ * fixed VRM device instance for that service. Not user-configurable
+ * (deliberately -- this value is specific to this hardware/install, not a
+ * per-deployment setting): if a future install needs a different value,
+ * change this constant.
  *
  * Port of src/battery_soc_modbus.py's ModbusBatterySoc, extended with
  * current and voltage.
@@ -37,18 +37,17 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
     private static final int POWER_REGISTER = 842;
     private static final int CURRENT_REGISTER = 841;
     private static final int VOLTAGE_REGISTER = 259;
+    private static final int VOLTAGE_UNIT_ID = 225;
 
     private final int unitId;
-    private final Integer voltageUnitId;
     private final ModbusTcpClient client;
 
-    public ModbusBatterySoc(String host, int port, int unitId, Integer voltageUnitId) {
-        this(host, port, unitId, voltageUnitId, Duration.ofSeconds(5));
+    public ModbusBatterySoc(String host, int port, int unitId) {
+        this(host, port, unitId, Duration.ofSeconds(5));
     }
 
-    public ModbusBatterySoc(String host, int port, int unitId, Integer voltageUnitId, Duration timeout) {
+    public ModbusBatterySoc(String host, int port, int unitId, Duration timeout) {
         this.unitId = unitId;
-        this.voltageUnitId = voltageUnitId;
         this.client = new ModbusTcpClient(host, port, timeout);
     }
 
@@ -78,10 +77,7 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
 
     @Override
     public double readVoltageV() {
-        if (voltageUnitId == null) {
-            throw new BatterySocUnavailableException("battery.voltage_unit_id not configured");
-        }
-        return readRegister(voltageUnitId, VOLTAGE_REGISTER) / 100.0;
+        return readRegister(VOLTAGE_UNIT_ID, VOLTAGE_REGISTER) / 100.0;
     }
 
     @Override

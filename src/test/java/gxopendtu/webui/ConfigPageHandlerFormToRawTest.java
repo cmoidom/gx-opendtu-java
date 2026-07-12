@@ -75,30 +75,30 @@ class ConfigPageHandlerFormToRawTest {
     }
 
     @Test
-    void batteryVoltageUnitIdBlankIsOmittedNotZero() {
+    void energyUnitIdBlankIsOmittedNotZero() {
         Map<String, List<String>> form = Map.of(
                 "opendtu.base_url", List.of("http://x"),
                 "grid.modbus.host", List.of("10.0.0.1"),
-                "battery.voltage_unit_id", List.of(""),
+                "grid.modbus.energy_unit_id", List.of(""),
                 "inverter_serial", List.of("a"),
                 "inverter_nominal_power_w", List.of("100"),
                 "inverter_name", List.of(""));
 
         AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
-        assertThat(config.battery().voltageUnitId()).isNull();
+        assertThat(config.grid().modbus().energyUnitId()).isNull();
     }
 
     @Test
-    void batteryVoltageUnitIdRoundTripsWhenProvided() {
+    void energyUnitIdRoundTripsWhenProvided() {
         Map<String, List<String>> form = Map.of(
                 "opendtu.base_url", List.of("http://x"),
                 "grid.modbus.host", List.of("10.0.0.1"),
-                "battery.voltage_unit_id", List.of("225"),
+                "grid.modbus.energy_unit_id", List.of("30"),
                 "inverter_serial", List.of("a"),
                 "inverter_nominal_power_w", List.of("100"),
                 "inverter_name", List.of(""));
 
         AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
-        assertThat(config.battery().voltageUnitId()).isEqualTo(225);
+        assertThat(config.grid().modbus().energyUnitId()).isEqualTo(30);
     }
 }

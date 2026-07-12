@@ -26,6 +26,7 @@ class LiveStateTest {
         sample.put("inverters", List.of(Map.of("serial", "a", "actual_w", 100.0)));
         sample.put("min_inverter_floor_warning", false);
         sample.put("recommended_min_inverter_pct", null);
+        sample.put("backfilled", true);
         return sample;
     }
 
@@ -44,6 +45,7 @@ class LiveStateTest {
         assertThat(sample.get("injection_control")).isEqualTo("ON");
         assertThat(sample.get("consigne_w")).isEqualTo(300.0);
         assertThat(sample.get("inverters")).isEqualTo(List.of(Map.of("serial", "a")));
+        assertThat(sample.get("backfilled")).isEqualTo(false); // distinguishes live samples from seedHistory's
         assertThat(snap.latest()).isEqualTo(sample);
     }
 

@@ -210,6 +210,10 @@ class StatsStoreTest {
             assertThat(rows.get(0).get("soc_pct")).isEqualTo(80.0);
             assertThat(rows.get(0).get("battery_voltage_v")).isEqualTo(51.2);
             assertThat(rows.get(0).get("battery_current_a")).isEqualTo(-1.0);
+            // Lets the dashboard always connect two backfilled points regardless
+            // of spacing (see dashboard.html's gap-break logic) -- distinguishes
+            // them from live LiveState.recordGrid samples, which set this false.
+            assertThat(rows.get(0).get("backfilled")).isEqualTo(true);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> firstInverters = (List<Map<String, Object>>) rows.get(0).get("inverters");
             assertThat(firstInverters).hasSize(2);

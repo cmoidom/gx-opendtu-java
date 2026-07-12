@@ -29,8 +29,7 @@
     "enabled": false,
     "activate_at_pct": 100,
     "deactivate_below_pct": 98,
-    "export_confirms_full_w": 50,
-    "voltage_unit_id": 225
+    "export_confirms_full_w": 50
   },
   "web": {
     "port": 8080

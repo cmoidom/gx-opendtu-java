@@ -416,17 +416,22 @@ function drawChart(canvas, seriesList, opts) {
   seriesList.forEach(s => {
     if (!s.points.length) return;
     const pix = axisScales[s.axis].pix;
-    const gapThreshold = gapBreakThreshold(s.points);
     ctx.strokeStyle = s.color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     let started = false;
-    let prevT = null;
+    let prev = null;
     s.points.forEach(p => {
-      const gap = prevT !== null && (p.t - prevT) > gapThreshold;  // don't connect across long OFF-state gaps
+      // Two backfilled points (from stats.db, see LiveState.seedHistory) are
+      // always connected regardless of spacing -- a stats.interval_s-sized
+      // gap between them is normal, not an outage. Only a gap between two
+      // LIVE points (or live-to-live across a real interruption) breaks the
+      // line, using the live read cadence's own short threshold.
+      const bothBackfilled = prev && prev.backfilled && p.backfilled;
+      const gap = prev !== null && !bothBackfilled && (p.t - prev.t) > 60;
       const x = xPix(p.t), y = pix(p.v);
       if (!started || gap) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
-      prevT = p.t;
+      prev = p;
     });
     ctx.stroke();
   });
@@ -489,24 +494,6 @@ function drawChart(canvas, seriesList, opts) {
   canvas._chartData = {
     seriesList, tMin, tMax, dataTMin, dataTMax, padding, plotW, plotH, axisById,
   };
-}
-
-// How far apart two consecutive samples can be before drawChart treats them
-// as a genuine gap (e.g. an OFF-state pause, a restart) rather than drawing
-// a connecting line -- derived from each series' own typical spacing rather
-// than a fixed constant, since that spacing varies a lot: ~2s for live data
-// (grid.read_interval_s), but ~5min for history backfilled from stats.db at
-// startup (see LiveState.seedHistory/stats.interval_s). A fixed 60s
-// threshold tuned for the former would treat every single backfilled point
-// as its own isolated, invisible segment. Floored at 60s so plain live data
-// keeps its original behavior.
-function gapBreakThreshold(points) {
-  if (points.length < 2) return 60;
-  const gaps = [];
-  for (let i = 1; i < points.length; i++) gaps.push(points[i].t - points[i - 1].t);
-  gaps.sort((a, b) => a - b);
-  const median = gaps[Math.floor(gaps.length / 2)];
-  return Math.max(60, median * 4);
 }
 
 /** Nearest sample to time t across a series' points, or null if the series is empty. */
@@ -765,11 +752,11 @@ function renderCharts() {
   const resetBtn = document.getElementById('reset-zoom');
   resetBtn.style.display = (viewTMin !== null || viewTMax !== null) ? '' : 'none';
 
-  const socPoints = history.filter(s => s.soc_pct !== null).map(s => ({ t: s.t, v: s.soc_pct }));
+  const socPoints = history.filter(s => s.soc_pct !== null).map(s => ({ t: s.t, v: s.soc_pct, backfilled: !!s.backfilled }));
   const voltagePoints = history.filter(s => s.battery_voltage_v !== null && s.battery_voltage_v !== undefined)
-                                .map(s => ({ t: s.t, v: s.battery_voltage_v }));
+                                .map(s => ({ t: s.t, v: s.battery_voltage_v, backfilled: !!s.backfilled }));
   const currentPoints = history.filter(s => s.battery_current_a !== null && s.battery_current_a !== undefined)
-                                .map(s => ({ t: s.t, v: s.battery_current_a }));
+                                .map(s => ({ t: s.t, v: s.battery_current_a, backfilled: !!s.backfilled }));
   drawChart(chartSoc, [
     { label: 'SOC', color: cssVar('--series-1'), points: socPoints, axis: 'soc' },
     { label: 'Tension batterie', color: cssVar('--series-2'), points: voltagePoints, axis: 'volt' },
@@ -783,10 +770,10 @@ function renderCharts() {
   }, viewOpts));
 
   const batteryPoints = history.filter(s => s.battery_power_w !== null && s.battery_power_w !== undefined)
-                                .map(s => ({ t: s.t, v: s.battery_power_w }));
+                                .map(s => ({ t: s.t, v: s.battery_power_w, backfilled: !!s.backfilled }));
   drawChart(chartGrid, [
-    { label: 'Reseau (brut)', color: cssVar('--series-1'), points: history.map(s => ({ t: s.t, v: s.grid_raw_w })) },
-    { label: 'Reseau (EMA)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w })) },
+    { label: 'Reseau (brut)', color: cssVar('--series-1'), points: history.map(s => ({ t: s.t, v: s.grid_raw_w, backfilled: !!s.backfilled })) },
+    { label: 'Reseau (EMA)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w, backfilled: !!s.backfilled })) },
     { label: 'Batterie', color: cssVar('--series-3'), points: batteryPoints },
   ], Object.assign({ yFormat: fmtW, includeZero: true }, viewOpts));
 
@@ -798,7 +785,7 @@ function renderCharts() {
     label: inverterLabel(serial),
     color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]),
     points: history.filter(s => (s.inverters || []).some(inv => inv.serial === serial))
-                   .map(s => ({ t: s.t, v: s.inverters.find(inv => inv.serial === serial).actual_w })),
+                   .map(s => ({ t: s.t, v: s.inverters.find(inv => inv.serial === serial).actual_w, backfilled: !!s.backfilled })),
   }));
   drawChart(chartInverters, invSeries, Object.assign({ yFormat: fmtW }, viewOpts));
   renderInvertersLegend();

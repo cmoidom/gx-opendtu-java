@@ -80,19 +80,19 @@ class WebUiServerTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("gx-opendtu-java - configuration");
         assertThat(response.body()).contains("192.168.1.50");
-        assertThat(response.body()).contains("name=\"battery.voltage_unit_id\"");
+        assertThat(response.body()).contains("name=\"grid.modbus.energy_unit_id\"");
     }
 
     @Test
-    void savingBatteryVoltageUnitIdRoundTripsAcrossSaves() throws Exception {
+    void savingEnergyUnitIdRoundTripsAcrossSaves() throws Exception {
         HttpResponse<String> saveResponse = post(
                 "/save",
                 "opendtu.base_url=http://192.168.1.50&grid.modbus.host=192.168.1.10"
-                        + "&battery.voltage_unit_id=225&inverter_serial=111&inverter_nominal_power_w=600&inverter_name=");
+                        + "&grid.modbus.energy_unit_id=30&inverter_serial=111&inverter_nominal_power_w=600&inverter_name=");
         assertThat(saveResponse.statusCode()).isEqualTo(200);
 
         HttpResponse<String> reloaded = get("/");
-        assertThat(reloaded.body()).contains("name=\"battery.voltage_unit_id\" value=\"225\"");
+        assertThat(reloaded.body()).contains("name=\"grid.modbus.energy_unit_id\" value=\"30\"");
     }
 
     @Test

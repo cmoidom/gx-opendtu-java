@@ -132,6 +132,7 @@ public final class LiveState {
             sample.put("inverters", inverters);
             sample.put("min_inverter_floor_warning", minInverterFloorWarning);
             sample.put("recommended_min_inverter_pct", recommendedMinInverterPct);
+            sample.put("backfilled", false); // see seedHistory/StatsStore#loadRecentSamples
 
             if (history.size() >= maxSamples) {
                 history.removeFirst();

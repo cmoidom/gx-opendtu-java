@@ -240,21 +240,35 @@ redémarrage, donc la seule différence avec un démarrage à froid est que le
 tampon contient déjà l'historique des heures précédentes au lieu d'être vide.
 
 **Ne rompt pas les courbes du dashboard sur les données rechargées**
-(`dashboard.html`, `gapBreakThreshold`) : `drawChart` refuse de relier deux
-points par une ligne si l'écart entre eux dépasse un certain seuil (pour ne
-pas tracer un trait pendant une vraie coupure OFF/panne) -- ce seuil était
-une constante fixe de 60s, calibrée pour la cadence du direct
-(`grid.read_interval_s`, ~2s). Les points rechargés depuis `stats.db` au
-démarrage sont espacés de `stats.interval_s` (5 min par défaut, donc bien
-plus de 60s d'écart) : avec un seuil fixe, **chaque point rechargé devenait
-son propre segment isolé et invisible**, et seul le petit paquet de points
-du direct (dense, en fin de fenêtre) restait visible -- symptôme observé en
-prod : graphiques qui semblent vides après un redémarrage alors que
-`_chartData` contient bien les points. Le seuil est maintenant calculé par
-série à partir de la médiane des écarts réels de cette série (× 4, plancher
-60s) : ~2s de médiane pour du direct pur donne toujours un seuil de 60s
-(comportement inchangé), ~5 min de médiane pour de l'historique rechargé
-donne un seuil de ~20 min qui relie correctement les points.
+(`dashboard.html`) : `drawChart` refuse de relier deux points par une ligne
+si l'écart entre eux dépasse un certain seuil (pour ne pas tracer un trait
+pendant une vraie coupure OFF/panne) -- ce seuil était une constante fixe de
+60s, calibrée pour la cadence du direct (`grid.read_interval_s`, ~2s). Les
+points rechargés depuis `stats.db` au démarrage sont espacés de
+`stats.interval_s` (5 min par défaut, donc bien plus de 60s d'écart) : avec
+un seuil fixe, **chaque point rechargé devenait son propre segment isolé et
+invisible**, et seul le petit paquet de points du direct (dense, en fin de
+fenêtre) restait visible -- symptôme observé en prod : graphiques qui
+semblent vides après un redémarrage alors que `_chartData` contient bien les
+points.
+
+Une première correction a calculé ce seuil dynamiquement par série (médiane
+des écarts × 4) plutôt qu'une constante -- mais **ça ne suffit pas** : peu
+après un redémarrage, dès que les échantillons du direct (denses, ~2s)
+deviennent plus nombreux que les échantillons rechargés (épars, ~5 min) dans
+le tampon, la médiane retombe sur ~2s et reproduit exactement le même bug
+pour la portion rechargée, qui reste pourtant majoritaire en étendue
+temporelle. Un seuil inféré des écarts n'est pas fiable quand le mélange
+direct/historique varie dans le temps.
+
+**Solution retenue** : chaque échantillon transporte un booléen
+`backfilled` (ajouté par `StatsStore#loadRecentSamples` = `true`,
+`LiveState#recordGrid` = `false`), et `dashboard.html` relie **toujours**
+deux points consécutifs si les deux viennent du rechargement (un écart de
+`stats.interval_s` entre eux est normal, pas une coupure), et n'applique le
+seuil fixe de 60s que si au moins un des deux est un point du direct -- seul
+cas où un écart signale une vraie interruption en cours de fonctionnement.
+Robuste par construction, contrairement à une statistique inférée des écarts.
 
 **Taille et nombre de lignes affichés sur la page de config** :
 `ConfigPageHandler` affiche `statsStore.sizeBytes()` (taille du fichier
@@ -496,12 +510,11 @@ variantes).
   défaut 100). Registre **259** = tension batterie (`uint16`, échelle 100 →
   V) : contrairement au SOC/puissance/courant, ce registre appartient au
   service **propre du moniteur de batterie** (`com.victronenergy.battery`),
-  pas à l'agrégat système -- d'où `battery.voltage_unit_id` (optionnel,
-  souvent `225` sur une install Victron typique ; voir
-  `config/config.example.json`). Sans cette config, `readVoltageV()` lève
-  `BatterySocUnavailableException` et le tableau de bord affiche simplement
-  la série tension comme absente. Utilisé seulement pour l'affichage tableau
-  de bord -- l'hystérèse ON/OFF ne se base que sur le SOC.
+  pas à l'agrégat système -- unit ID **225** (constante `VOLTAGE_UNIT_ID`
+  dans `ModbusBatterySoc.java`, pas une option de `config.json` : spécifique
+  à cette install Victron, pas un réglage par déploiement). Utilisé
+  seulement pour l'affichage tableau de bord -- l'hystérèse ON/OFF ne se
+  base que sur le SOC.
 - **`modbus/RegisterCodec.java`** isole la logique pure (`toSigned16`,
   `combineBigEndianUint32`) : les registres 32 bits ont le **mot de poids
   fort au registre de plus basse adresse** -- oublier cette conversion est un

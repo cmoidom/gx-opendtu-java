@@ -61,7 +61,7 @@ public final class ControlLoop {
             return null;
         }
         ModbusGridConfig modbus = config.grid().modbus();
-        return new ModbusBatterySoc(modbus.host(), modbus.port(), modbus.unitId(), config.battery().voltageUnitId());
+        return new ModbusBatterySoc(modbus.host(), modbus.port(), modbus.unitId());
     }
 
     /** {warning, recommendedPct} -- recommendedPct is null unless warning is true. */

@@ -46,19 +46,8 @@ public record AppConfig(
 
     public record CapacityProbeConfig(double stepW, double intervalS) {}
 
-    /**
-     * voltageUnitId is nullable: battery voltage (register 259) lives on the
-     * battery monitor's OWN Modbus service (com.victronenergy.battery), not
-     * the system aggregate used for SOC/power/current -- its unit ID is that
-     * monitor's per-install VRM device instance, with no safe cross-default.
-     * Voltage display is simply skipped (dashboard shows nothing) if unset.
-     */
     public record BatteryConfig(
-            boolean enabled,
-            double activateAtPct,
-            double deactivateBelowPct,
-            double exportConfirmsFullW,
-            Integer voltageUnitId) {}
+            boolean enabled, double activateAtPct, double deactivateBelowPct, double exportConfirmsFullW) {}
 
     /** name is display-only (dashboard legend/table) -- never used to address the inverter. */
     public record InverterConfig(String serial, double nominalPowerW, String name) {}

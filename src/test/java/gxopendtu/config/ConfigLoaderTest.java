@@ -56,21 +56,6 @@ class ConfigLoaderTest {
         assertThat(config.inverters()).hasSize(2);
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
         assertThat(config.totalNominalPowerW()).isEqualTo(980.0);
-        assertThat(config.battery().voltageUnitId()).isNull(); // absent from FULL_CONFIG
-    }
-
-    @Test
-    void batteryVoltageUnitIdIsPreservedWhenExplicitlySet() {
-        String raw = """
-                {
-                  "opendtu": { "base_url": "http://x" },
-                  "grid": { "modbus": { "host": "10.0.0.1" } },
-                  "battery": { "enabled": true, "voltage_unit_id": 225 },
-                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
-                }
-                """;
-        AppConfig config = ConfigLoader.parseConfig(json(raw));
-        assertThat(config.battery().voltageUnitId()).isEqualTo(225);
     }
 
     @Test
