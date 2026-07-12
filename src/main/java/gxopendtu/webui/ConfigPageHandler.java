@@ -278,6 +278,10 @@ final class ConfigPageHandler implements HttpHandler {
         battery.put("deactivate_below_pct", Double.parseDouble(first(form, "battery.deactivate_below_pct", "98")));
         battery.put(
                 "export_confirms_full_w", Double.parseDouble(first(form, "battery.export_confirms_full_w", "50")));
+        String voltageUnitId = first(form, "battery.voltage_unit_id", "").trim();
+        if (!voltageUnitId.isEmpty()) {
+            battery.put("voltage_unit_id", (int) Double.parseDouble(voltageUnitId));
+        }
         raw.set("battery", battery);
 
         ObjectNode web = MAPPER.createObjectNode();
@@ -459,6 +463,12 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_w\" value=\"" + val(raw, "battery.export_confirms_full_w", "50") + "\" required>\n"
                 + "    <p class=\"hint\">Passe en regulation ON des qu'un export reseau reel d'au moins cette puissance "
                 + "est observe alors que le SOC est deja au-dessus du seuil de desactivation. Mettre 0 pour desactiver.</p>\n"
+                + "    <label>Unit ID Modbus du moniteur de batterie (tension, optionnel)</label>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"0\" name=\"battery.voltage_unit_id\" value=\"" + val(raw, "battery.voltage_unit_id", "") + "\">\n"
+                + "    <p class=\"hint\">Registre 259 de la tension batterie vit sur le service propre du moniteur de "
+                + "batterie (com.victronenergy.battery), pas sur l'agregat systeme -- laisser vide si inconnu ou non "
+                + "cable (la tension n'apparaitra alors pas sur le graphique Batterie). Unit ID typique sur une "
+                + "installation Victron : 225.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

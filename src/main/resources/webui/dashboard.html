@@ -247,7 +247,14 @@ function clampView(tMin, tMax) {
 function fmtTime(t) { return new Date(t * 1000).toLocaleTimeString(); }
 function fmtW(v) { return (v === null || v === undefined) ? '-' : Math.round(v) + ' W'; }
 function fmtPct(v) { return (v === null || v === undefined) ? '-' : Math.round(v) + ' %'; }
-function fmtKwh(v) { return (v === null || v === undefined) ? '-' : v.toFixed(2) + ' kWh'; }
+// Switches unit by magnitude (Wh below 1 kWh, kWh above) so a quiet hour
+// (e.g. 0.02 kWh) reads as a legible whole-number "20 Wh" instead of a tiny,
+// hard-to-parse decimal -- same idea as a byte-size formatter picking
+// KB/MB/GB, just for energy.
+function fmtEnergy(v) {
+  if (v === null || v === undefined) return '-';
+  return Math.abs(v) < 1 ? Math.round(v * 1000) + ' Wh' : v.toFixed(2) + ' kWh';
+}
 function fmtHour(h) { return new Date(h * 1000).toLocaleTimeString([], { hour: '2-digit' }); }
 function fmtVolt(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' V'; }
 function fmtAmp(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' A'; }
@@ -600,7 +607,7 @@ function attachBarHover(canvas) {
     tooltip.style.left = (ev.clientX + 12) + 'px';
     tooltip.style.top = (ev.clientY - 10) + 'px';
     tooltip.innerHTML = '<div>' + fmtHour(hit.hour) + '-' + fmtHour(hit.hour + 3600) + '</div>' +
-      '<div>' + hit.label + ': ' + fmtKwh(hit.value) + '</div>';
+      '<div>' + hit.label + ': ' + fmtEnergy(hit.value) + '</div>';
   });
   canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 }
@@ -806,7 +813,7 @@ function renderCharts() {
   drawBarChart(
     chartEnergy, hourlyEnergy, ['from_kwh', 'to_kwh'],
     [cssVar('--series-1'), cssVar('--series-2')], ['Soutiree', 'Injectee'],
-    { yFormat: fmtKwh }
+    { yFormat: fmtEnergy }
   );
 }
 
