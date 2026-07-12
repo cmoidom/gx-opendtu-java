@@ -38,7 +38,34 @@ for arg in "$@"; do
 done
 
 cd "$REPO_DIR"
-echo "==> Depot : $REPO_DIR"
+
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+CURRENT_COMMIT="$(git rev-parse --short HEAD)"
+TESTS_LABEL="inclus"
+MVN_ARGS=()
+if [[ "$SKIP_TESTS" -eq 1 ]]; then
+  TESTS_LABEL="ignores (--skip-tests)"
+  MVN_ARGS+=("-DskipTests")
+fi
+
+echo "================================================================"
+echo " gx-opendtu-java - mise a jour"
+echo "================================================================"
+echo " Depot         : $REPO_DIR"
+echo " Branche       : $CURRENT_BRANCH"
+echo " Commit actuel : $CURRENT_COMMIT"
+echo " Installation  : ${INSTALL_DIR}/${JAR_NAME}"
+echo " Service       : $SERVICE_NAME"
+echo " Tests         : $TESTS_LABEL"
+echo "================================================================"
+echo " Etapes prevues :"
+echo "   1. git pull --ff-only"
+echo "   2. mvn package ${MVN_ARGS[*]:-}"
+echo "   3. installer target/${JAR_NAME} -> ${INSTALL_DIR}/${JAR_NAME}"
+echo "   4. mettre a jour l'unite systemd (${SERVICE_NAME}.service) + daemon-reload"
+echo "   5. systemctl restart ${SERVICE_NAME}"
+echo "================================================================"
+echo
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "!! Modifications locales non commitees detectees -- 'git pull --ff-only' pourrait echouer."
@@ -51,33 +78,44 @@ if [[ -n "$(git status --porcelain)" ]]; then
   fi
 fi
 
-echo "==> git pull --ff-only"
+echo "==> [1/5] git pull --ff-only (depuis $CURRENT_COMMIT)"
 git pull --ff-only
-
-echo "==> Compilation (mvn package$([[ $SKIP_TESTS -eq 1 ]] && echo ', tests ignores' || echo ', tests inclus'))"
-if [[ "$SKIP_TESTS" -eq 1 ]]; then
-  mvn -q package -DskipTests
+NEW_COMMIT="$(git rev-parse --short HEAD)"
+if [[ "$NEW_COMMIT" == "$CURRENT_COMMIT" ]]; then
+  echo "    Deja a jour (commit $CURRENT_COMMIT) -- on recompile/redemarre quand meme."
 else
-  mvn -q package
+  echo "    $CURRENT_COMMIT -> $NEW_COMMIT"
+  echo "    Changements :"
+  git log --oneline "${CURRENT_COMMIT}..${NEW_COMMIT}" | sed 's/^/      /'
 fi
+
+echo "==> [2/5] Compilation (mvn package, tests ${TESTS_LABEL})"
+mvn -q package "${MVN_ARGS[@]}"
 
 if [[ ! -f "target/${JAR_NAME}" ]]; then
   echo "!! target/${JAR_NAME} introuvable apres le build -- abandon, service non touche." >&2
   exit 1
 fi
+JAR_SIZE="$(du -h "target/${JAR_NAME}" | cut -f1)"
+echo "    OK : target/${JAR_NAME} (${JAR_SIZE})"
 
-echo "==> Installation du jar dans ${INSTALL_DIR}"
+echo "==> [3/5] Installation du jar dans ${INSTALL_DIR}"
 sudo install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "target/${JAR_NAME}" "${INSTALL_DIR}/${JAR_NAME}"
+echo "    ${INSTALL_DIR}/${JAR_NAME} installe (${JAR_SIZE}, ${SERVICE_USER}:${SERVICE_USER})"
 
-echo "==> Mise a jour de l'unite systemd (au cas ou elle aurait change)"
+echo "==> [4/5] Mise a jour de l'unite systemd (au cas ou elle aurait change)"
 sudo cp "deploy/systemd/${SERVICE_NAME}.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 sudo systemctl daemon-reload
+echo "    /etc/systemd/system/${SERVICE_NAME}.service a jour, daemon-reload fait"
 
-echo "==> Redemarrage du service ${SERVICE_NAME}"
+echo "==> [5/5] Redemarrage du service ${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
 
 sleep 2
 echo "==> Statut du service :"
 sudo systemctl status "${SERVICE_NAME}" --no-pager -l || true
 
-echo "==> Termine. Suivre les logs : journalctl -u ${SERVICE_NAME} -f"
+echo "================================================================"
+echo " Termine (commit ${NEW_COMMIT}). Suivre les logs :"
+echo "   journalctl -u ${SERVICE_NAME} -f"
+echo "================================================================"

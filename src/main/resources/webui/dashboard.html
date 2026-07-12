@@ -348,11 +348,60 @@ function drawChart(canvas, seriesList, opts) {
     });
     ctx.stroke();
   });
+
+  // Crosshair + a dot on each series at the hovered time (see attachHover) --
+  // hoverT tracks the exact mouse position, but each dot snaps to that
+  // series' actual nearest sample (same tolerance rule as the tooltip, so
+  // the tooltip text and the dots always agree on which series are "close
+  // enough" to show).
+  if (opts.hoverT !== null && opts.hoverT !== undefined && opts.hoverT >= tMin && opts.hoverT <= tMax) {
+    const hx = xPix(opts.hoverT);
+    ctx.strokeStyle = cssVar('--baseline');
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(hx, padding.top);
+    ctx.lineTo(hx, padding.top + plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    seriesList.forEach(s => {
+      const nearest = nearestPoint(s.points, opts.hoverT);
+      if (!nearest || !(nearest.distance < (tMax - tMin) / 20 || s.points.length < 5)) return;
+      const px = xPix(nearest.point.t), py = yPix(nearest.point.v);
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = cssVar('--surface-1');
+      ctx.stroke();
+    });
+  }
   ctx.restore();
+
+  canvas._seriesList = seriesList;
+  const optsWithoutHover = Object.assign({}, opts);
+  delete optsWithoutHover.hoverT;
+  canvas._drawOpts = optsWithoutHover;
 
   canvas._chartData = {
     seriesList, tMin, tMax, dataTMin, dataTMax, yMin, yMax, padding, plotW, plotH, yFormat: opts.yFormat,
   };
+}
+
+/** Nearest sample to time t across a series' points, or null if the series is empty. */
+function nearestPoint(points, t) {
+  if (!points.length) return null;
+  let nearest = points[0], best = Math.abs(nearest.t - t);
+  points.forEach(p => { const d = Math.abs(p.t - t); if (d < best) { best = d; nearest = p; } });
+  return { point: nearest, distance: best };
+}
+
+/** Redraws a chart from its last full render, reapplying the current hover crosshair (or none). */
+function redrawChart(canvas) {
+  if (!canvas._seriesList) return;
+  drawChart(canvas, canvas._seriesList, Object.assign({}, canvas._drawOpts, { hoverT: canvas._hoverT }));
 }
 
 // Grouped bar chart (two bars per hour: from-net / to-net) -- no zoom/pan,
@@ -456,21 +505,27 @@ function attachHover(canvas, opts) {
     const t = data.tMin + (x - data.padding.left) / data.plotW * (data.tMax - data.tMin);
     const lines = [];
     data.seriesList.forEach(s => {
-      if (!s.points.length) return;
-      let nearest = s.points[0], best = Math.abs(nearest.t - t);
-      s.points.forEach(p => { const d = Math.abs(p.t - t); if (d < best) { best = d; nearest = p; } });
-      if (Math.abs(nearest.t - t) < (data.tMax - data.tMin) / 20 || s.points.length < 5) {
-        const val = data.yFormat ? data.yFormat(nearest.v) : Math.round(nearest.v);
+      const nearest = nearestPoint(s.points, t);
+      if (nearest && (nearest.distance < (data.tMax - data.tMin) / 20 || s.points.length < 5)) {
+        const val = data.yFormat ? data.yFormat(nearest.point.v) : Math.round(nearest.point.v);
         lines.push(s.label + ': ' + val);
       }
     });
+
+    canvas._hoverT = t;
+    redrawChart(canvas);
+
     if (!lines.length) { tooltip.style.display = 'none'; return; }
     tooltip.style.display = 'block';
     tooltip.style.left = (ev.clientX + 12) + 'px';
     tooltip.style.top = (ev.clientY - 10) + 'px';
     tooltip.innerHTML = '<div>' + fmtTime(t) + '</div>' + lines.map(l => '<div>' + l + '</div>').join('');
   });
-  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  canvas.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+    canvas._hoverT = null;
+    redrawChart(canvas);
+  });
 }
 
 let dragStartX = 0, dragStartTMin = 0, dragStartTMax = 0, dragPlotW = 0;
@@ -500,7 +555,7 @@ function attachZoomPan(canvas) {
     const data = canvas._chartData;
     if (!data) return;
     isDragging = true;
-    document.querySelectorAll('.chart-box canvas').forEach(c => c.classList.add('dragging'));
+    document.querySelectorAll('.chart-box canvas').forEach(c => { c.classList.add('dragging'); c._hoverT = null; });
     dragStartX = ev.clientX;
     dragStartTMin = viewTMin !== null ? viewTMin : data.dataTMin;
     dragStartTMax = viewTMax !== null ? viewTMax : data.dataTMax;
@@ -613,6 +668,13 @@ function renderCharts() {
   }));
   drawChart(chartInverters, invSeries, Object.assign({ yFormat: fmtW }, viewOpts));
   renderInvertersLegend();
+
+  // Reapply the hover crosshair on top of this fresh render for any chart
+  // currently being hovered -- otherwise a periodic poll() redraw (every 2s)
+  // would erase it while the mouse sits still.
+  [chartSoc, chartGrid, chartInverters].forEach(c => {
+    if (c._hoverT !== null && c._hoverT !== undefined) redrawChart(c);
+  });
 
   drawBarChart(
     chartEnergy, hourlyEnergy, ['from_kwh', 'to_kwh'],
