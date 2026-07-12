@@ -19,7 +19,7 @@
     "step_absolute_w": 100,
     "step_relative_pct": 10,
     "min_change_w": 5,
-    "min_inverter_pct": 10
+    "min_inverter_pct": 5
   },
   "capacity_probe": {
     "step_w": 10,

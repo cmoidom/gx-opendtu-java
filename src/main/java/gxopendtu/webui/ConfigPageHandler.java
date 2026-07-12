@@ -223,7 +223,7 @@ final class ConfigPageHandler implements HttpHandler {
         control.put("step_absolute_w", Double.parseDouble(first(form, "control.step_absolute_w", "100")));
         control.put("step_relative_pct", Double.parseDouble(first(form, "control.step_relative_pct", "10")));
         control.put("min_change_w", Double.parseDouble(first(form, "control.min_change_w", "5")));
-        control.put("min_inverter_pct", Double.parseDouble(first(form, "control.min_inverter_pct", "10")));
+        control.put("min_inverter_pct", Double.parseDouble(first(form, "control.min_inverter_pct", "5")));
         raw.set("control", control);
 
         ObjectNode probe = MAPPER.createObjectNode();
@@ -383,7 +383,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <label>Changement minimal (W)</label>\n"
                 + "    <input type=\"number\" step=\"any\" name=\"control.min_change_w\" value=\"" + val(raw, "control.min_change_w", "5") + "\" required>\n"
                 + "    <label>Seuil mini onduleur (% de sa puissance nominale)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + val(raw, "control.min_inverter_pct", "10") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + val(raw, "control.min_inverter_pct", "5") + "\" required>\n"
                 + "    <p class=\"hint\">Un onduleur qui produit n'est jamais commande sous ce seuil. Mettre 0 pour desactiver. "
                 + "Un arret complet (fail-safe, charge batterie) n'est jamais concerne.</p>\n"
                 + "  </fieldset>\n"

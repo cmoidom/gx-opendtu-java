@@ -121,9 +121,10 @@ public final class ControlLoop {
         double currentTotalActualW = serials.stream().mapToDouble(s -> livePowerW.getOrDefault(s, 0.0)).sum();
         double totalCapacityW = serials.stream().mapToDouble(s -> capacity.ceilingsW().getOrDefault(s, 0.0)).sum();
 
-        ControlDecision decision = controller.computeTarget(gridPowerAvgW, currentTotalActualW, totalCapacityW);
+        ControlDecision decision =
+                controller.computeTarget(gridPowerAvgW, currentTotalActualW, totalCapacityW, batteryPowerW);
         Map<String, Double> allocation = WaterFillAllocator.waterFillAllocate(
-                decision.targetW(), serials, capacity.ceilingsW(), minInverterPct, capacity.nominalPowerW());
+                decision.targetW(), serials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
         Map<String, Long> roundedAllocation = new LinkedHashMap<>();
         allocation.forEach((s, w) -> roundedAllocation.put(s, Math.round(w)));
 

@@ -188,6 +188,9 @@ delta            = PI(error)                      // kp*error + integrale (anti-
 current_actual   = somme des puissances AC actuelles (GET /api/livedata/status?inv=)
 raw_target       = clamp(current_actual + delta, 0, capacite_totale)
 
+si battery_power_w < 0 (decharge) :                      // voir "Priorite solaire sur batterie" ci-dessous
+    raw_target = clamp(max(raw_target, current_actual + |battery_power_w|), 0, capacite_totale)
+
 step             = max(step_absolute_w, step_relative_pct% * capacite_totale)
 quantized        = round(raw_target / step) * step        // palier
 next_target      = last_sent + clamp(quantized - last_sent, -step, +step)  // rampe: 1 palier/cycle max
@@ -198,25 +201,84 @@ sinon :
     -> repartition + envoi (voir ci-dessous)
 ```
 
+### Priorité solaire sur batterie
+
+Le PI ci-dessus ne regarde que la puissance réseau -- il peut donc être
+"satisfait" (réseau proche de `export_setpoint_w`) alors que la batterie
+comble en silence un écart que le solaire pourrait couvrir. Règle explicite
+de l'utilisateur : **interdit de tirer sur la batterie si le solaire peut
+fournir cette puissance à la place** -- sauf si la consigne est déjà au
+maximum de la capacité disponible (plus aucun onduleur n'a de marge), auquel
+cas la batterie doit prendre le relais.
+
+Implémenté en plancher sur `rawTarget` dans `SoftTargetController.computeTarget`
+(jamais dans l'intégrale du PI, pour éviter tout risque de *windup* : si le
+plancher sature `rawTarget` à `totalCapacityW` pendant des heures -- typiquement
+la nuit -- l'intégrale ne doit surtout pas continuer à s'accumuler, sinon elle
+produirait un dépassement une fois le soleil revenu). Le `clamp(..., 0,
+totalCapacityW)` implémente naturellement l'exception : une fois tous les
+onduleurs déjà à leur plafond, le plancher ne peut plus rien élever davantage,
+et le reste de la décharge batterie est accepté sans logique séparée.
+
 ## Répartition multi-onduleurs (water-filling)
 
-`WaterFillAllocator.waterFillAllocate(totalTargetW, serials, capacityEstimates, ...)`
-(`allocator/WaterFillAllocator.java`) : répartition égalitaire, plafonnée par
-la capacité connue de chaque onduleur, avec redistribution itérative du
-surplus tant qu'il reste des onduleurs non saturés. `CapacityEstimator`
-(`control/CapacityEstimator.java`) démarre à la puissance nominale déclarée
-en config, abaisse le plafond quand un onduleur reste durablement sous sa
-part allouée malgré une limite acquittée (`limit_set_status == "Ok"`), et le
-relève progressivement via une sonde périodique (`capacity_probe.step_w`).
+`WaterFillAllocator.waterFillAllocate(totalTargetW, serials, capacityEstimates,
+nominalPowerW, ...)` (`allocator/WaterFillAllocator.java`) : répartition
+égalitaire **en % de la puissance nominale de chacun**, pas en Watts absolus
+-- `nominalPowerW` est donc un paramètre requis, pas juste une donnée pour le
+plancher `minInverterPct`. Un onduleur plafonné par sa capacité connue est
+capé à sa capacité réelle, et le surplus est redistribué itérativement sur
+les onduleurs restants (on recalcule un nouveau pourcentage commun sur eux).
 
-`min_inverter_pct` (`config.control.minInverterPct`, défaut 10%) est
-appliqué en post-traitement dans `waterFillAllocate` : pour chaque onduleur
-ayant une capacité réelle, on relève sa part à `min(capacité, min_inverter_pct%
-* puissance_nominale)` si elle était plus basse -- y compris quand cette part
-est exactement 0. **Ce seuil est prioritaire sur le zero-export strict** :
-il peut causer une injection réseau réelle si mal réglé. `ControlLoop`
-détecte ce cas (`minInverterFloorWarning`, package-private) et logue un
-`WARNING` avec une valeur recommandée, exposé au tableau de bord.
+**Pourquoi le %, pas les Watts** (exigence explicite utilisateur) : avec un
+partage en Watts absolus, réduire ou augmenter la production totale change
+chaque onduleur du même nombre de Watts, indépendamment de sa puissance
+nominale -- un petit onduleur de 400W à 87% de son propre maximum et un grand
+de 1000W à 50% du sien recevraient pourtant la même variation en Watts. En %,
+ils convergent vers le **même pourcentage de leur propre nominal** : baisser
+la consigne totale réduit d'abord (proportionnellement plus) celui qui était
+déjà le plus haut en %, et l'augmenter favorise d'abord celui qui était le
+plus bas en % -- symétrique dans les deux sens, par construction de
+l'algorithme (pas une règle de priorité codée à part). Exemple : cible 650W
+sur deux onduleurs de 400W et 1000W nominaux (tous deux disponibles sans
+ombrage) → 185,7W (46,4% de 400) et 464,3W (46,4% de 1000), pas 325W chacun.
+
+`capacity_estimates` (`CapacityEstimator`, `control/CapacityEstimator.java`)
+démarre à la puissance nominale déclarée en config. Si un onduleur reste
+durablement sous sa part allouée alors qu'OpenDTU confirme que la limite est
+bien appliquée (`limit_set_status == "Ok"`, donc ce n'est pas la limite qui le
+bride), on suppose qu'il est limité par l'irradiance réelle et son plafond est
+abaissé à sa production mesurée. Une sonde périodique (`capacity_probe.step_w`
+/ `interval_s`) relève ce plafond par petits pas vers le nominal.
+
+Ce jugement "limité par l'irradiance" n'est appliqué que si la part allouée
+était déjà **proche du plafond actuel** (`>= NEAR_CEILING_RATIO`, 90%, de
+`ceilingsW.get(serial)`) : la consigne zero-export vise rarement le maximum
+physique (juste assez pour couvrir la charge sans exporter), donc la part
+allouée à un onduleur est souvent bien inférieure à son plafond ; sans ce
+garde-fou, un simple bruit de mesure (production réelle légèrement sous une
+part déjà modeste) faisait dégringoler le plafond en plein soleil, et la
+remontée lente (`probeTick`) ne compensait jamais assez vite -- la batterie
+comblait l'écart à la place du solaire.
+
+`min_inverter_pct` (`config.control.minInverterPct`, défaut **5%**,
+**par onduleur** -- pas à confondre avec `control.stepRelativePct`, qui lui
+s'applique au total agrégé) est appliqué en post-traitement sur la map
+`allocation` retournée : pour chaque onduleur ayant une capacité réelle
+(`capacityEstimates[serial] > 0` -- donc pas nuit/ombrage total), on relève à
+`min(capacityEstimates[serial], minInverterPct% * nominalPowerW[serial])` si
+sa part calculée était plus basse -- **y compris quand cette part est
+exactement 0**, tant qu'il y a de la capacité. La config est prioritaire : ce
+plancher peut donc causer une injection réseau réelle si `totalTargetW`
+calculé par le PI est plus bas que ce que le plancher impose. Fail-safe et le
+déblocage à 100% pendant la charge batterie prioritaire ne passent pas par
+`waterFillAllocate` du tout (`setRelativeLimitPct` direct), donc ce plancher
+ne les concerne jamais.
+
+`ControlLoop.minInverterFloorWarning` (package-private) détecte ce cas après
+coup (pas dans `WaterFillAllocator`, qui reste pure logique d'allocation sans
+connaissance du contexte réseau) et logue un `WARNING` avec un pourcentage
+recommandé, exposé au tableau de bord.
 
 ## Contrôles manuels du tableau de bord
 

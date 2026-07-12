@@ -88,6 +88,57 @@ class ControllerTest {
     }
 
     @Test
+    void batteryDischargeBoostsTargetWhenHeadroomAvailable() {
+        SoftTargetController controller = new SoftTargetController(30, 1.0, 0.0, 100, 0, 5);
+        // Grid already sits at the setpoint (error=0) -- the PI alone would keep
+        // the target at current production (200W), but the battery is
+        // discharging 100W while there's plenty of capacity headroom (1000W):
+        // must boost the target to replace that discharge with production.
+        ControlDecision decision = controller.computeTarget(30, 200, 1000, -100.0);
+        assertThat(decision.targetW()).isEqualTo(300.0); // 200 + 100 discharge, already a clean step multiple
+    }
+
+    @Test
+    void batteryDischargeBoostClampedToTotalCapacity() {
+        SoftTargetController controller = new SoftTargetController(30, 1.0, 0.0, 100, 0, 5);
+        // Discharge (300W) would push the boosted target past capacity (900+300
+        // > 1000) -- clamped to totalCapacityW, i.e. "every inverter maxed
+        // out, no more sun available", exactly the case where battery discharge
+        // is meant to be accepted.
+        ControlDecision decision = controller.computeTarget(30, 900, 1000, -300.0);
+        assertThat(decision.targetW()).isEqualTo(1000.0);
+    }
+
+    @Test
+    void batteryChargingDoesNotBoostTarget() {
+        SoftTargetController controller = new SoftTargetController(30, 1.0, 0.0, 100, 0, 5);
+        ControlDecision decision = controller.computeTarget(30, 200, 1000, 50.0);
+        assertThat(decision.targetW()).isEqualTo(200.0);
+    }
+
+    @Test
+    void batteryPowerOmittedBehavesLikeNoBattery() {
+        SoftTargetController controller = new SoftTargetController(30, 1.0, 0.0, 100, 0, 5);
+        ControlDecision decision = controller.computeTarget(30, 200, 1000);
+        assertThat(decision.targetW()).isEqualTo(200.0);
+    }
+
+    @Test
+    void batteryDischargeBoostDoesNotPollutePiIntegral() {
+        SoftTargetController controller = new SoftTargetController(0, 0.0, 1.0, 50, 0, 5);
+        // Grid sits exactly at setpoint every cycle (error=0) -- ki alone
+        // contributes nothing regardless of the battery, so the integral must
+        // stay at 0 even while a large, persistent battery-discharge boost
+        // repeatedly saturates the target at totalCapacityW. A boost that
+        // leaked into pi.integral would wind up here and overshoot once the
+        // discharge stops (e.g. once the sun returns the next morning).
+        for (int i = 0; i < 5; i++) {
+            controller.computeTarget(0, 500, 500, -1000.0);
+        }
+        assertThat(controller.pi().integral()).isEqualTo(0.0);
+    }
+
+    @Test
     void effectiveStepUsesLargerOfAbsoluteAndRelative() {
         SoftTargetController controller = new SoftTargetController(0, 1.0, 0.0, 100, 10, 5);
         assertThat(controller.effectiveStepW(3000)).isEqualTo(300.0); // 10% of 3000W > 100W floor
@@ -99,7 +150,11 @@ class ControllerTest {
         CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
 
-        estimator.observe("a", 400, 250, true);
+        // Allocated 550W (near the 600W ceiling -- we were actually testing the
+        // limit), but only 250W actually produced, and OpenDTU confirms the
+        // limit itself isn't what's holding it back (limit_acknowledged=true at
+        // a higher value) -> assume irradiance-limited, cap drops to actual output.
+        estimator.observe("a", 550, 250, true);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(250.0);
 
         estimator.probeTick();
@@ -113,5 +168,28 @@ class ControllerTest {
         CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
         estimator.observe("a", 400, 400, true);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
+    }
+
+    @Test
+    void capacityEstimatorIgnoresShortfallWhenTargetWasNotNearCeiling() {
+        // The zero-export target is often well below any inverter's real max on
+        // purpose -- a small shortfall against a modest allocated share (here
+        // 400W out of a 600W ceiling, 67%) is ordinary noise, not proof the
+        // inverter can't do more. Must NOT collapse the ceiling.
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
+        estimator.observe("a", 400, 380, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
+    }
+
+    @Test
+    void capacityEstimatorNearCeilingThresholdIs90Percent() {
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
+        // 89% of the 600W ceiling: just under the threshold -> ignored.
+        estimator.observe("a", 534, 500, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
+
+        // 90% of the current (still 600W) ceiling: at the threshold -> counts.
+        estimator.observe("a", 540, 500, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(500.0);
     }
 }

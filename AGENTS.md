@@ -47,6 +47,25 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   (`max(step_absolute_w, step_relative_pct%)`) et la rampe (1 palier par
   cycle de décision maximum). Ne pas revenir à un envoi de commande à chaque
   tick "pour plus de réactivité" sans validation explicite.
+- **Priorité solaire sur batterie** : `SoftTargetController.computeTarget`
+  ne doit jamais laisser la batterie couvrir un manque que les onduleurs
+  avaient la capacité de couvrir -- le plancher sur `rawTarget` (jamais dans
+  l'intégrale du PI, pour ne pas risquer de *windup*) est la seule
+  implémentation acceptée. Ne pas déplacer cette logique dans l'intégrale.
+- **Water-filling par % de puissance nominale, pas en Watts égaux** :
+  `WaterFillAllocator.waterFillAllocate` équilibre chaque onduleur vers le
+  même pourcentage de sa propre puissance nominale (`nominalPowerW` est un
+  paramètre requis, pas juste une donnée pour le plancher
+  `minInverterPct`). Ne pas revenir à un partage en Watts absolus égaux --
+  exigence explicite de l'utilisateur pour qu'un gros onduleur ne soit
+  jamais laissé à produire plus de Watts absolus qu'un petit juste parce que
+  le partage ignorait leur puissance nominale respective.
+- **`CapacityEstimator` : garde-fou "proche du plafond" avant de conclure à
+  une limitation d'irradiance** : `observe` ne doit baisser le plafond que
+  si la part allouée était déjà `>= 90%` du plafond courant
+  (`NEAR_CEILING_RATIO`). Sans ce garde-fou, une consigne zero-export
+  modeste (fréquente, puisqu'elle ne vise rarement le maximum physique) fait
+  dégringoler le plafond sur du simple bruit de mesure, en plein soleil.
 - **Fail-safe** : toute perte de communication (Modbus ou OpenDTU) doit
   ramener les onduleurs à une limite basse et sûre plutôt que de laisser le
   service "en roue libre" (`ControlLoop.applyFailsafe`).

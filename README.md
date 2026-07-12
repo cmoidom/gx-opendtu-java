@@ -60,9 +60,12 @@ PI, paliers) -- voir `ARCHITECTURE.md` pour la signification de chaque
 paramètre. Même schéma JSON que le déploiement VM/Modbus du projet Python
 d'origine, à l'exception de `grid.source` qui n'existe plus (toujours Modbus).
 
-`control.min_inverter_pct` (défaut 10%) : seuil plancher global, en % de la
-puissance nominale de chacun -- un onduleur qui a de la capacité réelle
-disponible n'est jamais commandé sous ce seuil. Mettre `0` pour désactiver.
+`control.min_inverter_pct` (défaut 5%) : seuil plancher **par onduleur**, en
+% de la puissance nominale de chacun -- un onduleur qui a de la capacité
+réelle disponible n'est jamais commandé sous ce seuil. Mettre `0` pour
+désactiver. À ne pas confondre avec `control.step_relative_pct`, qui
+s'applique lui au palier de quantification **agrégé** (somme de tous les
+onduleurs) -- deux grandeurs différentes qui se ressemblent en config.
 **Ce seuil est prioritaire sur le zero-export strict** : s'il est réglé plus
 haut que le vrai besoin du moment, il peut causer une injection réseau
 réelle -- le tableau de bord affiche un avertissement quand ça arrive.

@@ -48,7 +48,7 @@ class ConfigLoaderTest {
         assertThat(config.grid().modbus().host()).isEqualTo("192.168.1.10");
         assertThat(config.grid().modbus().unitId()).isEqualTo(100);
         assertThat(config.grid().modbus().energyUnitId()).isNull(); // resolved to unitId by ModbusGridMeter, not here
-        assertThat(config.control().minInverterPct()).isEqualTo(10.0); // default, absent from FULL_CONFIG
+        assertThat(config.control().minInverterPct()).isEqualTo(5.0); // default, absent from FULL_CONFIG
         assertThat(config.web().enabled()).isTrue();
         assertThat(config.web().port()).isEqualTo(8080);
         assertThat(config.logging().verboseTraces()).isTrue();

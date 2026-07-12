@@ -25,4 +25,8 @@ public final class PIController {
         }
         return kp * error + integral;
     }
+
+    public double integral() {
+        return integral;
+    }
 }

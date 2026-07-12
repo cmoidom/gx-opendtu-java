@@ -101,7 +101,7 @@ public final class ConfigLoader {
                         controlRaw.path("step_absolute_w").asDouble(100.0),
                         controlRaw.path("step_relative_pct").asDouble(10.0),
                         controlRaw.path("min_change_w").asDouble(5.0),
-                        controlRaw.path("min_inverter_pct").asDouble(10.0)),
+                        controlRaw.path("min_inverter_pct").asDouble(5.0)),
                 new CapacityProbeConfig(
                         probeRaw.path("step_w").asDouble(10.0), probeRaw.path("interval_s").asDouble(30.0)),
                 new BatteryConfig(
