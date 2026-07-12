@@ -155,6 +155,24 @@ journalctl -u gx-opendtu-zero-export -f
 
 Sur le Cerbo GX : activer **Settings > Services > Modbus/TCP**.
 
+### Mises à jour (`update.sh`)
+
+Une fois cette première installation faite, `update.sh` (à la racine du
+dépôt, sur la VM) automatise tout le cycle de mise à jour :
+
+```sh
+./update.sh              # git pull --ff-only -> mvn package (tests inclus)
+                          # -> installe le jar + l'unité systemd -> redémarre
+./update.sh --skip-tests  # plus rapide, sans lancer la suite de tests
+./update.sh -y            # ne demande pas confirmation si des modifications
+                           # locales non commitées existent
+```
+
+S'arrête au premier échec (`git pull`, compilation ou tests) : ne redémarre
+jamais le service avec un jar potentiellement cassé. Ne touche pas à
+`/etc/gx-opendtu/config.json` (seuls le jar et l'unité systemd sont
+réinstallés).
+
 ## Mode test (`--dry-run`)
 
 ```sh
