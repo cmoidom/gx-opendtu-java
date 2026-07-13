@@ -41,6 +41,10 @@ public final class InverterEnergyHistory {
         this.maxBuckets = retainHours + 1;
     }
 
+    public void record(Map<String, Double> yieldDayWh) {
+        record(yieldDayWh, System.currentTimeMillis() / 1000.0);
+    }
+
     public void record(Map<String, Double> yieldDayWh, double now) {
         double hour = HourlyEnergyHistory.hourStart(now);
         lock.lock();

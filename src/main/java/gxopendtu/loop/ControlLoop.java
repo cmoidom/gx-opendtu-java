@@ -455,8 +455,13 @@ public final class ControlLoop {
                     // Read regardless of injection_control ON/OFF/OVERRIDE:
                     // inverters keep producing (and OpenDTU keeps counting
                     // YieldDay) even while curtailed for battery-charge
-                    // priority or under a manual override.
-                    inverterEnergyHistory.record(client.getYieldDayWh(serials), now);
+                    // priority or under a manual override. Deliberately NOT
+                    // passing `now` here -- that's System.nanoTime()-based
+                    // (for measuring loop intervals), not wall-clock epoch
+                    // seconds, and record()'s no-arg-time overload correctly
+                    // uses System.currentTimeMillis() instead, same as
+                    // energyHistory.record(...) just above.
+                    inverterEnergyHistory.record(client.getYieldDayWh(serials));
                 } catch (OpenDTUException e) {
                     LOG.severe("inverter yield read failed (dashboard display only): " + e.getMessage());
                 }
