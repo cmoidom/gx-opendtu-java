@@ -585,7 +585,7 @@ function drawChart(canvas, seriesList, opts) {
   const rightAxes = axes.filter(a => a.side === 'right');
   const RIGHT_AXIS_WIDTH = 42;
 
-  const padding = { left: 46, right: 8 + rightAxes.length * RIGHT_AXIS_WIDTH, top: 8, bottom: 20 };
+  const padding = { left: 46, right: 8 + rightAxes.length * RIGHT_AXIS_WIDTH, top: 8, bottom: 32 };
   const plotW = w - padding.left - padding.right;
   const plotH = h - padding.top - padding.bottom;
   const allPoints = seriesList.flatMap(s => s.points);
@@ -643,14 +643,28 @@ function drawChart(canvas, seriesList, opts) {
   const xTickFormat = tickIntervalS < 60
     ? { hour: '2-digit', minute: '2-digit', second: '2-digit' }
     : { hour: '2-digit', minute: '2-digit' };
+  // Date shown on a second line below the time, but only where it changes
+  // from the previous tick (or on the very first tick) -- repeating the
+  // same date on every tick would be pure noise on the common "last 30 min"
+  // live view (all ticks the same day), while a dezoomed multi-day view
+  // still gets one clearly at the start of each new day.
+  let lastTickDateLabel = null;
   for (let i = 0; i <= xSteps; i++) {
     const t = tMin + (tMax - tMin) * i / xSteps;
     const x = xPix(t);
     ctx.beginPath(); ctx.moveTo(x, padding.top); ctx.lineTo(x, h - padding.bottom); ctx.stroke();
-    const label = new Date(t * 1000).toLocaleTimeString([], xTickFormat);
-    const textWidth = ctx.measureText(label).width;
-    const lx = Math.max(padding.left, Math.min(w - padding.right - textWidth, x - textWidth / 2));
-    ctx.fillText(label, lx, h - 5);
+    const timeLabel = new Date(t * 1000).toLocaleTimeString([], xTickFormat);
+    const timeWidth = ctx.measureText(timeLabel).width;
+    const lx = Math.max(padding.left, Math.min(w - padding.right - timeWidth, x - timeWidth / 2));
+    ctx.fillText(timeLabel, lx, h - 5);
+
+    const dateLabel = fmtDay(t);
+    if (dateLabel !== lastTickDateLabel) {
+      const dateWidth = ctx.measureText(dateLabel).width;
+      const dx = Math.max(padding.left, Math.min(w - padding.right - dateWidth, x - dateWidth / 2));
+      ctx.fillText(dateLabel, dx, h - 16);
+      lastTickDateLabel = dateLabel;
+    }
   }
 
   // Y gridlines + left tick labels come from the primary (left) axis only --
@@ -756,7 +770,7 @@ function drawChart(canvas, seriesList, opts) {
   // crosshair axis labels.
   if (opts.hoverT !== null && opts.hoverT !== undefined && opts.hoverT >= tMin && opts.hoverT <= tMax) {
     const hx = xPix(opts.hoverT);
-    const label = fmtTime(opts.hoverT);
+    const label = fmtDay(opts.hoverT) + ' ' + fmtTime(opts.hoverT);
     ctx.font = '10px system-ui';
     const textWidth = ctx.measureText(label).width;
     const boxPaddingX = 5, boxHeight = 14;
