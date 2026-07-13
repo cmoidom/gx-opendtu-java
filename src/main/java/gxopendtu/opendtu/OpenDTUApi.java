@@ -13,6 +13,9 @@ public interface OpenDTUApi {
 
     Map<String, Double> getLivePowerW(Collection<String> serials);
 
+    /** {serial: today's cumulative AC yield, in Wh} -- resets to 0 at local midnight on the inverter itself. */
+    Map<String, Double> getYieldDayWh(Collection<String> serials);
+
     Map<String, LimitStatus> getLimitStatus();
 
     void setAbsoluteLimitW(String serial, double watts);

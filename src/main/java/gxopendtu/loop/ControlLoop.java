@@ -21,6 +21,7 @@ import gxopendtu.opendtu.OpenDTUClient;
 import gxopendtu.opendtu.OpenDTUException;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.state.StateStore;
@@ -366,6 +367,7 @@ public final class ControlLoop {
             boolean dryRun,
             LiveState liveState,
             HourlyEnergyHistory energyHistory,
+            InverterEnergyHistory inverterEnergyHistory,
             Path configPath,
             ManualOverride manualOverride,
             InjectionModeOverride injectionMode,
@@ -448,6 +450,15 @@ public final class ControlLoop {
                     energyHistory.record(reading.fromNetKwh(), reading.toNetKwh());
                 } catch (GridMeterUnavailableException e) {
                     LOG.severe("grid energy counters read failed (dashboard display only): " + e.getMessage());
+                }
+                try {
+                    // Read regardless of injection_control ON/OFF/OVERRIDE:
+                    // inverters keep producing (and OpenDTU keeps counting
+                    // YieldDay) even while curtailed for battery-charge
+                    // priority or under a manual override.
+                    inverterEnergyHistory.record(client.getYieldDayWh(serials), now);
+                } catch (OpenDTUException e) {
+                    LOG.severe("inverter yield read failed (dashboard display only): " + e.getMessage());
                 }
 
                 Double socPct = null;
@@ -585,6 +596,7 @@ public final class ControlLoop {
             if (now - lastStatsWriteTime >= config.stats().intervalS()) {
                 lastStatsWriteTime = now;
                 statsStore.upsertHourlyEnergy(energyHistory.snapshot());
+                statsStore.upsertInverterHourlyEnergy(inverterEnergyHistory.snapshot());
             }
             if (now - lastPruneTime >= PRUNE_INTERVAL_S) {
                 lastPruneTime = now;

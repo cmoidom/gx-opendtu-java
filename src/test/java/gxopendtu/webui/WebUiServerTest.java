@@ -2,6 +2,7 @@ package gxopendtu.webui;
 
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.state.StateStore;
@@ -47,6 +48,7 @@ class WebUiServerTest {
                 0,
                 new LiveState(),
                 new HourlyEnergyHistory(),
+                new InverterEnergyHistory(),
                 new ManualOverride(),
                 new InjectionModeOverride(),
                 statsStore);
@@ -99,7 +101,7 @@ class WebUiServerTest {
     void configPageShowsStatsDbSizeAndRowCount() throws Exception {
         LiveState liveState = new LiveState();
         liveState.recordGrid(10.0, 9.0);
-        statsStore.persistSnapshot(liveState, new HourlyEnergyHistory());
+        statsStore.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
 
         HttpResponse<String> response = get("/");
 
@@ -126,6 +128,7 @@ class WebUiServerTest {
         assertThat(response.body())
                 .contains("\"history\"")
                 .contains("\"hourly_energy\"")
+                .contains("\"hourly_inverter_energy\"")
                 .contains("\"injection_mode\":\"AUTO\"");
     }
 
@@ -134,7 +137,7 @@ class WebUiServerTest {
         double now = System.currentTimeMillis() / 1000.0;
         LiveState liveState = new LiveState();
         liveState.recordGrid(42.0, 40.0);
-        statsStore.persistSnapshot(liveState, new HourlyEnergyHistory());
+        statsStore.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
 
         HttpResponse<String> response = get("/history.json?since=" + (now - 5) + "&until=" + (now + 5));
 

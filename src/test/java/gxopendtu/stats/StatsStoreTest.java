@@ -1,6 +1,7 @@
 package gxopendtu.stats;
 
 import gxopendtu.state.HourlyEnergyHistory;
+import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,14 +46,20 @@ class StatsStoreTest {
         liveState.recordGrid(100.0, 95.0);
         HourlyEnergyHistory energyHistory = new HourlyEnergyHistory();
         energyHistory.record(10.0, 2.0, 1_800_000_000.0);
+        InverterEnergyHistory inverterEnergyHistory = new InverterEnergyHistory();
+        inverterEnergyHistory.record(Map.of("a", 5.0), 1_800_000_000.0);
 
         try (StatsStore store = new StatsStore(dbPath)) {
-            store.persistSnapshot(liveState, energyHistory);
+            store.persistSnapshot(liveState, energyHistory, inverterEnergyHistory);
         }
 
         assertThat(countRows(dbPath, "samples")).isEqualTo(1);
         assertThat(countRows(dbPath, "inverter_samples")).isEqualTo(2);
         assertThat(countRows(dbPath, "hourly_energy")).isEqualTo(1);
+        // First-ever reading for serial "a" -- no baseline to diff against
+        // yet, so the bucket exists but carries no wh entries (see
+        // InverterEnergyHistory's javadoc), hence zero rows here too.
+        assertThat(countRows(dbPath, "inverter_hourly_energy")).isZero();
 
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
                 Statement stmt = conn.createStatement();
@@ -75,9 +82,10 @@ class StatsStoreTest {
         Path dbPath = tmpDir.resolve("stats.db");
         LiveState liveState = new LiveState();
         HourlyEnergyHistory energyHistory = new HourlyEnergyHistory();
+        InverterEnergyHistory inverterEnergyHistory = new InverterEnergyHistory();
 
         try (StatsStore store = new StatsStore(dbPath)) {
-            store.persistSnapshot(liveState, energyHistory);
+            store.persistSnapshot(liveState, energyHistory, inverterEnergyHistory);
         }
 
         assertThat(countRows(dbPath, "samples")).isZero();
@@ -92,6 +100,9 @@ class StatsStoreTest {
             store.upsertHourlyEnergy(List.of(
                     Map.of("hour", 0.0, "from_kwh", 1.0, "to_kwh", 0.0),
                     Map.of("hour", 2_000_000.0, "from_kwh", 2.0, "to_kwh", 0.0)));
+            store.upsertInverterHourlyEnergy(List.of(
+                    Map.of("hour", 0.0, "a", 1.0),
+                    Map.of("hour", 2_000_000.0, "a", 2.0)));
 
             store.pruneOlderThan(1_000_000.0);
         }
@@ -99,6 +110,7 @@ class StatsStoreTest {
         assertThat(countRows(dbPath, "samples")).isEqualTo(1);
         assertThat(countRows(dbPath, "inverter_samples")).isEqualTo(1);
         assertThat(countRows(dbPath, "hourly_energy")).isEqualTo(1);
+        assertThat(countRows(dbPath, "inverter_hourly_energy")).isEqualTo(1);
 
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
                 Statement stmt = conn.createStatement();
@@ -209,6 +221,55 @@ class StatsStoreTest {
         Path dbPath = tmpDir.resolve("stats.db");
         try (StatsStore store = new StatsStore(dbPath)) {
             assertThat(store.loadHourlyEnergy(0.0)).isEmpty();
+        }
+    }
+
+    @Test
+    void upsertInverterHourlyEnergyIsIdempotentPerHourAndSerial(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.upsertInverterHourlyEnergy(List.of(Map.of("hour", 3600.0, "a", 10.0, "b", 20.0)));
+            store.upsertInverterHourlyEnergy(List.of(Map.of("hour", 3600.0, "a", 15.0, "b", 25.0)));
+        }
+
+        assertThat(countRows(dbPath, "inverter_hourly_energy")).isEqualTo(2); // one row per serial, not per write
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT serial, wh FROM inverter_hourly_energy ORDER BY serial")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString("serial")).isEqualTo("a");
+            assertThat(rs.getDouble("wh")).isEqualTo(15.0); // last write wins, not accumulated
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString("serial")).isEqualTo("b");
+            assertThat(rs.getDouble("wh")).isEqualTo(25.0);
+        }
+    }
+
+    @Test
+    void loadInverterHourlyEnergyReturnsChronologicalOrderSinceCutoff(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.upsertInverterHourlyEnergy(List.of(
+                    Map.of("hour", 0.0, "a", 1.0),
+                    Map.of("hour", 7200.0, "a", 2.0, "b", 0.5),
+                    Map.of("hour", 3600.0, "a", 3.0)));
+
+            List<Map<String, Object>> rows = store.loadInverterHourlyEnergy(1000.0);
+
+            assertThat(rows).hasSize(2); // the hour=0 bucket is before the cutoff
+            assertThat(rows.get(0).get("hour")).isEqualTo(3600.0);
+            assertThat(rows.get(0).get("a")).isEqualTo(3.0);
+            assertThat(rows.get(1).get("hour")).isEqualTo(7200.0);
+            assertThat(rows.get(1).get("a")).isEqualTo(2.0);
+            assertThat(rows.get(1).get("b")).isEqualTo(0.5);
+        }
+    }
+
+    @Test
+    void loadInverterHourlyEnergyEmptyDatabaseReturnsEmptyList(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            assertThat(store.loadInverterHourlyEnergy(0.0)).isEmpty();
         }
     }
 

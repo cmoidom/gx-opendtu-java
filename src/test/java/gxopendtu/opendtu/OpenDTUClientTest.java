@@ -83,6 +83,27 @@ class OpenDTUClientTest {
     }
 
     @Test
+    void getYieldDayWhReadsInverterLevelTotal() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(
+                exchange,
+                "{\"inverters\": [{\"serial\": \"111\", \"INV\": {\"0\": {\"YieldDay\": {\"v\": 144, \"u\": \"Wh\"}}}}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getYieldDayWh(List.of("111"));
+
+        assertThat(requestedPaths).containsExactly("/api/livedata/status?inv=111");
+        assertThat(result).containsEntry("111", 144.0);
+    }
+
+    @Test
+    void getYieldDayWhDefaultsToZeroWhenInvMissing() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{\"inverters\": [{\"serial\": \"111\"}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getYieldDayWh(List.of("111"));
+
+        assertThat(result).containsEntry("111", 0.0);
+    }
+
+    @Test
     void getLimitStatusParsesAcknowledgedFromLimitSetStatus() throws IOException {
         String baseUrl = startServer((exchange) -> respondJson(
                 exchange,

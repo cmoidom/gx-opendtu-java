@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 
@@ -24,16 +25,19 @@ final class StatusJsonHandler implements HttpHandler {
 
     private final LiveState liveState;
     private final HourlyEnergyHistory energyHistory;
+    private final InverterEnergyHistory inverterEnergyHistory;
     private final ManualOverride manualOverride;
     private final InjectionModeOverride injectionMode;
 
     StatusJsonHandler(
             LiveState liveState,
             HourlyEnergyHistory energyHistory,
+            InverterEnergyHistory inverterEnergyHistory,
             ManualOverride manualOverride,
             InjectionModeOverride injectionMode) {
         this.liveState = liveState;
         this.energyHistory = energyHistory;
+        this.inverterEnergyHistory = inverterEnergyHistory;
         this.manualOverride = manualOverride;
         this.injectionMode = injectionMode;
     }
@@ -52,6 +56,7 @@ final class StatusJsonHandler implements HttpHandler {
             payload.put("latest", snapshot.latest());
             payload.put("history", snapshot.history());
             payload.put("hourly_energy", energyHistory.snapshot());
+            payload.put("hourly_inverter_energy", inverterEnergyHistory.snapshot());
             payload.put("manual_override", manualOverride.snapshot());
             payload.put("injection_mode", injectionMode.getMode().name());
 

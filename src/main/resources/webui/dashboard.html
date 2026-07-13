@@ -56,8 +56,11 @@
   .chart-box canvas { width: 100%; height: 200px; display: block; }
   .legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.82rem; color: var(--text-secondary);
             margin-top: 0.4rem; }
+  .legend span { cursor: pointer; user-select: none; }
   .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
                  margin-right: 0.35rem; vertical-align: middle; }
+  .legend span.hidden { color: var(--muted); text-decoration: line-through; }
+  .legend span.hidden .dot { opacity: 0.35; }
   table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--gridline); }
   th { color: var(--text-secondary); font-weight: 600; }
@@ -114,22 +117,15 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 <h2>Batterie</h2>
 <div class="chart-box">
   <canvas id="chart-soc"></canvas>
-  <div class="legend">
-    <span><span class="dot" style="background:var(--series-1)"></span>SOC</span>
-    <span><span class="dot" style="background:var(--series-2)"></span>Tension batterie</span>
-    <span><span class="dot" style="background:var(--series-3)"></span>Courant batterie</span>
-  </div>
-  <p class="hint">Courant : positif = charge, negatif = decharge.</p>
+  <div class="legend" id="soc-legend"></div>
+  <p class="hint">Courant : positif = charge, negatif = decharge. Cliquer une courbe dans la legende
+  pour l'afficher/masquer.</p>
 </div>
 
 <h2>Puissance reseau et batterie</h2>
 <div class="chart-box">
   <canvas id="chart-grid"></canvas>
-  <div class="legend">
-    <span><span class="dot" style="background:var(--series-1)"></span>Reseau (brut)</span>
-    <span><span class="dot" style="background:var(--series-2)"></span>Reseau (EMA, utilisee par le regulateur)</span>
-    <span><span class="dot" style="background:var(--series-3)"></span>Batterie</span>
-  </div>
+  <div class="legend" id="grid-legend"></div>
   <p class="hint">Batterie : positif = charge, negatif = decharge.</p>
 </div>
 
@@ -150,12 +146,17 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 <h2>Energie reseau par heure</h2>
 <div class="chart-box">
   <canvas id="chart-energy"></canvas>
-  <div class="legend">
-    <span><span class="dot" style="background:var(--series-1)"></span>Soutiree du reseau</span>
-    <span><span class="dot" style="background:var(--series-2)"></span>Injectee au reseau</span>
-  </div>
+  <div class="legend" id="energy-legend"></div>
   <p class="hint">Compteurs cumulatifs du compteur reseau (pas de la boucle de pilotage) --
   l'heure en cours est partielle. Pas de zoom/deplacement sur ce graphique (deja agrege a l'heure).</p>
+</div>
+
+<h2>Energie par onduleur (Wh) par heure</h2>
+<div class="chart-box">
+  <canvas id="chart-inverter-energy"></canvas>
+  <div class="legend" id="inverter-energy-legend"></div>
+  <p class="hint">Production cumulee de chaque onduleur (compteur YieldDay d'OpenDTU, pas la boucle de
+  pilotage) -- l'heure en cours est partielle. Pas de zoom/deplacement sur ce graphique (deja agrege a l'heure).</p>
 </div>
 
 <div id="tooltip"></div>
@@ -177,8 +178,49 @@ const MAX_POINTS = 900;
 let inverterOrder = [];  // stable color assignment, first-seen order
 let inverterNames = {};  // serial -> name, from config
 let hourlyEnergy = [];
+let hourlyInverterEnergy = [];
 
 function inverterLabel(serial) { return inverterNames[serial] || serial; }
+
+// Per-chart, per-series show/hide state (legend click) -- keyed by an
+// arbitrary chart id (e.g. 'soc', 'inverters') so the same series key (an
+// inverter serial) can be toggled independently on the power chart and the
+// energy-by-hour chart. Hidden series are dropped before the chart ever
+// sees them (see visibleSeries/visibleBarSeries), so they don't affect
+// tooltips, hover dots, or that chart's own y-axis auto-scale either.
+const hiddenSeries = {};
+
+function isSeriesHidden(chartId, key) {
+  return !!(hiddenSeries[chartId] && hiddenSeries[chartId].has(key));
+}
+
+function toggleSeries(chartId, key) {
+  if (!hiddenSeries[chartId]) hiddenSeries[chartId] = new Set();
+  const set = hiddenSeries[chartId];
+  if (set.has(key)) set.delete(key); else set.add(key);
+  renderCharts();
+}
+
+/** items: [{key, label, color}]. Renders a clickable legend into #<elementId>. */
+function renderLegend(elementId, chartId, items) {
+  document.getElementById(elementId).innerHTML = items.map(it =>
+    '<span class="' + (isSeriesHidden(chartId, it.key) ? 'hidden' : '') + '" ' +
+    'onclick="toggleSeries(\'' + chartId + '\', \'' + it.key.replace(/'/g, "\\'") + '\')">' +
+    '<span class="dot" style="background:' + it.color + '"></span>' + it.label + '</span>'
+  ).join('');
+}
+
+/** Drops any series whose key is currently hidden for this chart -- series must each carry a `key`. */
+function visibleSeries(chartId, series) {
+  return series.filter(s => !isSeriesHidden(chartId, s.key));
+}
+
+/** Same filtering as visibleSeries, but for drawBarChart's parallel keys/colors/labels arrays. */
+function visibleBarSeries(chartId, keys, colors, labels) {
+  const idx = [];
+  keys.forEach((k, i) => { if (!isSeriesHidden(chartId, k)) idx.push(i); });
+  return { keys: idx.map(i => keys[i]), colors: idx.map(i => colors[i]), labels: idx.map(i => labels[i]) };
+}
 
 // Shared zoom/pan window, synchronized across all time-series charts. null
 // means "auto, full extent" -- both bounds are epoch seconds so a zoomed-in
@@ -306,6 +348,7 @@ function fmtEnergy(v) {
   if (v === null || v === undefined) return '-';
   return Math.abs(v) < 1 ? Math.round(v * 1000) + ' Wh' : v.toFixed(2) + ' kWh';
 }
+function fmtWh(v) { return (v === null || v === undefined) ? '-' : Math.round(v) + ' Wh'; }
 function fmtHour(h) { return new Date(h * 1000).toLocaleTimeString([], { hour: '2-digit' }); }
 function fmtVolt(v) { return (v === null || v === undefined) ? '-' : v.toFixed(2) + ' V'; }
 function fmtAmp(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' A'; }
@@ -750,10 +793,12 @@ const chartSoc = document.getElementById('chart-soc');
 const chartGrid = document.getElementById('chart-grid');
 const chartInverters = document.getElementById('chart-inverters');
 const chartEnergy = document.getElementById('chart-energy');
+const chartInverterEnergy = document.getElementById('chart-inverter-energy');
 attachHover(chartSoc, { yFormat: fmtPct });
 attachHover(chartGrid, { yFormat: fmtW });
 attachHover(chartInverters, { yFormat: fmtW });
 attachBarHover(chartEnergy);
+attachBarHover(chartInverterEnergy);
 attachZoomPan(chartSoc);
 attachZoomPan(chartGrid);
 attachZoomPan(chartInverters);
@@ -799,13 +844,6 @@ function renderInverterTable(latest) {
   }).join('');
 }
 
-function renderInvertersLegend() {
-  const legend = document.getElementById('inverters-legend');
-  legend.innerHTML = inverterOrder.map((serial, i) =>
-    '<span><span class="dot" style="background:' + cssVar(SERIES_COLORS[i % SERIES_COLORS.length]) + '"></span>' + inverterLabel(serial) + '</span>'
-  ).join('');
-}
-
 function renderCharts() {
   const viewOpts = { viewTMin: viewTMin, viewTMax: viewTMax };
   const resetBtn = document.getElementById('reset-zoom');
@@ -816,38 +854,48 @@ function renderCharts() {
                                 .map(s => ({ t: s.t, v: s.battery_voltage_v, backfilled: !!s.backfilled }));
   const currentPoints = history.filter(s => s.battery_current_a !== null && s.battery_current_a !== undefined)
                                 .map(s => ({ t: s.t, v: s.battery_current_a, backfilled: !!s.backfilled }));
-  drawChart(chartSoc, [
-    { label: 'SOC', color: cssVar('--series-1'), points: socPoints, axis: 'soc' },
-    { label: 'Tension batterie', color: cssVar('--series-2'), points: voltagePoints, axis: 'volt' },
-    { label: 'Courant batterie', color: cssVar('--series-3'), points: currentPoints, axis: 'amp' },
-  ], Object.assign({
+  const socSeries = [
+    { key: 'soc', label: 'SOC', color: cssVar('--series-1'), points: socPoints, axis: 'soc' },
+    { key: 'battery_voltage_v', label: 'Tension batterie', color: cssVar('--series-2'), points: voltagePoints, axis: 'volt' },
+    { key: 'battery_current_a', label: 'Courant batterie', color: cssVar('--series-3'), points: currentPoints, axis: 'amp' },
+  ];
+  drawChart(chartSoc, visibleSeries('soc', socSeries), Object.assign({
     axes: [
       { id: 'soc', side: 'left', min: 0, max: 100, format: fmtPct },
       { id: 'volt', side: 'right', format: fmtVolt, color: cssVar('--series-2'), minStep: 0.01 },
       { id: 'amp', side: 'right', format: fmtAmp, color: cssVar('--series-3'), includeZero: true, minStep: 0.1 },
     ],
   }, viewOpts));
+  renderLegend('soc-legend', 'soc', socSeries);
 
   const batteryPoints = history.filter(s => s.battery_power_w !== null && s.battery_power_w !== undefined)
                                 .map(s => ({ t: s.t, v: s.battery_power_w, backfilled: !!s.backfilled }));
-  drawChart(chartGrid, [
-    { label: 'Reseau (brut)', color: cssVar('--series-1'), points: history.map(s => ({ t: s.t, v: s.grid_raw_w, backfilled: !!s.backfilled })) },
-    { label: 'Reseau (EMA)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w, backfilled: !!s.backfilled })) },
-    { label: 'Batterie', color: cssVar('--series-3'), points: batteryPoints },
-  ], Object.assign({ yFormat: fmtW, includeZero: true }, viewOpts));
+  const gridSeries = [
+    { key: 'grid_raw_w', label: 'Reseau (brut)', color: cssVar('--series-1'), points: history.map(s => ({ t: s.t, v: s.grid_raw_w, backfilled: !!s.backfilled })) },
+    { key: 'grid_ema_w', label: 'Reseau (EMA, utilisee par le regulateur)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w, backfilled: !!s.backfilled })) },
+    { key: 'battery_power_w', label: 'Batterie', color: cssVar('--series-3'), points: batteryPoints },
+  ];
+  drawChart(chartGrid, visibleSeries('grid', gridSeries), Object.assign({ yFormat: fmtW, includeZero: true }, viewOpts));
+  renderLegend('grid-legend', 'grid', gridSeries);
 
   history.forEach(s => (s.inverters || []).forEach(inv => {
     if (!inverterOrder.includes(inv.serial)) inverterOrder.push(inv.serial);
     if (inv.name) inverterNames[inv.serial] = inv.name;
   }));
-  const invSeries = inverterOrder.map((serial, i) => ({
+  hourlyInverterEnergy.forEach(bucket => Object.keys(bucket).forEach(key => {
+    if (key !== 'hour' && !inverterOrder.includes(key)) inverterOrder.push(key);
+  }));
+  const inverterColor = (serial) => cssVar(SERIES_COLORS[inverterOrder.indexOf(serial) % SERIES_COLORS.length]);
+
+  const invSeries = inverterOrder.map(serial => ({
+    key: serial,
     label: inverterLabel(serial),
-    color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]),
+    color: inverterColor(serial),
     points: history.filter(s => (s.inverters || []).some(inv => inv.serial === serial))
                    .map(s => ({ t: s.t, v: s.inverters.find(inv => inv.serial === serial).actual_w, backfilled: !!s.backfilled })),
   }));
-  drawChart(chartInverters, invSeries, Object.assign({ yFormat: fmtW }, viewOpts));
-  renderInvertersLegend();
+  drawChart(chartInverters, visibleSeries('inverters', invSeries), Object.assign({ yFormat: fmtW }, viewOpts));
+  renderLegend('inverters-legend', 'inverters', invSeries);
 
   // Reapply the hover crosshair on top of this fresh render for any chart
   // currently being hovered -- otherwise a periodic poll() redraw (every 2s)
@@ -856,11 +904,21 @@ function renderCharts() {
     if (c._hoverT !== null && c._hoverT !== undefined) redrawChart(c);
   });
 
+  const energyBars = visibleBarSeries('energy', ['from_kwh', 'to_kwh'], [cssVar('--series-1'), cssVar('--series-2')], ['Soutiree', 'Injectee']);
+  drawBarChart(chartEnergy, hourlyEnergy, energyBars.keys, energyBars.colors, energyBars.labels, { yFormat: fmtEnergy });
+  renderLegend('energy-legend', 'energy', [
+    { key: 'from_kwh', label: 'Soutiree du reseau', color: cssVar('--series-1') },
+    { key: 'to_kwh', label: 'Injectee au reseau', color: cssVar('--series-2') },
+  ]);
+
+  const inverterEnergyBars = visibleBarSeries(
+      'inverter-energy', inverterOrder, inverterOrder.map(inverterColor), inverterOrder.map(inverterLabel));
   drawBarChart(
-    chartEnergy, hourlyEnergy, ['from_kwh', 'to_kwh'],
-    [cssVar('--series-1'), cssVar('--series-2')], ['Soutiree', 'Injectee'],
-    { yFormat: fmtEnergy }
-  );
+      chartInverterEnergy, hourlyInverterEnergy, inverterEnergyBars.keys, inverterEnergyBars.colors,
+      inverterEnergyBars.labels, { yFormat: fmtWh });
+  renderLegend('inverter-energy-legend', 'inverter-energy', inverterOrder.map(serial => ({
+    key: serial, label: inverterLabel(serial), color: inverterColor(serial),
+  })));
 }
 
 function poll() {
@@ -882,6 +940,7 @@ function poll() {
         lastT = data.history[data.history.length - 1].t;
       }
       if (data.hourly_energy) hourlyEnergy = data.hourly_energy;
+      if (data.hourly_inverter_energy) hourlyInverterEnergy = data.hourly_inverter_energy;
       renderTiles(data.latest);
       renderInverterTable(data.latest);
       renderCharts();

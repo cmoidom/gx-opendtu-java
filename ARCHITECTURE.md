@@ -218,7 +218,7 @@ tables.
 2s pendant 30 jours + 5 min au-delà (design retenu) ≈ 570 Mo/2 ans.
 
 **Écriture immédiate sur "Enregistrer et appliquer"** : `webui/ConfigPageHandler`
-appelle `statsStore.persistSnapshot(liveState, energyHistory)` juste avant
+appelle `statsStore.persistSnapshot(liveState, energyHistory, inverterEnergyHistory)` juste avant
 de programmer `System.exit(1)` -- l'échantillon lui-même est déjà écrit en
 continu (voir ci-dessus), mais ça flush aussi immédiatement `hourly_energy`
 plutôt que de le laisser jusqu'à `stats.interval_s` en retard. Cet appel
@@ -267,6 +267,46 @@ tampon mais laisse volontairement `lastFromKwh`/`lastToKwh` à `null` :
 la boucle de contrôle n'a pas fait sa première vraie lecture après le
 redémarrage, donc la seule différence avec un démarrage à froid est que le
 tampon contient déjà l'historique des heures précédentes au lieu d'être vide.
+
+**`InverterEnergyHistory` : énergie par onduleur en Wh (2026-07-13)** :
+même principe que `HourlyEnergyHistory` mais par onduleur plutôt qu'agrégé
+réseau. Source : le compteur `YieldDay` (Wh) que
+chaque onduleur/OpenDTU calcule déjà lui-même (`INV.0.YieldDay` dans
+`/api/livedata/status?inv=<serial>` -- confirmé sur une installation réelle :
+c'est déjà le total de l'onduleur, somme de tous ses canaux DC/MPPT, pas la
+part d'un seul canal) plutôt que d'intégrer nous-mêmes `actual_w` : plus
+fiable, aucune dérive possible sur les coupures de polling, et ça ne
+réinvente pas ce que l'onduleur fait déjà. `OpenDTUApi#getYieldDayWh` réutilise
+le même endpoint par onduleur que `getLivePowerW` (déjà un GET par onduleur
+et par cycle, voir plus haut) -- pas d'appel HTTP supplémentaire. `ControlLoop.run`
+appelle `inverterEnergyHistory.record(client.getYieldDayWh(serials), now)` à
+la même cadence que `energyHistory.record(...)` (chaque cycle de décision),
+**quel que soit l'état ON/OFF/OVERRIDE** : les onduleurs continuent de
+produire (et OpenDTU de compter YieldDay) même pendant la charge batterie
+prioritaire ou un forçage manuel. `YieldDay` se remet à zéro chaque jour
+(minuit local sur l'onduleur, pas configurable côté logiciel) -- un delta
+négatif est donc attendu une fois par jour et simplement ignoré, comme un
+reset de compteur pour `HourlyEnergyHistory` ; l'écart perdu est au pire un
+cycle de décision, négligeable. Persisté dans une quatrième table SQLite,
+`inverter_hourly_energy (hour, serial, wh)`, avec les mêmes conventions que
+`hourly_energy` (`INSERT OR REPLACE`, backfillé au démarrage via
+`loadInverterHourlyEnergy`, purgé par `pruneOlderThan`). Affiché en barres
+groupées sur `dashboard.html` ("Energie par onduleur (Wh) par heure"),
+toujours en Wh (jamais basculé en kWh comme `fmtEnergy` le fait pour
+l'énergie réseau) -- une décision explicite pour garder les valeurs
+lisibles onduleur par onduleur, qui sont typiquement de quelques centaines
+de Wh/heure.
+
+**Affichage/masquage des courbes par clic sur la légende (2026-07-13)** :
+chaque graphique de `dashboard.html` (SOC/tension/courant, réseau/batterie,
+puissance par onduleur, énergie réseau, énergie par onduleur) a désormais
+une légende cliquable -- `toggleSeries(chartId, key)` bascule une entrée
+dans `hiddenSeries` (un `Set` par graphique, donc masquer un onduleur sur le
+graphique de puissance n'affecte pas le graphique d'énergie) et redessine.
+Les séries masquées sont retirées de la liste **avant** `drawChart`/
+`drawBarChart` (`visibleSeries`/`visibleBarSeries`), pas juste rendues
+invisibles visuellement -- donc elles n'influencent plus non plus l'échelle
+Y auto-calculée de leur axe, ni les tooltips/points de survol.
 
 **Ne rompt pas les courbes du dashboard sur les données rechargées**
 (`dashboard.html`) : `drawChart` refuse de relier deux points par une ligne

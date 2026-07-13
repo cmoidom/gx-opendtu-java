@@ -1,6 +1,7 @@
 package gxopendtu.stats;
 
 import gxopendtu.state.HourlyEnergyHistory;
+import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 
 import java.io.IOException;
@@ -86,6 +87,12 @@ public final class StatsStore implements AutoCloseable {
                                 + "hour INTEGER PRIMARY KEY, "
                                 + "from_kwh REAL, "
                                 + "to_kwh REAL)");
+                statement.execute(
+                        "CREATE TABLE IF NOT EXISTS inverter_hourly_energy ("
+                                + "hour INTEGER, "
+                                + "serial TEXT, "
+                                + "wh REAL, "
+                                + "PRIMARY KEY (hour, serial))");
                 // Migration for databases created before battery_voltage_v/
                 // battery_current_a existed -- CREATE TABLE IF NOT EXISTS is a
                 // no-op against an already-existing samples table, so a
@@ -113,10 +120,15 @@ public final class StatsStore implements AutoCloseable {
         }
     }
 
-    /** Reads the latest LiveState sample and the current HourlyEnergyHistory buckets, and persists both. */
-    public void persistSnapshot(LiveState liveState, HourlyEnergyHistory energyHistory) {
+    /**
+     * Reads the latest LiveState sample and the current HourlyEnergyHistory/
+     * InverterEnergyHistory buckets, and persists all three.
+     */
+    public void persistSnapshot(
+            LiveState liveState, HourlyEnergyHistory energyHistory, InverterEnergyHistory inverterEnergyHistory) {
         recordLatestSample(liveState);
         upsertHourlyEnergy(energyHistory.snapshot());
+        upsertInverterHourlyEnergy(inverterEnergyHistory.snapshot());
     }
 
     /**
@@ -340,6 +352,36 @@ public final class StatsStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Hourly per-inverter energy yield (Wh) since {@code sinceEpochSeconds}
+     * (chronological order), in the same flat map shape
+     * {@link InverterEnergyHistory#snapshot()} produces ({@code hour} plus
+     * one key per serial) -- used to seed {@code InverterEnergyHistory} at
+     * startup, same reasoning as {@link #loadHourlyEnergy}.
+     */
+    public List<Map<String, Object>> loadInverterHourlyEnergy(double sinceEpochSeconds) {
+        lock.lock();
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT hour, serial, wh FROM inverter_hourly_energy WHERE hour >= ? ORDER BY hour")) {
+            stmt.setLong(1, Math.round(sinceEpochSeconds));
+            Map<Long, Map<String, Object>> bucketsByHour = new LinkedHashMap<>();
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    long hour = rs.getLong("hour");
+                    Map<String, Object> bucket =
+                            bucketsByHour.computeIfAbsent(hour, h -> new LinkedHashMap<>(Map.of("hour", (double) h)));
+                    bucket.put(rs.getString("serial"), rs.getDouble("wh"));
+                }
+            }
+            return new ArrayList<>(bucketsByHour.values());
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to load inverter hourly energy for dashboard backfill", e);
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Row count of the {@code samples} table -- shown on the config page alongside {@link #sizeBytes()}. */
     public long sampleCount() {
         lock.lock();
@@ -446,6 +488,34 @@ public final class StatsStore implements AutoCloseable {
     }
 
     /**
+     * Persists the current {@code InverterEnergyHistory} buckets -- called on
+     * the same cadence as {@link #upsertHourlyEnergy} (see loop.ControlLoop.run).
+     */
+    public void upsertInverterHourlyEnergy(List<Map<String, Object>> buckets) {
+        lock.lock();
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "INSERT OR REPLACE INTO inverter_hourly_energy (hour, serial, wh) VALUES (?, ?, ?)")) {
+            for (Map<String, Object> bucket : buckets) {
+                long hour = Math.round((Double) bucket.get("hour"));
+                for (Map.Entry<String, Object> entry : bucket.entrySet()) {
+                    if ("hour".equals(entry.getKey())) {
+                        continue;
+                    }
+                    stmt.setLong(1, hour);
+                    stmt.setString(2, entry.getKey());
+                    stmt.setDouble(3, (Double) entry.getValue());
+                    stmt.addBatch();
+                }
+            }
+            stmt.executeBatch();
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to persist inverter hourly energy", e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * Thins {@code samples} rows older than {@code highResCutoffEpochSeconds}
      * down to one row per {@code bucketSeconds}-wide bucket (keeping each
      * bucket's LATEST row -- the same "whatever's current when the timer
@@ -495,7 +565,8 @@ public final class StatsStore implements AutoCloseable {
             for (String sql : List.of(
                     "DELETE FROM samples WHERE t < ?",
                     "DELETE FROM inverter_samples WHERE t < ?",
-                    "DELETE FROM hourly_energy WHERE hour < ?")) {
+                    "DELETE FROM hourly_energy WHERE hour < ?",
+                    "DELETE FROM inverter_hourly_energy WHERE hour < ?")) {
                 try (PreparedStatement stmt = connection.prepareStatement(sql)) {
                     stmt.setLong(1, cutoff);
                     stmt.executeUpdate();

@@ -153,6 +153,30 @@ public final class OpenDTUClient implements OpenDTUApi {
     }
 
     /**
+     * Returns {serial: today's cumulative AC yield in Wh} for the given
+     * inverters -- read from the same per-inverter endpoint getLivePowerW
+     * uses (INV.0.YieldDay), one request per inverter for the same reason
+     * documented there. Confirmed against a live install: INV.0.YieldDay is
+     * already the whole-inverter total (sum of every DC/MPPT channel's own
+     * YieldDay), not one channel's share, so no further combination is
+     * needed here.
+     */
+    @Override
+    public Map<String, Double> getYieldDayWh(Collection<String> serials) {
+        Map<String, Double> result = new HashMap<>();
+        for (String serial : serials) {
+            JsonNode data = get("/api/livedata/status?inv=" + URLEncoder.encode(serial, StandardCharsets.UTF_8));
+            for (JsonNode inv : data.path("inverters")) {
+                if (!serial.equals(inv.path("serial").asText())) {
+                    continue;
+                }
+                result.put(serial, JsonValues.extractValue(inv.path("INV").path("0").path("YieldDay")));
+            }
+        }
+        return result;
+    }
+
+    /**
      * All inverters OpenDTU currently knows about, with their rated power --
      * used by the config web UI to let a user pick which ones to manage
      * instead of typing serial/power by hand.

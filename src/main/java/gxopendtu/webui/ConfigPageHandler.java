@@ -8,6 +8,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import gxopendtu.config.ConfigLoader;
 import gxopendtu.state.HourlyEnergyHistory;
+import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.stats.StatsStore;
 
@@ -46,12 +47,19 @@ final class ConfigPageHandler implements HttpHandler {
     private final Path configPath;
     private final LiveState liveState;
     private final HourlyEnergyHistory energyHistory;
+    private final InverterEnergyHistory inverterEnergyHistory;
     private final StatsStore statsStore;
 
-    ConfigPageHandler(Path configPath, LiveState liveState, HourlyEnergyHistory energyHistory, StatsStore statsStore) {
+    ConfigPageHandler(
+            Path configPath,
+            LiveState liveState,
+            HourlyEnergyHistory energyHistory,
+            InverterEnergyHistory inverterEnergyHistory,
+            StatsStore statsStore) {
         this.configPath = configPath;
         this.liveState = liveState;
         this.energyHistory = energyHistory;
+        this.inverterEnergyHistory = inverterEnergyHistory;
         this.statsStore = statsStore;
     }
 
@@ -107,7 +115,7 @@ final class ConfigPageHandler implements HttpHandler {
             // is already written every fast-loop tick (see StatsStore's
             // javadoc), but this also flushes hourly_energy right away
             // instead of leaving it up to stats.interval_s stale.
-            statsStore.persistSnapshot(liveState, energyHistory);
+            statsStore.persistSnapshot(liveState, energyHistory, inverterEnergyHistory);
             // Delayed so the response above has time to flush to the client's
             // socket before the process exits.
             Thread exitThread = new Thread(() -> {
