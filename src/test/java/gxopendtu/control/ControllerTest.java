@@ -329,4 +329,47 @@ class ControllerTest {
         estimator.observe("a", 550, 250, true);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(250.0);
     }
+
+    @Test
+    void probeTickJumpsToNominalOnceSaturatedWithoutShortfallAfterBackoffExpires() {
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 800.0), 10);
+        estimator.observe("a", 400, 100, true);
+        estimator.observe("a", 400, 100, true);
+        estimator.observe("a", 400, 100, true); // 3rd cycle -- ceiling drops to 100
+
+        // First probeTick after a real drop always backs off (gentle nudge, not a jump) --
+        // otherwise a still capacity-limited inverter would re-flare to nominal every tick.
+        estimator.probeTick();
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(110.0);
+
+        // Backoff ticks keep nudging gently even if nothing new is observed.
+        estimator.probeTick();
+        estimator.probeTick();
+        estimator.probeTick();
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(140.0); // 110 + 3*10, backoff now expired
+
+        // Only once genuinely saturated at the current ceiling and keeping up with it
+        // does the next probeTick jump straight to nominal instead of nudging.
+        estimator.observe("a", 140, 140, true);
+        estimator.probeTick();
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(800.0);
+    }
+
+    @Test
+    void probeTickDoesNotImmediatelyRetryOptimisticJumpAfterOneFails() {
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 800.0), 10);
+        estimator.observe("a", 400, 100, true);
+        estimator.observe("a", 400, 100, true);
+        estimator.observe("a", 400, 100, true); // ceiling drops to 100
+
+        estimator.probeTick(); // backoff engaged -- gentle nudge, not a jump to 800
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(110.0);
+
+        // Even if immediately saturated and keeping up again, the backoff blocks another
+        // jump attempt for a few ticks -- prevents an indefinite jump/correct/jump loop
+        // during a stretch that's genuinely capacity-limited for a while (e.g. dusk).
+        estimator.observe("a", 110, 110, true);
+        estimator.probeTick();
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(120.0); // still gentle, not nominal
+    }
 }

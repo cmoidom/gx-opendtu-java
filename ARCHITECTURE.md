@@ -632,6 +632,36 @@ tableau de bord (à côté de la puissance mesurée, coloré si trop vieux) et
 sur `/internal`, comme indicateur d'un souci de communication RF avec cet
 onduleur précis.
 
+**Remontée du plafond : optimiste sur saturation, avec anti-rechute
+(2026-07-13).** La nudge linéaire seule (`capacity_probe.step_w`/
+`interval_s`, ex. 10W/30s) est bien trop lente pour un vrai retour de
+soleil : remonter un plafond de 100W à 800W prend `(800-100)/10 = 70`
+cycles de sonde, soit ~35 minutes à 30s/cycle. Pendant tout ce temps, le
+water-filling ne peut jamais allouer au-dessus du plafond suivi -- un pic
+de consommation avec du soleil pourtant revenu (nuage qui se dégage, aube)
+ne serait pas couvert par le solaire, c'est la batterie/le réseau qui
+combleraient à sa place, à l'encontre du principe "priorité solaire sur
+batterie". Quand un onduleur est **saturé** (part allouée == son plafond
+actuel, donc c'est bien le plafond qui le bride, pas la consigne) et suit
+malgré tout ce qu'on lui demande (pas de sous-production), `probeTick`
+saute directement son plafond au nominal au lieu de le nudger d'un pas --
+optimiste, mais sans risque : si le soleil n'est pas vraiment revenu, les
+observations suivantes détecteront la sous-production et le critère de
+persistance de `observe` corrige en `PERSISTENCE_CYCLES` cycles de
+décision (quelques secondes à moins d'une minute), pas en 35 minutes.
+
+Sans garde-fou supplémentaire, ce test optimiste re-flamberait à chaque
+`probeTick` tant que l'onduleur reste durablement limité (un crépuscule de
+plusieurs heures, pas un nuage passager) : sauter au nominal, échouer en
+quelques cycles, redescendre, sauter à nouveau au prochain `probeTick`,
+indéfiniment -- un vrai yoyo, celui-là même que l'hystérésis de
+quantification (`SoftTargetController.quantizeWithHysteresis`) évite déjà
+ailleurs. `CapacityEstimator` impose donc `OPTIMISTIC_BACKOFF_TICKS` (3)
+cycles de sonde en nudge simple après tout échec avant d'autoriser un
+nouveau saut sur cet onduleur -- le test optimiste ne se répète donc au
+pire que toutes les `(1 + OPTIMISTIC_BACKOFF_TICKS) * interval_s` (~2 min
+aux valeurs par défaut) au lieu de chaque cycle de sonde (30s).
+
 `min_inverter_pct` (`config.control.minInverterPct`, défaut **5%**,
 **par onduleur** -- pas à confondre avec `control.stepRelativePct`, qui lui
 s'applique au total agrégé) est appliqué en post-traitement sur la map

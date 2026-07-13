@@ -111,6 +111,22 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   même mesure RF peut être relue plusieurs cycles de décision de suite --
   compter cette même mesure plusieurs fois viderait le sens du critère de
   persistance.
+- **`CapacityEstimator.probeTick` : remontée optimiste sur saturation, avec
+  anti-rechute (2026-07-13)** : la nudge linéaire (`probeStepW`) est trop
+  lente (dizaines de minutes) pour un vrai retour de soleil (nuage qui se
+  dégage, aube) -- le water-filling ne peut jamais dépasser le plafond
+  suivi, donc le solaire reste artificiellement bridé et la batterie/le
+  réseau comble à sa place, à l'encontre de "priorité solaire sur
+  batterie". Si un onduleur est saturé (alloué == plafond) et suit quand
+  même ce qu'on lui demande (pas de sous-production), `probeTick` saute
+  directement au nominal au lieu de nudger -- si le soleil n'est pas
+  vraiment revenu, le critère de persistance de `observe` corrige en
+  `PERSISTENCE_CYCLES` cycles (quelques secondes à moins d'une minute), pas
+  en dizaines de minutes. **Ne jamais retirer le anti-rechute
+  (`OPTIMISTIC_BACKOFF_TICKS`)** : sans lui, un onduleur durablement limité
+  (dusk, pas un nuage passager) re-flambe au nominal à chaque `probeTick`
+  indéfiniment, exactement le yoyo que l'hystérésis de quantification
+  ailleurs dans ce fichier essaie d'éviter.
 - **Fail-safe** : toute perte de communication (Modbus ou OpenDTU) doit
   ramener les onduleurs à une limite basse et sûre plutôt que de laisser le
   service "en roue libre" (`ControlLoop.applyFailsafe`).
