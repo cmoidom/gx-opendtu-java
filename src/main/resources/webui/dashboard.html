@@ -197,8 +197,16 @@ let isDragging = false;
 let loadedTMin = null;
 let historyFetchInFlight = false;
 // Cap per-request span so zooming/panning all the way out doesn't try to
-// pull stats.db's entire multi-year retention in one HTTP round trip.
-const HISTORY_FETCH_MAX_SPAN_S = 7 * 24 * 3600;
+// pull stats.db's entire multi-year retention in one HTTP round trip. Sized
+// for the WORST case, not the common one: within stats.high_res_retention_days
+// (30 days by default), samples are as dense as the live view (~2s), so even
+// a "few hours" span can be tens of thousands of rows -- the client has no
+// way to know from here whether a given request falls inside or outside that
+// window, so this stays conservative rather than assuming the old always-5-min
+// resolution. Beyond that window data is coarse (config.stats.interval_s), so
+// a small cap there just means a few more (cheap) requests while dragging
+// across a long stretch of old history, not a correctness issue.
+const HISTORY_FETCH_MAX_SPAN_S = 6 * 3600;
 
 function resetZoom() { viewTMin = null; viewTMax = null; renderCharts(); }
 

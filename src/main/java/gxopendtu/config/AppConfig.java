@@ -57,13 +57,18 @@ public record AppConfig(
     public record LoggingConfig(boolean verboseTraces) {}
 
     /**
-     * Long-term (multi-year) persistence of dashboard curves to a local
-     * SQLite file (stats.db, next to config.json) -- separate from the
-     * in-memory LiveState/HourlyEnergyHistory ring buffers used for the live
-     * view, which stay ephemeral. intervalS gates how often a sample is
-     * written (deliberately coarser than the live view's read_interval_s --
-     * long-term trend curves don't need per-tick resolution). retentionDays
-     * bounds the database size regardless of uptime.
+     * Long-term persistence of dashboard curves to a local SQLite file
+     * (stats.db, next to config.json) -- separate from the in-memory
+     * LiveState/HourlyEnergyHistory ring buffers used for the live view,
+     * which stay ephemeral. Two resolutions, to balance disk usage against
+     * being able to zoom into a specific past moment: every sample is
+     * written at the live cadence (grid.read_interval_s) for the most
+     * recent highResRetentionDays, then thinned down to one row per
+     * intervalS once older than that (StatsStore#downsampleOlderThan) --
+     * intervalS is therefore the coarse bucket size for aged-out data, not
+     * "how often a sample is written" (that's continuous now). retentionDays
+     * bounds the database size regardless of uptime, at that coarse
+     * resolution, and must be &gt;= highResRetentionDays.
      */
-    public record StatsConfig(double intervalS, int retentionDays) {}
+    public record StatsConfig(double intervalS, int retentionDays, int highResRetentionDays) {}
 }

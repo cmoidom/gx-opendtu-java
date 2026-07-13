@@ -41,6 +41,21 @@ class ConfigPageHandlerFormToRawTest {
         assertThat(config.inverters().get(0).name()).isNull();
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
         assertThat(config.battery().enabled()).isFalse(); // checkbox absent from form
+        assertThat(config.stats().highResRetentionDays()).isEqualTo(30); // default, absent from form
+    }
+
+    @Test
+    void statsHighResRetentionDaysRoundTripsWhenProvided() {
+        Map<String, List<String>> form = Map.of(
+                "opendtu.base_url", List.of("http://x"),
+                "grid.modbus.host", List.of("10.0.0.1"),
+                "stats.high_res_retention_days", List.of("7"),
+                "inverter_serial", List.of("a"),
+                "inverter_nominal_power_w", List.of("100"),
+                "inverter_name", List.of(""));
+
+        AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
+        assertThat(config.stats().highResRetentionDays()).isEqualTo(7);
     }
 
     @Test

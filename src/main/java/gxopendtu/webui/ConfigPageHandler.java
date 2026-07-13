@@ -103,9 +103,10 @@ final class ConfigPageHandler implements HttpHandler {
             LOG.warning(
                     "redemarrage demande via la page de configuration (bouton appliquer) -- "
                             + "le superviseur du service va le relancer");
-            // Persist the latest known state immediately -- otherwise a
-            // restart could lose up to one full stats.interval_s of
-            // long-term history (see StatsStore/ControlLoop.run).
+            // Persist the latest known state immediately -- the sample itself
+            // is already written every fast-loop tick (see StatsStore's
+            // javadoc), but this also flushes hourly_energy right away
+            // instead of leaving it up to stats.interval_s stale.
             statsStore.persistSnapshot(liveState, energyHistory);
             // Delayed so the response above has time to flush to the client's
             // socket before the process exits.
@@ -290,6 +291,8 @@ final class ConfigPageHandler implements HttpHandler {
         stats.put("interval_s", Double.parseDouble(first(form, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S))));
         stats.put("retention_days",
                 (int) Double.parseDouble(first(form, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS))));
+        stats.put("high_res_retention_days", (int) Double.parseDouble(
+                first(form, "stats.high_res_retention_days", d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS))));
         raw.set("stats", stats);
 
         ObjectNode battery = MAPPER.createObjectNode();
@@ -500,14 +503,25 @@ final class ConfigPageHandler implements HttpHandler {
                 + "\n"
                 + "  <fieldset>\n"
                 + "    <legend>Statistiques long terme (stats)</legend>\n"
-                + "    <label>Intervalle d'ecriture (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + val(raw, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S)) + "\" required>\n"
-                + "    <label>Retention (jours)</label>\n"
-                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + val(raw, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS)) + "\" required>\n"
                 + "    <p class=\"hint\">Courbes (reseau, SOC, batterie, par onduleur) et energie horaire persistees dans "
                 + "stats.db pour l'historique long terme, independamment du tableau de bord temps reel (~30min/48h en memoire). "
-                + "Ecrit a cet intervalle, plus immediatement a chaque \"Enregistrer et appliquer\". Les donnees plus "
-                + "vieilles que la retention sont purgees automatiquement.</p>\n"
+                + "Deux resolutions pour limiter la taille du fichier : chaque mesure est ecrite telle quelle (meme cadence "
+                + "que le direct) pendant la duree \"haute resolution\" ci-dessous, puis les points plus vieux sont "
+                + "regroupes a l'intervalle de purge (un seul point conserve par intervalle) -- vous perdez alors le detail "
+                + "fin, pas la courbe elle-meme.</p>\n"
+                + "    <label>Duree haute resolution (jours)</label>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.high_res_retention_days\" value=\"" + val(raw, "stats.high_res_retention_days", d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS)) + "\" required>\n"
+                + "    <p class=\"hint\">Pendant ces N derniers jours, le tableau de bord peut zoomer sur n'importe quel "
+                + "instant precis (meme resolution que le direct). Au-dela, seule la tendance generale reste visible. "
+                + "Plus cette duree est longue, plus stats.db grossit vite -- voir la taille actuelle ci-dessous.</p>\n"
+                + "    <label>Intervalle de regroupement au-dela (s)</label>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + val(raw, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S)) + "\" required>\n"
+                + "    <p class=\"hint\">Une fois la duree haute resolution depassee, un seul point conserve par intervalle "
+                + "de ce nombre de secondes (300s = 5 min par defaut).</p>\n"
+                + "    <label>Retention totale (jours)</label>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + val(raw, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS)) + "\" required>\n"
+                + "    <p class=\"hint\">Donnees plus vieilles que cette retention totale purgees automatiquement (doit "
+                + "etre >= duree haute resolution).</p>\n"
                 + "    <p class=\"hint\">stats.db : " + escape(statsInfo) + "</p>\n"
                 + "  </fieldset>\n"
                 + "\n"

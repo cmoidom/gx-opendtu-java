@@ -164,9 +164,7 @@ dans un fichier **SQLite** (`stats.db`, à côté de `config.json`/`state.json`)
 éphémères et servent uniquement la vue temps réel (~30min/48h en mémoire).
 Aucun service externe (pas d'InfluxDB) : un seul fichier, une seule
 dépendance légère (`org.xerial:sqlite-jdbc`), cohérent avec la philosophie
-"un seul jar déployable" du projet -- le volume réel (quelques centaines de
-milliers de lignes sur 2 ans à 5 min d'intervalle) ne justifie pas
-l'infrastructure d'une vraie base time-series.
+"un seul jar déployable" du projet.
 
 Trois tables : `samples` (grid_raw_w, grid_ema_w, soc_pct, battery_power_w,
 battery_voltage_v, battery_current_a, injection_control, une ligne par `t`
@@ -179,23 +177,54 @@ REPLACE` -- à chaque écriture, donc auto-cicatrisant si une écriture a été
 manquée). `INSERT OR REPLACE` partout : idempotent, une même clé (`t`,
 `t+serial`, ou `hour`) écrase la ligne existante plutôt que de dupliquer.
 
-**Cadence délibérément plus grossière que la vue temps réel** :
-`config.stats.interval_s` (défaut 300s = 5 min) gate l'écriture depuis
-`ControlLoop.run` -- des courbes qui couvrent des mois/années n'ont pas
-besoin d'une résolution à la seconde, et ça garde l'écriture disque et la
-taille de la base ~5x plus légères qu'à 1 min (compromis explicite,
-résolution invisible de toute façon sur un graphique de cette portée).
-`config.stats.retention_days` (défaut 730 ≈ 2 ans) borne la taille de la
-base indépendamment de la durée de fonctionnement : une purge (`DELETE ...
-WHERE t < cutoff`) tourne une fois par jour dans la même boucle.
+**Deux résolutions (2026-07-13)** : à l'origine, `samples`/`inverter_samples`
+n'étaient écrites qu'au rythme grossier `config.stats.interval_s` (5 min par
+défaut) -- ce qui voulait dire qu'au-delà des ~30 dernières minutes (la
+fenêtre de `LiveState`), impossible de zoomer sur un instant précis dans
+`stats.db`, seulement une tendance à 5 min près. Mesuré empiriquement (voir
+ci-dessous) : garder du 2s (la cadence du direct, `grid.read_interval_s`) sur
+toute la rétention de 2 ans coûterait ~11,3 Go et une écriture continue
+toutes les 2s pour toujours -- disproportionné pour un usage "zoomer sur ce
+qui vient de se passer". Compromis retenu : deux résolutions dans les mêmes
+tables.
+- `ControlLoop.run` appelle `StatsStore#recordLatestSample` à **chaque tick
+  de la boucle rapide** (même cadence que `LiveState.recordGrid`, plus du
+  tout gatée par `stats.interval_s`) -- chaque échantillon du direct est
+  donc persisté tel quel, pendant `config.stats.high_res_retention_days`
+  (30 jours par défaut).
+- Une fois par jour (même boucle que la purge ci-dessous),
+  `StatsStore#downsampleOlderThan(highResCutoff, intervalS)` regroupe tout
+  ce qui a dépassé cette fenêtre : un seul point conservé (le plus récent)
+  par bucket de `stats.interval_s` secondes (`DELETE ... WHERE t NOT IN
+  (SELECT MAX(t) ... GROUP BY t/intervalS)`), puis nettoie les lignes
+  `inverter_samples` orphelines (dont le `t` n'a plus de ligne `samples`
+  correspondante). Un no-op sur des données déjà grossières (un seul point
+  par bucket, ou des lignes 5 min pré-existantes d'avant cette migration --
+  aucune migration de schéma nécessaire, les anciennes lignes restent
+  telles quelles).
+- `config.stats.interval_s` change donc de sens : ce n'est plus "à quelle
+  fréquence écrire un échantillon" (c'est continu désormais) mais "la
+  largeur du bucket de regroupement une fois hors de la fenêtre haute
+  résolution" -- documenté explicitement dans le hint de la page de config
+  pour éviter la confusion.
+- `config.stats.retention_days` (défaut 730 ≈ 2 ans) borne toujours la
+  taille totale de la base, à la résolution grossière au-delà de la fenêtre
+  haute résolution ; doit être `>= high_res_retention_days` (validé au
+  chargement de la config, `ConfigLoader.parseConfig`).
+
+**Tailles mesurées** (schéma réel, 6 onduleurs, ~383,7 octets par
+échantillon complet -- 1 ligne `samples` + 6 lignes `inverter_samples`) :
+5 min partout (ancien design) ≈ 77 Mo/2 ans ; 2s partout ≈ 11,3 Go/2 ans ;
+2s pendant 30 jours + 5 min au-delà (design retenu) ≈ 570 Mo/2 ans.
 
 **Écriture immédiate sur "Enregistrer et appliquer"** : `webui/ConfigPageHandler`
 appelle `statsStore.persistSnapshot(liveState, energyHistory)` juste avant
-de programmer `System.exit(1)` -- sans ça, un redémarrage perdrait jusqu'à
-un intervalle complet (5 min par défaut) d'historique à chaque fois. Cet
-appel relit simplement le dernier échantillon déjà en mémoire dans
-`LiveState` (`snapshotSince(0).latest()`) : la page web n'a jamais besoin
-d'accéder directement aux lectures de la boucle de contrôle.
+de programmer `System.exit(1)` -- l'échantillon lui-même est déjà écrit en
+continu (voir ci-dessus), mais ça flush aussi immédiatement `hourly_energy`
+plutôt que de le laisser jusqu'à `stats.interval_s` en retard. Cet appel
+relit simplement le dernier échantillon déjà en mémoire dans `LiveState`
+(`snapshotSince(0).latest()`) : la page web n'a jamais besoin d'accéder
+directement aux lectures de la boucle de contrôle.
 
 **Flush avant arrêt (tout chemin de redémarrage, pas seulement `/apply`)** :
 `Main.main` enregistre un `Runtime.getRuntime().addShutdownHook(...)` qui
@@ -203,9 +232,9 @@ appelle `statsStore.persistSnapshot(...)` puis `statsStore.close()` à la
 réception de `SIGTERM` -- couvre `systemctl restart`/`stop`, `update.sh`, un
 redémarrage de VM, pas seulement le bouton "Enregistrer et appliquer" de la
 page de config (qui, lui, flush explicitement avant son propre
-`System.exit(1)`, voir ci-dessus). Sans ce hook, un simple `systemctl
-restart gx-opendtu-zero-export` pouvait perdre jusqu'à un `stats.interval_s`
-complet (5 min par défaut) d'historique long terme.
+`System.exit(1)`, voir ci-dessus). Vu que l'échantillon est désormais écrit
+en continu, ce hook ne protège plus qu'`hourly_energy` (quelques secondes de
+perte possible au pire, pas un `stats.interval_s` entier comme avant).
 
 **Recharge de `LiveState` au démarrage (`LiveState.seedHistory`)** : le
 tableau de bord live (`/status.json`) ne lit **que** `LiveState` (mémoire),
@@ -216,12 +245,12 @@ si `stats.db` contenait 2 ans d'historique juste à côté. `Main.main` appelle
 `liveState.seedHistory(statsStore.loadRecentSamples(LiveState.DEFAULT_MAX_SAMPLES))`
 juste après avoir ouvert `StatsStore`, avant de démarrer `WebUiServer`/
 `ControlLoop` : les `DEFAULT_MAX_SAMPLES` (900) échantillons les plus
-récents de `stats.db` repeuplent le tampon circulaire, à la résolution de
-`stats.interval_s` (plus grossière que le direct) -- ces échantillons
-"grossiers" se font évincer naturellement par les échantillons "fins" du
-direct au fur et à mesure (le tampon est borné à 900 entrées), donc la
-transition est invisible après quelques dizaines de minutes de
-fonctionnement normal. `consigne_w`, `min_inverter_floor_warning` et
+récents de `stats.db` repeuplent le tampon circulaire -- désormais à la
+résolution fine du direct (2s) tant qu'on est dans la fenêtre
+`high_res_retention_days`, donc les 900 échantillons ne couvrent plus que
+~30 min (comme le tampon `LiveState` lui-même), ce qui est en fait plus
+cohérent qu'avant (le backfill n'a plus besoin d'être évincé progressivement
+par du direct plus fin, il l'est déjà). `consigne_w`, `min_inverter_floor_warning` et
 `recommended_min_inverter_pct` ne sont pas persistés dans `stats.db`
 (propres à la boucle de décision, pas pertinents sur un historique long
 terme) -- `loadRecentSamples` les renvoie donc à leur valeur "non défini".
@@ -264,11 +293,15 @@ direct/historique varie dans le temps.
 **Solution retenue** : chaque échantillon transporte un booléen
 `backfilled` (ajouté par `StatsStore#loadRecentSamples` = `true`,
 `LiveState#recordGrid` = `false`), et `dashboard.html` relie **toujours**
-deux points consécutifs si les deux viennent du rechargement (un écart de
-`stats.interval_s` entre eux est normal, pas une coupure), et n'applique le
-seuil fixe de 60s que si au moins un des deux est un point du direct -- seul
-cas où un écart signale une vraie interruption en cours de fonctionnement.
-Robuste par construction, contrairement à une statistique inférée des écarts.
+deux points consécutifs si les deux viennent du rechargement (un écart entre
+eux est normal, pas une coupure), et n'applique le seuil fixe de 60s que si
+au moins un des deux est un point du direct -- seul cas où un écart signale
+une vraie interruption en cours de fonctionnement. Robuste par construction,
+contrairement à une statistique inférée des écarts -- et ça reste vrai après
+le passage aux deux résolutions ci-dessus : que les points rechargés soient
+espacés de 2s (dans la fenêtre haute résolution) ou de `stats.interval_s`
+(au-delà, une fois regroupés), la règle "toujours relier deux points
+rechargés" ne dépend jamais de l'écart réel entre eux.
 
 **Navigation dans les 2 ans d'historique (`GET /history.json`, `dashboard.html`)** :
 même après le backfill au démarrage, le tableau de bord ne pouvait remonter

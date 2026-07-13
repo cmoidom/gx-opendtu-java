@@ -51,6 +51,7 @@ class ConfigLoaderTest {
         assertThat(config.logging().verboseTraces()).isTrue();
         assertThat(config.stats().intervalS()).isEqualTo(300.0); // default
         assertThat(config.stats().retentionDays()).isEqualTo(730); // default, ~2 years
+        assertThat(config.stats().highResRetentionDays()).isEqualTo(30); // default
         assertThat(config.inverters()).hasSize(2);
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
         assertThat(config.totalNominalPowerW()).isEqualTo(980.0);
@@ -62,13 +63,29 @@ class ConfigLoaderTest {
                 {
                   "opendtu": { "base_url": "http://x" },
                   "grid": { "modbus": { "host": "10.0.0.1" } },
-                  "stats": { "interval_s": 60, "retention_days": 30 },
+                  "stats": { "interval_s": 60, "retention_days": 30, "high_res_retention_days": 7 },
                   "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
                 }
                 """;
         AppConfig config = ConfigLoader.parseConfig(json(raw));
         assertThat(config.stats().intervalS()).isEqualTo(60.0);
         assertThat(config.stats().retentionDays()).isEqualTo(30);
+        assertThat(config.stats().highResRetentionDays()).isEqualTo(7);
+    }
+
+    @Test
+    void highResRetentionDaysExceedingRetentionDaysIsRejected() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "stats": { "retention_days": 30, "high_res_retention_days": 60 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        assertThatThrownBy(() -> ConfigLoader.parseConfig(json(raw)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("config.stats.high_res_retention_days must not exceed config.stats.retention_days");
     }
 
     @Test

@@ -71,6 +71,7 @@ public final class ConfigLoader {
 
         public static final double STATS_INTERVAL_S = 300.0;
         public static final int STATS_RETENTION_DAYS = 730;
+        public static final int STATS_HIGH_RES_RETENTION_DAYS = 30;
     }
 
     public static AppConfig loadConfig(Path path) {
@@ -119,6 +120,14 @@ public final class ConfigLoader {
         ModbusGridConfig modbusCfg = new ModbusGridConfig(
                 modbusRaw.path("host").asText(), modbusRaw.path("port").asInt(Defaults.GRID_MODBUS_PORT));
 
+        int statsRetentionDays = statsRaw.path("retention_days").asInt(Defaults.STATS_RETENTION_DAYS);
+        int statsHighResRetentionDays =
+                statsRaw.path("high_res_retention_days").asInt(Defaults.STATS_HIGH_RES_RETENTION_DAYS);
+        if (statsHighResRetentionDays > statsRetentionDays) {
+            throw new IllegalArgumentException(
+                    "config.stats.high_res_retention_days must not exceed config.stats.retention_days");
+        }
+
         String username = textOrNull(opendtuRaw, "username");
         String password = textOrNull(opendtuRaw, "password");
 
@@ -152,7 +161,8 @@ public final class ConfigLoader {
                 new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(Defaults.LOGGING_VERBOSE_TRACES)),
                 new StatsConfig(
                         statsRaw.path("interval_s").asDouble(Defaults.STATS_INTERVAL_S),
-                        statsRaw.path("retention_days").asInt(Defaults.STATS_RETENTION_DAYS)),
+                        statsRetentionDays,
+                        statsHighResRetentionDays),
                 inverters);
     }
 

@@ -424,6 +424,11 @@ public final class ControlLoop {
                 gridPowerW = gridReader.readGridPowerW();
                 smoother.add(gridPowerW);
                 liveState.recordGrid(gridPowerW, smoother.average());
+                // Same cadence as the live view itself -- downsampleOlderThan
+                // (below) is what actually keeps stats.db from growing at
+                // this rate forever, by thinning anything older than
+                // config.stats.highResRetentionDays back down.
+                statsStore.recordLatestSample(liveState);
                 consecutiveGridFailures = 0;
             } catch (GridMeterUnavailableException e) {
                 consecutiveGridFailures++;
@@ -574,14 +579,18 @@ public final class ControlLoop {
                 capacity.probeTick();
             }
 
-            // Long-term stats: deliberately much coarser than the live
-            // read/decision cadences above -- see StatsStore's javadoc.
+            // Hourly energy barely changes at the live cadence -- upserted on
+            // its own coarser interval, independently of the per-tick sample
+            // recording above. See StatsStore's javadoc.
             if (now - lastStatsWriteTime >= config.stats().intervalS()) {
                 lastStatsWriteTime = now;
-                statsStore.persistSnapshot(liveState, energyHistory);
+                statsStore.upsertHourlyEnergy(energyHistory.snapshot());
             }
             if (now - lastPruneTime >= PRUNE_INTERVAL_S) {
                 lastPruneTime = now;
+                double highResCutoffEpochSeconds = System.currentTimeMillis() / 1000.0
+                        - config.stats().highResRetentionDays() * SECONDS_PER_DAY;
+                statsStore.downsampleOlderThan(highResCutoffEpochSeconds, config.stats().intervalS());
                 double cutoffEpochSeconds =
                         System.currentTimeMillis() / 1000.0 - config.stats().retentionDays() * SECONDS_PER_DAY;
                 statsStore.pruneOlderThan(cutoffEpochSeconds);

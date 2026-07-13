@@ -96,11 +96,22 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   `BatteryHysteresisTest.noYoyoAround100OnceActive` et
   `doesNotReactivateUntilBackTo100AfterDeactivating`.
 - **`StatsStore` ne doit jamais interrompre la boucle de contrôle** :
-  `recordSample`/`upsertHourlyEnergy`/`pruneOlderThan` attrapent et loguent
-  toute `SQLException` plutôt que de la laisser remonter (seule l'ouverture
-  de la base, dans le constructeur, a le droit de lever). Ne pas retirer ce
-  garde-fou -- un accroc de persistance long terme (disque plein, fichier
-  verrouillé) ne doit jamais faire planter `ControlLoop.run`.
+  `recordSample`/`upsertHourlyEnergy`/`downsampleOlderThan`/`pruneOlderThan`
+  attrapent et loguent toute `SQLException` plutôt que de la laisser
+  remonter (seule l'ouverture de la base, dans le constructeur, a le droit
+  de lever). Ne pas retirer ce garde-fou -- un accroc de persistance long
+  terme (disque plein, fichier verrouillé) ne doit jamais faire planter
+  `ControlLoop.run`.
+- **`stats.db` a deux résolutions, `downsampleOlderThan` DOIT tourner avant
+  `pruneOlderThan`** : `recordLatestSample` écrit désormais à chaque tick de
+  la boucle rapide (plus de gate par `stats.interval_s`) -- sans le passage
+  quotidien de `downsampleOlderThan` qui regroupe tout ce qui dépasse
+  `config.stats.high_res_retention_days`, la base grossirait indéfiniment à
+  la cadence du direct sur toute la rétention de 2 ans (~11,3 Go mesurés au
+  lieu de ~570 Mo). Voir ARCHITECTURE.md pour les tailles mesurées.
+  `config.stats.high_res_retention_days` doit toujours être
+  `<= config.stats.retention_days` (validé dans `ConfigLoader.parseConfig`,
+  ne pas retirer cette vérification).
 
 ## Frontière testable / non testable
 

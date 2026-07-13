@@ -69,3 +69,13 @@ Test layout mirrors `src/main/java` under `src/test/java`, same packages
 (tests of package-private methods must stay in the same package as the class
 under test — see `loop/ControlLoopDryRunTest` + `loop/FakeOpenDTUApi`,
 `modbus/FakeModbusServer`).
+
+## Git workflow
+
+Standing authorization (2026-07-13): after implementing a change on this
+repo, if `mvn test` passes, commit and push to `origin/main` immediately
+without asking for confirmation first. This overrides the general
+"always confirm before push" default for this repository specifically.
+Still stop and ask if tests fail, if the change is unusually large/risky
+(e.g. touches deployment/systemd config, rewrites history, force-pushes),
+or if explicitly told to hold off in a given conversation.

@@ -38,7 +38,8 @@
   },
   "stats": {
     "interval_s": 300,
-    "retention_days": 730
+    "retention_days": 730,
+    "high_res_retention_days": 30
   },
   "inverters": [
     { "serial": "114181801234", "nominal_power_w": 600 },

@@ -11,6 +11,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -105,6 +106,66 @@ class StatsStoreTest {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getLong("t")).isEqualTo(2_000_000L);
         }
+    }
+
+    @Test
+    void downsampleOlderThanKeepsLatestPerBucketAndLeavesRecentDataAlone(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            // bucket 0 (t/300=0): three rows -- only the latest (200) should survive.
+            store.recordSample(0.0, 1.0, 1.0, null, null, null, null, "ON", Map.of("a", 1.0));
+            store.recordSample(100.0, 2.0, 2.0, null, null, null, null, "ON", Map.of("a", 2.0));
+            store.recordSample(200.0, 3.0, 3.0, null, null, null, null, "ON", Map.of("a", 3.0));
+            // bucket 1 (t/300=1): a single row -- downsampling this bucket is a no-op.
+            store.recordSample(350.0, 4.0, 4.0, null, null, null, null, "ON", Map.of("a", 4.0));
+            // at/after the high-res cutoff: untouched regardless of bucketing.
+            store.recordSample(500.0, 5.0, 5.0, null, null, null, null, "ON", Map.of("a", 5.0));
+            store.recordSample(550.0, 6.0, 6.0, null, null, null, null, "ON", Map.of("a", 6.0));
+
+            store.downsampleOlderThan(400.0, 300.0);
+        }
+
+        assertThat(countRows(dbPath, "samples")).isEqualTo(4);
+        assertThat(countRows(dbPath, "inverter_samples")).isEqualTo(4);
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT t FROM samples ORDER BY t")) {
+            List<Long> ts = new ArrayList<>();
+            while (rs.next()) {
+                ts.add(rs.getLong("t"));
+            }
+            assertThat(ts).containsExactly(200L, 350L, 500L, 550L);
+        }
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT t FROM inverter_samples ORDER BY t")) {
+            List<Long> ts = new ArrayList<>();
+            while (rs.next()) {
+                ts.add(rs.getLong("t"));
+            }
+            assertThat(ts).containsExactly(200L, 350L, 500L, 550L);
+        }
+    }
+
+    @Test
+    void downsampleOlderThanOnEmptyDatabaseIsNoOp(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.downsampleOlderThan(1_000.0, 300.0);
+            assertThat(store.sampleCount()).isZero();
+        }
+    }
+
+    @Test
+    void recordLatestSamplePersistsSampleWithoutTouchingHourlyEnergy(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        LiveState liveState = new LiveState();
+        liveState.recordGrid(42.0, 40.0);
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordLatestSample(liveState);
+        }
+        assertThat(countRows(dbPath, "samples")).isEqualTo(1);
+        assertThat(countRows(dbPath, "hourly_energy")).isZero();
     }
 
     @Test

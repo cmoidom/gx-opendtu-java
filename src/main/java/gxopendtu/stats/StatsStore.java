@@ -23,27 +23,33 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Long-term (multi-year) persistence of dashboard curves to a local SQLite
- * file (stats.db, next to config.json) -- separate from the in-memory
+ * Long-term persistence of dashboard curves to a local SQLite file
+ * (stats.db, next to config.json) -- separate from the in-memory
  * {@link LiveState}/{@link HourlyEnergyHistory} ring buffers used for the
- * live view, which stay ephemeral (~30 min / 48 h). Written at a much
- * coarser interval (config.stats.intervalS, default 5 min): long-term trend
- * curves spanning months or years don't need per-tick resolution, and this
- * keeps both write load and database size low over a 2-year retention.
+ * live view, which stay ephemeral (~30 min / 48 h).
  *
- * Written from two places, both threads: periodically from the control loop
+ * Two resolutions, to balance disk usage against being able to zoom into a
+ * specific past moment: {@link #recordLatestSample} is called every
+ * fast-loop tick (matching the live view's own cadence, config.grid.readIntervalS)
+ * for the most recent config.stats.highResRetentionDays, then
+ * {@link #downsampleOlderThan} thins anything older down to one row per
+ * config.stats.intervalS (both run daily from loop.ControlLoop.run,
+ * alongside {@link #pruneOlderThan} which bounds the database to
+ * config.stats.retentionDays overall).
+ *
+ * Written from two places, both threads: continuously from the control loop
  * thread (see loop.ControlLoop.run) and immediately from an HTTP handler
  * thread when "Enregistrer et appliquer" is pressed (see
- * webui.ConfigPageHandler), so a restart never loses more than one
- * interval's worth of data. All operations are serialized behind a single
- * lock -- SQLite itself serializes writes at the file level, but this keeps
- * a multi-statement operation (e.g. the per-inverter batch insert) from
+ * webui.ConfigPageHandler), so a restart never loses more than a couple of
+ * seconds of data. All operations are serialized behind a single lock --
+ * SQLite itself serializes writes at the file level, but this keeps a
+ * multi-statement operation (e.g. the per-inverter batch insert) from
  * interleaving with a concurrent call from the other thread.
  *
- * Never throws on a failed write/prune (logs and drops the sample instead):
- * a hiccup persisting long-term stats must never interrupt the live control
- * loop. Opening the database (constructor) is the one operation allowed to
- * throw, since there's nothing sensible to run without it.
+ * Never throws on a failed write/prune/downsample (logs and drops the
+ * sample instead): a hiccup persisting long-term stats must never interrupt
+ * the live control loop. Opening the database (constructor) is the one
+ * operation allowed to throw, since there's nothing sensible to run without it.
  */
 public final class StatsStore implements AutoCloseable {
 
@@ -109,8 +115,20 @@ public final class StatsStore implements AutoCloseable {
 
     /** Reads the latest LiveState sample and the current HourlyEnergyHistory buckets, and persists both. */
     public void persistSnapshot(LiveState liveState, HourlyEnergyHistory energyHistory) {
-        recordSampleFromLiveState(liveState.snapshotSince(0).latest());
+        recordLatestSample(liveState);
         upsertHourlyEnergy(energyHistory.snapshot());
+    }
+
+    /**
+     * Persists just the latest LiveState sample (not the hourly energy
+     * buckets) -- called every fast-loop tick (see loop.ControlLoop.run) so
+     * stats.db's resolution matches the live view's for the most recent
+     * config.stats.highResRetentionDays. Older rows are later thinned down
+     * to config.stats.intervalS by {@link #downsampleOlderThan}, which is
+     * what actually keeps the database from growing at this cadence forever.
+     */
+    public void recordLatestSample(LiveState liveState) {
+        recordSampleFromLiveState(liveState.snapshotSince(0).latest());
     }
 
     private void recordSampleFromLiveState(Map<String, Object> sample) {
@@ -402,7 +420,14 @@ public final class StatsStore implements AutoCloseable {
         }
     }
 
-    void upsertHourlyEnergy(List<Map<String, Object>> buckets) {
+    /**
+     * Persists the current {@code HourlyEnergyHistory} buckets -- called on
+     * its own cadence (config.stats.intervalS, see loop.ControlLoop.run),
+     * independently of {@link #recordLatestSample} which now runs every
+     * fast-loop tick: hourly energy barely changes at that resolution, so
+     * there's no need to upsert it that often too.
+     */
+    public void upsertHourlyEnergy(List<Map<String, Object>> buckets) {
         lock.lock();
         try (PreparedStatement stmt =
                 connection.prepareStatement("INSERT OR REPLACE INTO hourly_energy (hour, from_kwh, to_kwh) VALUES (?, ?, ?)")) {
@@ -415,6 +440,48 @@ public final class StatsStore implements AutoCloseable {
             stmt.executeBatch();
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "failed to persist hourly energy", e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Thins {@code samples} rows older than {@code highResCutoffEpochSeconds}
+     * down to one row per {@code bucketSeconds}-wide bucket (keeping each
+     * bucket's LATEST row -- the same "whatever's current when the timer
+     * fires" snapshot semantics {@link #recordSample} always used, just
+     * applied retroactively instead of gating the write itself), then drops
+     * any {@code inverter_samples} rows that no longer have a matching
+     * {@code samples} row. Called once a day (see loop.ControlLoop.run),
+     * BEFORE {@link #pruneOlderThan} -- this is what keeps stats.db from
+     * growing at the live read cadence for the full retention period: only
+     * the most recent config.stats.highResRetentionDays stays at full
+     * resolution, everything older is coarsened to config.stats.intervalS.
+     * A no-op on rows that are already at or below that resolution (e.g.
+     * pre-existing 5-minute data from before this feature, or a bucket that
+     * only ever had one row to begin with).
+     */
+    public void downsampleOlderThan(double highResCutoffEpochSeconds, double bucketSeconds) {
+        lock.lock();
+        try {
+            long cutoff = Math.round(highResCutoffEpochSeconds);
+            long bucket = Math.max(1, Math.round(bucketSeconds));
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "DELETE FROM samples WHERE t < ? AND t NOT IN "
+                            + "(SELECT MAX(t) FROM samples WHERE t < ? GROUP BY (t / ?))")) {
+                stmt.setLong(1, cutoff);
+                stmt.setLong(2, cutoff);
+                stmt.setLong(3, bucket);
+                stmt.executeUpdate();
+            }
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "DELETE FROM inverter_samples WHERE t < ? AND t NOT IN (SELECT t FROM samples WHERE t < ?)")) {
+                stmt.setLong(1, cutoff);
+                stmt.setLong(2, cutoff);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to downsample aged-out stats", e);
         } finally {
             lock.unlock();
         }
