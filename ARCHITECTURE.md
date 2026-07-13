@@ -568,6 +568,17 @@ un onduleur dédié à un usage hors de la régulation zero-export (ex. un
 circuit spécifique) qu'on ne veut jamais voir bridé par ce logiciel, quel
 que soit le mode (y compris fail-safe).
 
+`limit_relative_pct`/`acknowledged` dans le payload dashboard restent la
+**vraie valeur lue** via `client.getLimitStatus()` pour un onduleur non
+pilotable, jamais une valeur supposée -- premier jet buggé (2026-07-13) qui
+affichait `100%`/`null` pour tous, comme si l'onduleur était forcément
+débridé par ce logiciel ; faux, puisqu'on ne lui envoie jamais rien, sa
+vraie limite peut être n'importe quoi (config faite ailleurs, reliquat
+d'avant qu'il soit marqué non pilotable). `getLimitStatus()` n'est de toute
+façon jamais filtré par onduleur (OpenDTU renvoie l'état de tous ceux qu'il
+connaît), donc la vraie valeur est déjà disponible sans requête
+supplémentaire.
+
 `WaterFillAllocator.waterFillAllocate(totalTargetW, serials, capacityEstimates,
 nominalPowerW, ...)` (`allocator/WaterFillAllocator.java`) : répartition
 égalitaire **en % de la puissance nominale de chacun**, pas en Watts absolus

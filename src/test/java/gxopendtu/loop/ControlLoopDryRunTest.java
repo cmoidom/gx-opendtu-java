@@ -93,8 +93,12 @@ class ControlLoopDryRunTest {
 
     @Test
     void decisionCyclePayloadMarksNonControllableInvertersAndOmitsTheirAllocation() {
+        // "b" has a real LimitStatus even though it's non-controllable (someone else's
+        // config, or a leftover from before it was marked non-controllable) -- the
+        // payload must report that real value, never a fabricated "100% uncapped".
         FakeOpenDTUApi client = new FakeOpenDTUApi(
-                Map.of("a", 200.0, "b", 150.0), Map.of("a", new LimitStatus(100, 600, "Ok")));
+                Map.of("a", 200.0, "b", 150.0),
+                Map.of("a", new LimitStatus(100, 600, "Ok"), "b", new LimitStatus(37, 400, "Ok")));
         CapacityEstimator capacity = new CapacityEstimator(Map.of("a", 600.0), 10);
         LiveState liveState = new LiveState();
         ControlLoop.decisionCycle(
@@ -108,8 +112,28 @@ class ControlLoopDryRunTest {
         assertThat(a.get("controllable")).isEqualTo(true);
         assertThat(b.get("controllable")).isEqualTo(false);
         assertThat(b.get("allocated_w")).isNull();
-        assertThat(b.get("limit_relative_pct")).isEqualTo(100);
+        assertThat(b.get("limit_relative_pct")).isEqualTo(37.0); // real value read from OpenDTU, not fabricated
         assertThat(b.get("max_power_w")).isEqualTo(400.0); // falls back to nominalPowerW -- "b" has no capacity ceiling
+        assertThat(b.get("acknowledged")).isEqualTo(true);
+    }
+
+    @Test
+    void decisionCyclePayloadHasNullLimitForNonControllableInverterWithNoKnownStatus() {
+        // OpenDTU has no limit_status entry at all for "b" -- must report null, not a
+        // fabricated "100% uncapped" (2026-07-13 fix: we never sent it a limit, so we
+        // genuinely don't know what it's set to).
+        FakeOpenDTUApi client = new FakeOpenDTUApi(
+                Map.of("a", 200.0, "b", 150.0), Map.of("a", new LimitStatus(100, 600, "Ok")));
+        CapacityEstimator capacity = new CapacityEstimator(Map.of("a", 600.0), 10);
+        LiveState liveState = new LiveState();
+        ControlLoop.decisionCycle(
+                client, makeController(), capacity, List.of("a", "b"), List.of("a"), 100.0, 100.0, liveState, null, null,
+                null, null, null, false, false, 0.0, null, Map.of("a", 600.0, "b", 400.0));
+        liveState.recordGrid(0, 0);
+
+        Object inverters = liveState.snapshotSince(0.0).latest().get("inverters");
+        Map<?, ?> b = (Map<?, ?>) ((List<?>) inverters).get(1);
+        assertThat(b.get("limit_relative_pct")).isNull();
         assertThat(b.get("acknowledged")).isNull();
     }
 
@@ -171,12 +195,21 @@ class ControlLoopDryRunTest {
 
     @Test
     void offStateInvertersPayloadReportsControllableFalseForExcludedInverters() {
-        FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of("a", 210.0, "b", 95.0), Map.of());
+        // "a" is controllable and released to 100% (releaseForCharging, called
+        // separately) -- 100%/no-status is accurate for it. "b" is non-controllable
+        // and never touched, with a real (non-100%) limit already set some other
+        // way -- the payload must report that real value, not a fabricated 100%.
+        FakeOpenDTUApi client = new FakeOpenDTUApi(
+                Map.of("a", 210.0, "b", 95.0), Map.of("b", new LimitStatus(42, 400, "Ok")));
         List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
                 client, List.of("a", "b"), List.of("a"), Map.of("a", 600.0, "b", 400.0), Map.of());
 
         assertThat(payload.get(0).get("controllable")).isEqualTo(true);
+        assertThat(payload.get(0).get("limit_relative_pct")).isEqualTo(100);
+        assertThat(payload.get(0).get("acknowledged")).isNull();
         assertThat(payload.get(1).get("controllable")).isEqualTo(false);
+        assertThat(payload.get(1).get("limit_relative_pct")).isEqualTo(42.0);
+        assertThat(payload.get(1).get("acknowledged")).isEqualTo(true);
     }
 
     @Test
@@ -294,5 +327,22 @@ class ControlLoopDryRunTest {
         assertThat(b.get("actual_w")).isEqualTo(190.0);
         assertThat(b.get("acknowledged")).isEqualTo(false);
         assertThat(b.get("data_age_s")).isEqualTo(8.0);
+    }
+
+    @Test
+    void manualOverridePayloadReportsRealStatusForNonControllableInverter() {
+        // "b" is non-controllable -- the override never touches it, so it must report
+        // its real (non-forced) limit, not the forced pct or a fabricated 100%.
+        FakeOpenDTUApi client = new FakeOpenDTUApi(
+                Map.of("a", 300.0, "b", 190.0),
+                Map.of("a", new LimitStatus(50, 600, "Ok"), "b", new LimitStatus(80, 380, "Ok")));
+        List<Map<String, Object>> payload = ControlLoop.manualOverridePayload(
+                client, List.of("a", "b"), List.of("a"), 50.0, Map.of("a", 600.0, "b", 380.0), Map.of());
+
+        Map<String, Object> b = payload.get(1);
+        assertThat(b.get("controllable")).isEqualTo(false);
+        assertThat(b.get("allocated_w")).isNull();
+        assertThat(b.get("limit_relative_pct")).isEqualTo(80.0);
+        assertThat(b.get("acknowledged")).isEqualTo(true);
     }
 }

@@ -222,9 +222,15 @@ public final class ControlLoop {
                         names.get(serial),
                         controllable ? roundedAllocation.getOrDefault(serial, 0L) : null,
                         livePowerW.getOrDefault(serial, 0.0),
-                        controllable ? (Object) (status != null ? status.limitRelative() : null) : 100,
+                        // Always the real value read from OpenDTU, whether or not we
+                        // control this inverter -- for a non-controllable one we never
+                        // send it a limit, so we have no idea what it's actually set to
+                        // (someone else's config, a leftover from before it was marked
+                        // non-controllable, its own default...); assuming 100% would be
+                        // fabricated, not "uncapped by us".
+                        status != null ? status.limitRelative() : null,
                         controllable ? capacity.ceilingsW().getOrDefault(serial, 0.0) : nominalPowerW.getOrDefault(serial, 0.0),
-                        controllable ? (status != null ? status.acknowledged() : null) : null,
+                        status != null ? status.acknowledged() : null,
                         dataAgeS.get(serial),
                         controllable));
             }
@@ -294,13 +300,17 @@ public final class ControlLoop {
 
     /**
      * Live per-inverter power for the dashboard while injection control is
-     * OFF (charge batterie prioritaire): inverters are uncapped, so there is
-     * no allocated/limit-status data to report, but the actual measured
-     * power is still meaningful and otherwise leaves the dashboard looking
-     * empty/broken during the whole charge-priority window. data_age is
-     * still fetched here (unlike before, 2026-07-13): a stale RF reading is
-     * exactly as worth flagging while OFF as while ON, and this used to
-     * blank out to "--" on the dashboard the moment injection turned OFF.
+     * OFF (charge batterie prioritaire): controllable inverters are uncapped
+     * (released to 100% by releaseForCharging, called just before this),
+     * so 100%/no-acknowledged-status is accurate for them. A non-controllable
+     * inverter is never touched by releaseForCharging either -- its real
+     * limit/acknowledged status is read from OpenDTU like any other cycle,
+     * never assumed to be 100% (2026-07-13: assuming 100% was fabricated,
+     * not "uncapped by us", since we never sent it anything in the first
+     * place). data_age is still fetched here (unlike before, 2026-07-13): a
+     * stale RF reading is exactly as worth flagging while OFF as while ON,
+     * and this used to blank out to "--" on the dashboard the moment
+     * injection turned OFF.
      */
     static List<Map<String, Object>> offStateInvertersPayload(
             OpenDTUApi client,
@@ -315,6 +325,12 @@ public final class ControlLoop {
         } catch (OpenDTUException e) {
             return List.of();
         }
+        Map<String, LimitStatus> limitStatus;
+        try {
+            limitStatus = client.getLimitStatus();
+        } catch (OpenDTUException e) {
+            limitStatus = Map.of();
+        }
         Map<String, Double> dataAgeS;
         try {
             dataAgeS = client.getDataAgeS(serials);
@@ -323,14 +339,16 @@ public final class ControlLoop {
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
+            boolean controllable = controllableSerials.contains(serial);
+            LimitStatus status = limitStatus.get(serial);
             result.add(inverterPayloadEntry(
                     serial,
                     names.get(serial),
                     null,
                     livePowerW.getOrDefault(serial, 0.0),
-                    100,
+                    controllable ? (Object) 100 : (status != null ? status.limitRelative() : null),
                     nominalPowerW.getOrDefault(serial, 0.0),
-                    null,
+                    controllable ? null : (status != null ? status.acknowledged() : null),
                     dataAgeS.get(serial),
                     controllableSerials.contains(serial)));
         }
@@ -393,9 +411,12 @@ public final class ControlLoop {
                     names.get(serial),
                     controllable ? (Object) Math.round(pct / 100.0 * nominalPowerW.getOrDefault(serial, 0.0)) : null,
                     livePowerW.getOrDefault(serial, 0.0),
-                    controllable ? (Object) (status != null ? status.limitRelative() : pct) : 100,
+                    // Real value read from OpenDTU either way -- a non-controllable
+                    // inverter is never sent this override, so its actual limit is
+                    // whatever it already was, not necessarily pct or 100%.
+                    status != null ? status.limitRelative() : (controllable ? pct : null),
                     nominalPowerW.getOrDefault(serial, 0.0),
-                    controllable ? (status != null ? status.acknowledged() : null) : null,
+                    status != null ? status.acknowledged() : null,
                     dataAgeS.get(serial),
                     controllable));
         }

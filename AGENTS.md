@@ -123,6 +123,13 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   réintroduire `serials` sur un de ces trois appels sans revalider ce
   comportement : le but explicite est qu'aucun code de ce projet ne
   touche jamais à la limite de cet onduleur, quel que soit le mode.
+  **Corollaire (bug corrigé le même jour) : ne jamais fabriquer
+  `limit_relative_pct`/`acknowledged` à `100`/`null` pour un onduleur non
+  pilotable** -- puisqu'on ne lui envoie jamais rien, on ne connaît pas sa
+  vraie limite (config faite ailleurs, reliquat d'avant qu'il soit marqué
+  non pilotable, etc.). `inverterPayloadEntry` doit toujours utiliser la
+  vraie valeur lue via `client.getLimitStatus()` (non filtrée par
+  onduleur), jamais une valeur supposée.
 - **Priorité charge batterie : le repli en cas de SOC illisible est
   `injectionActive=true` (sûr), jamais `false`** (`ControlLoop.run`, autour
   de `BatterySocUnavailableException`). Ne jamais inverser ce défaut :
