@@ -54,8 +54,16 @@ public record AppConfig(
             double exportConfirmsFullW,
             double exportConfirmsFullDurationS) {}
 
-    /** name is display-only (dashboard legend/table) -- never used to address the inverter. */
-    public record InverterConfig(String serial, double nominalPowerW, String name) {}
+    /**
+     * name is display-only (dashboard legend/table) -- never used to address
+     * the inverter. controllable (default true): when false, this inverter
+     * is still read (power/yield, for dashboard display and the PI's grid-
+     * balance accounting) but never commanded -- excluded from water-filling,
+     * CapacityEstimator, and every code path that calls
+     * setAbsoluteLimitW/setRelativeLimitPct (decisionCycle, releaseForCharging,
+     * applyFailsafe, sendManualOverride included).
+     */
+    public record InverterConfig(String serial, double nominalPowerW, String name, boolean controllable) {}
 
     /**
      * The config page + live dashboard are always on -- port and dashboard

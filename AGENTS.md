@@ -114,6 +114,15 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
 - **Fail-safe** : toute perte de communication (Modbus ou OpenDTU) doit
   ramener les onduleurs à une limite basse et sûre plutôt que de laisser le
   service "en roue libre" (`ControlLoop.applyFailsafe`).
+- **`config.inverters[].controllable=false` (2026-07-13) : exclusion totale,
+  sans exception.** Un onduleur non pilotable est lu (puissance/yield, pour
+  l'affichage et la comptabilité réseau du PI) mais **jamais commandé**, y
+  compris par le fail-safe, le déblocage à 100% (charge batterie
+  prioritaire) et le forçage manuel -- ces trois chemins reçoivent
+  désormais `controllableSerials`, pas la liste complète `serials`. Ne pas
+  réintroduire `serials` sur un de ces trois appels sans revalider ce
+  comportement : le but explicite est qu'aucun code de ce projet ne
+  touche jamais à la limite de cet onduleur, quel que soit le mode.
 - **Priorité charge batterie : le repli en cas de SOC illisible est
   `injectionActive=true` (sûr), jamais `false`** (`ControlLoop.run`, autour
   de `BatterySocUnavailableException`). Ne jamais inverser ce défaut :

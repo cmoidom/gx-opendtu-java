@@ -103,7 +103,8 @@ public final class ConfigLoader {
                 inverters.add(new InverterConfig(
                         requireText(inv, "serial", "config.inverters[].serial is required"),
                         requireDouble(inv, "nominal_power_w", "config.inverters[].nominal_power_w is required"),
-                        (name != null && !name.isEmpty()) ? name : null));
+                        (name != null && !name.isEmpty()) ? name : null,
+                        inv.path("controllable").asBoolean(true)));
             }
         }
         if (inverters.isEmpty()) {

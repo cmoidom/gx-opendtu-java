@@ -1098,7 +1098,8 @@ function renderInverterTable(latest) {
     '<td class="num">' + ageCell + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
-    '<td class="center">' + (inv.acknowledged === false ? 'en attente (RF)' :
+    '<td class="center">' + (inv.controllable === false ? 'non pilote' :
+               inv.acknowledged === false ? 'en attente (RF)' :
                inv.acknowledged === null ? 'debride (charge batterie)' : 'ok') + '</td></tr>';
   }).join('');
 }

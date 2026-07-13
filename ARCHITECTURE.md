@@ -554,6 +554,20 @@ solaire pourrait couvrir).
 
 ## Répartition multi-onduleurs (water-filling)
 
+**Onduleurs non pilotables (`config.inverters[].controllable=false`,
+2026-07-13, sans équivalent Python)** : un onduleur ainsi marqué est exclu de
+`serials` partout où `ControlLoop.run` construit `controllableSerials` --
+`WaterFillAllocator.waterFillAllocate`, `CapacityEstimator` (construit avec
+un `nominalPowerW` déjà filtré), et les trois seuls appels qui écrivent
+réellement vers OpenDTU (`decisionCycle`, `releaseForCharging`,
+`applyFailsafe`, `sendManualOverride`). Toujours **lu** (`getLivePowerW`/
+`getYieldDayWh` restent appelés avec la liste complète `serials`) pour
+l'affichage tableau de bord et pour que le PI compte correctement sa
+production dans le bilan réseau -- seule l'écriture est coupée. Pensé pour
+un onduleur dédié à un usage hors de la régulation zero-export (ex. un
+circuit spécifique) qu'on ne veut jamais voir bridé par ce logiciel, quel
+que soit le mode (y compris fail-safe).
+
 `WaterFillAllocator.waterFillAllocate(totalTargetW, serials, capacityEstimates,
 nominalPowerW, ...)` (`allocator/WaterFillAllocator.java`) : répartition
 égalitaire **en % de la puissance nominale de chacun**, pas en Watts absolus

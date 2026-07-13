@@ -228,6 +228,12 @@ final class ConfigPageHandler implements HttpHandler {
         List<String> serials = form.getOrDefault("inverter_serial", List.of());
         List<String> powers = form.getOrDefault("inverter_nominal_power_w", List.of());
         List<String> names = form.getOrDefault("inverter_name", List.of());
+        // Paired with a hidden input of the same name in each row (see
+        // addInverterRow / the server-rendered rows below) so every row
+        // submits exactly one "true"/"false" value regardless of checked
+        // state -- a bare checkbox alone submits nothing when unchecked,
+        // which would desync this list's indices from inverter_serial's.
+        List<String> controllableFlags = form.getOrDefault("inverter_controllable", List.of());
         ArrayNode inverters = MAPPER.createArrayNode();
         for (int i = 0; i < serials.size(); i++) {
             String serial = serials.get(i).trim();
@@ -235,6 +241,7 @@ final class ConfigPageHandler implements HttpHandler {
                 continue;
             }
             String name = i < names.size() ? names.get(i).trim() : "";
+            boolean controllable = i >= controllableFlags.size() || !"false".equals(controllableFlags.get(i));
             ObjectNode inv = MAPPER.createObjectNode();
             inv.put("serial", serial);
             inv.put("nominal_power_w", Double.parseDouble(powers.get(i)));
@@ -243,6 +250,7 @@ final class ConfigPageHandler implements HttpHandler {
             } else {
                 inv.put("name", name);
             }
+            inv.put("controllable", controllable);
             inverters.add(inv);
         }
 
@@ -371,6 +379,11 @@ final class ConfigPageHandler implements HttpHandler {
                     .append("<td><input type=\"number\" name=\"inverter_nominal_power_w\" value=\"")
                     .append(escape(inv.path("nominal_power_w").asText("")))
                     .append("\" step=\"1\" min=\"1\" required></td>")
+                    .append("<td><input type=\"hidden\" name=\"inverter_controllable\" value=\"")
+                    .append(inv.path("controllable").asBoolean(true) ? "true" : "false")
+                    .append("\"><input type=\"checkbox\"")
+                    .append(inv.path("controllable").asBoolean(true) ? " checked" : "")
+                    .append(" onchange=\"this.previousElementSibling.value = this.checked ? 'true' : 'false'\"></td>")
                     .append("<td><button type=\"button\" class=\"remove-btn\" "
                             + "onclick=\"this.closest('tr').remove()\">&times;</button></td></tr>\n");
         }
@@ -628,12 +641,15 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  <fieldset>\n"
                 + "    <legend>Onduleurs</legend>\n"
                 + "    <table id=\"inv-table\">\n"
-                + "      <thead><tr><th>Serie</th><th>Nom</th><th>Puissance nominale (W)</th><th></th></tr></thead>\n"
+                + "      <thead><tr><th>Serie</th><th>Nom</th><th>Puissance nominale (W)</th><th>Pilotable</th><th></th></tr></thead>\n"
                 + "      <tbody id=\"inv-tbody\">\n"
                 + invertersHtml
                 + "      </tbody>\n"
                 + "    </table>\n"
                 + "    <button type=\"button\" id=\"add-inv-btn\" onclick=\"addInverterRow()\">+ Ajouter un onduleur (manuel)</button>\n"
+                + "    <p class=\"hint\">Decocher \"Pilotable\" pour un onduleur : sa puissance mesuree reste affichee sur le "
+                + "tableau de bord, mais la regulation ne lui envoie plus jamais de commande (jamais de changement de limite), "
+                + "quel que soit le mode (auto, charge batterie prioritaire, forcage manuel, fail-safe compris).</p>\n"
                 + "\n"
                 + "    <div style=\"margin-top:0.8rem\">\n"
                 + "      <button type=\"button\" onclick=\"fetchInverters()\">Charger la liste depuis OpenDTU</button>\n"
@@ -689,6 +705,9 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    '<td><input type=\"text\" name=\"inverter_name\" value=\"' + (name || '') + '\" placeholder=\"(optionnel)\"></td>' +\n"
                 + "    '<td><input type=\"number\" name=\"inverter_nominal_power_w\" value=\"' + (power || '') +\n"
                 + "    '\" step=\"1\" min=\"1\" required></td>' +\n"
+                + "    '<td><input type=\"hidden\" name=\"inverter_controllable\" value=\"true\">' +\n"
+                + "    '<input type=\"checkbox\" checked onchange=\"this.previousElementSibling.value = " +
+                        "this.checked ? \\'true\\' : \\'false\\'\"></td>' +\n"
                 + "    '<td><button type=\"button\" class=\"remove-btn\" onclick=\"this.closest(\\'tr\\').remove()\">&times;</button></td>';\n"
                 + "  tbody.appendChild(tr);\n"
                 + "}\n"

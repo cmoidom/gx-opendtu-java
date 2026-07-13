@@ -3,6 +3,7 @@ package gxopendtu.loop;
 import gxopendtu.control.CapacityEstimator;
 import gxopendtu.control.SoftTargetController;
 import gxopendtu.opendtu.LimitStatus;
+import gxopendtu.state.LiveState;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -61,7 +62,8 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, null, true, false, 0.0, null);
+                client, makeController(), makeCapacity(), List.of("a", "b"), List.of("a", "b"), 100.0, 100.0, null, null, null,
+                null, null, null, true, false, 0.0, null, Map.of("a", 600.0, "b", 400.0));
         assertThat(client.absoluteCalls).isEmpty();
     }
 
@@ -73,8 +75,42 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, null, false, false, 0.0, null);
+                client, makeController(), makeCapacity(), List.of("a", "b"), List.of("a", "b"), 100.0, 100.0, null, null, null,
+                null, null, null, false, false, 0.0, null, Map.of("a", 600.0, "b", 400.0));
         assertThat(client.absoluteCalls).hasSize(2);
+    }
+
+    @Test
+    void decisionCycleNeverCommandsNonControllableInverters() {
+        FakeOpenDTUApi client = new FakeOpenDTUApi(
+                Map.of("a", 200.0, "b", 150.0), Map.of("a", new LimitStatus(100, 600, "Ok")));
+        CapacityEstimator capacity = new CapacityEstimator(Map.of("a", 600.0), 10); // "b" excluded, as run() builds it
+        ControlLoop.decisionCycle(
+                client, makeController(), capacity, List.of("a", "b"), List.of("a"), 100.0, 100.0, null, null, null,
+                null, null, null, false, false, 0.0, null, Map.of("a", 600.0, "b", 400.0));
+        assertThat(client.absoluteCalls).extracting(Map.Entry::getKey).containsExactly("a");
+    }
+
+    @Test
+    void decisionCyclePayloadMarksNonControllableInvertersAndOmitsTheirAllocation() {
+        FakeOpenDTUApi client = new FakeOpenDTUApi(
+                Map.of("a", 200.0, "b", 150.0), Map.of("a", new LimitStatus(100, 600, "Ok")));
+        CapacityEstimator capacity = new CapacityEstimator(Map.of("a", 600.0), 10);
+        LiveState liveState = new LiveState();
+        ControlLoop.decisionCycle(
+                client, makeController(), capacity, List.of("a", "b"), List.of("a"), 100.0, 100.0, liveState, null, null,
+                null, null, null, false, false, 0.0, null, Map.of("a", 600.0, "b", 400.0));
+        liveState.recordGrid(0, 0);
+
+        Object inverters = liveState.snapshotSince(0.0).latest().get("inverters");
+        Map<?, ?> a = (Map<?, ?>) ((List<?>) inverters).get(0);
+        Map<?, ?> b = (Map<?, ?>) ((List<?>) inverters).get(1);
+        assertThat(a.get("controllable")).isEqualTo(true);
+        assertThat(b.get("controllable")).isEqualTo(false);
+        assertThat(b.get("allocated_w")).isNull();
+        assertThat(b.get("limit_relative_pct")).isEqualTo(100);
+        assertThat(b.get("max_power_w")).isEqualTo(400.0); // falls back to nominalPowerW -- "b" has no capacity ceiling
+        assertThat(b.get("acknowledged")).isNull();
     }
 
     @Test
@@ -110,7 +146,7 @@ class ControlLoopDryRunTest {
         FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of("a", 210.0, "b", 95.0), Map.of())
                 .withDataAgeS(Map.of("a", 12.0, "b", 90.0));
         List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
-                client, List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), Map.of("a", "Toit Sud"));
+                client, List.of("a", "b"), List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), Map.of("a", "Toit Sud"));
 
         assertThat(payload).hasSize(2);
         Map<String, Object> a = payload.get(0);
@@ -122,6 +158,7 @@ class ControlLoopDryRunTest {
         assertThat(a.get("max_power_w")).isEqualTo(600.0);
         assertThat(a.get("acknowledged")).isNull();
         assertThat(a.get("data_age_s")).isEqualTo(12.0);
+        assertThat(a.get("controllable")).isEqualTo(true);
 
         Map<String, Object> b = payload.get(1);
         assertThat(b.get("serial")).isEqualTo("b");
@@ -133,10 +170,20 @@ class ControlLoopDryRunTest {
     }
 
     @Test
+    void offStateInvertersPayloadReportsControllableFalseForExcludedInverters() {
+        FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of("a", 210.0, "b", 95.0), Map.of());
+        List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
+                client, List.of("a", "b"), List.of("a"), Map.of("a", 600.0, "b", 400.0), Map.of());
+
+        assertThat(payload.get(0).get("controllable")).isEqualTo(true);
+        assertThat(payload.get(1).get("controllable")).isEqualTo(false);
+    }
+
+    @Test
     void offStateInvertersPayloadEmptyOnOpenDTUFailure() {
         FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of(), Map.of(), true);
-        List<Map<String, Object>> payload =
-                ControlLoop.offStateInvertersPayload(client, List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), null);
+        List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
+                client, List.of("a", "b"), List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), null);
         assertThat(payload).isEmpty();
     }
 
@@ -148,7 +195,8 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         List<String> logs = captureLogs(() -> ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, null, true, true, 0.0, null));
+                client, makeController(), makeCapacity(), List.of("a", "b"), List.of("a", "b"), 100.0, 100.0, null, null, null,
+                null, null, null, true, true, 0.0, null, Map.of("a", 600.0, "b", 400.0)));
         assertThat(logs).anyMatch(m -> m.contains("grid_meter="));
     }
 
@@ -160,7 +208,8 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(100, 600, "Ok"),
                         "b", new LimitStatus(100, 400, "Ok")));
         List<String> logs = captureLogs(() -> ControlLoop.decisionCycle(
-                client, makeController(), makeCapacity(), List.of("a", "b"), 100.0, 100.0, null, null, null, null, null, null, true, false, 0.0, null));
+                client, makeController(), makeCapacity(), List.of("a", "b"), List.of("a", "b"), 100.0, 100.0, null, null, null,
+                null, null, null, true, false, 0.0, null, Map.of("a", 600.0, "b", 400.0)));
         assertThat(logs).noneMatch(m -> m.contains("grid_meter="));
     }
 
@@ -226,8 +275,8 @@ class ControlLoopDryRunTest {
                         "a", new LimitStatus(50, 600, "Ok"),
                         "b", new LimitStatus(50, 380, "Pending")))
                 .withDataAgeS(Map.of("a", 4.0, "b", 8.0));
-        List<Map<String, Object>> payload =
-                ControlLoop.manualOverridePayload(client, List.of("a", "b"), 50.0, Map.of("a", 600.0, "b", 380.0), Map.of("a", "Toit Sud"));
+        List<Map<String, Object>> payload = ControlLoop.manualOverridePayload(
+                client, List.of("a", "b"), List.of("a", "b"), 50.0, Map.of("a", 600.0, "b", 380.0), Map.of("a", "Toit Sud"));
 
         Map<String, Object> a = payload.get(0);
         assertThat(a.get("serial")).isEqualTo("a");
@@ -237,6 +286,7 @@ class ControlLoopDryRunTest {
         assertThat(a.get("limit_relative_pct")).isEqualTo(50.0);
         assertThat(a.get("acknowledged")).isEqualTo(true);
         assertThat(a.get("data_age_s")).isEqualTo(4.0);
+        assertThat(a.get("controllable")).isEqualTo(true);
 
         Map<String, Object> b = payload.get(1);
         assertThat(b.get("name")).isNull();

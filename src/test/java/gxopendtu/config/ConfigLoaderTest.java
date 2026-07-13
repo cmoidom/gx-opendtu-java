@@ -58,6 +58,7 @@ class ConfigLoaderTest {
         assertThat(config.battery().exportConfirmsFullDurationS()).isEqualTo(60.0); // default
         assertThat(config.inverters()).hasSize(2);
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
+        assertThat(config.inverters().get(0).controllable()).isTrue(); // default, absent from FULL_CONFIG
         assertThat(config.totalNominalPowerW()).isEqualTo(980.0);
     }
 
@@ -162,6 +163,19 @@ class ConfigLoaderTest {
         assertThatThrownBy(() -> ConfigLoader.parseConfig(json(raw)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("config.web.chart_height_px must be between 200 and 500");
+    }
+
+    @Test
+    void inverterControllableCanBeSetToFalse() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100, "controllable": false }]
+                }
+                """;
+        AppConfig config = ConfigLoader.parseConfig(json(raw));
+        assertThat(config.inverters().get(0).controllable()).isFalse();
     }
 
     @Test

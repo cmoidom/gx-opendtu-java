@@ -87,7 +87,9 @@ public final class ControlLoop {
      * was pure duplication, is shared here. {@code dataAgeS} is null outside
      * {@code decisionCycle} (the OFF/manual-override paths don't fetch it --
      * it only matters for the capacity/shortfall reasoning that's specific
-     * to the normal ON path).
+     * to the normal ON path). {@code controllable} reflects
+     * config.inverters[].controllable regardless of mode -- it's a static
+     * per-install fact, not something that changes with ON/OFF/OVERRIDE.
      */
     private static Map<String, Object> inverterPayloadEntry(
             String serial,
@@ -97,7 +99,8 @@ public final class ControlLoop {
             Object limitRelativePct,
             double maxPowerW,
             Object acknowledged,
-            Double dataAgeS) {
+            Double dataAgeS,
+            boolean controllable) {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("serial", serial);
         entry.put("name", name);
@@ -107,6 +110,7 @@ public final class ControlLoop {
         entry.put("max_power_w", maxPowerW);
         entry.put("acknowledged", acknowledged);
         entry.put("data_age_s", dataAgeS);
+        entry.put("controllable", controllable);
         return entry;
     }
 
@@ -151,6 +155,7 @@ public final class ControlLoop {
             SoftTargetController controller,
             CapacityEstimator capacity,
             List<String> serials,
+            List<String> controllableSerials,
             double gridPowerRawW,
             double gridPowerAvgW,
             LiveState liveState,
@@ -162,19 +167,22 @@ public final class ControlLoop {
             boolean dryRun,
             boolean verboseTraces,
             double minInverterPct,
-            Map<String, String> nameBySerial) {
+            Map<String, String> nameBySerial,
+            Map<String, Double> nominalPowerW) {
         Map<String, String> names = nameBySerial != null ? nameBySerial : Map.of();
         Map<String, Double> livePowerW = client.getLivePowerW(serials);
         Map<String, LimitStatus> limitStatus = client.getLimitStatus();
         Map<String, Double> dataAgeS = client.getDataAgeS(serials);
 
-        double currentTotalActualW = serials.stream().mapToDouble(s -> livePowerW.getOrDefault(s, 0.0)).sum();
-        double totalCapacityW = serials.stream().mapToDouble(s -> capacity.ceilingsW().getOrDefault(s, 0.0)).sum();
+        double currentTotalActualW =
+                controllableSerials.stream().mapToDouble(s -> livePowerW.getOrDefault(s, 0.0)).sum();
+        double totalCapacityW =
+                controllableSerials.stream().mapToDouble(s -> capacity.ceilingsW().getOrDefault(s, 0.0)).sum();
 
         ControlDecision decision =
                 controller.computeTarget(gridPowerAvgW, currentTotalActualW, totalCapacityW, batteryPowerW);
         Map<String, Double> allocation = WaterFillAllocator.waterFillAllocate(
-                decision.targetW(), serials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
+                decision.targetW(), controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
         Map<String, Long> roundedAllocation = new LinkedHashMap<>();
         allocation.forEach((s, w) -> roundedAllocation.put(s, Math.round(w)));
 
@@ -189,7 +197,7 @@ public final class ControlLoop {
                 allocation,
                 capacity.ceilingsW(),
                 capacity.nominalPowerW(),
-                serials);
+                controllableSerials);
         if (floorWarning.warning()) {
             // Always logged (unlike the verboseTraces-gated line below): the
             // floor is doing exactly what config.control.minInverterPct
@@ -207,16 +215,18 @@ public final class ControlLoop {
         if (liveState != null) {
             List<Map<String, Object>> invertersPayload = new ArrayList<>();
             for (String serial : serials) {
+                boolean controllable = controllableSerials.contains(serial);
                 LimitStatus status = limitStatus.get(serial);
                 invertersPayload.add(inverterPayloadEntry(
                         serial,
                         names.get(serial),
-                        roundedAllocation.getOrDefault(serial, 0L),
+                        controllable ? roundedAllocation.getOrDefault(serial, 0L) : null,
                         livePowerW.getOrDefault(serial, 0.0),
-                        status != null ? status.limitRelative() : null,
-                        capacity.ceilingsW().getOrDefault(serial, 0.0),
-                        status != null ? status.acknowledged() : null,
-                        dataAgeS.get(serial)));
+                        controllable ? (Object) (status != null ? status.limitRelative() : null) : 100,
+                        controllable ? capacity.ceilingsW().getOrDefault(serial, 0.0) : nominalPowerW.getOrDefault(serial, 0.0),
+                        controllable ? (status != null ? status.acknowledged() : null) : null,
+                        dataAgeS.get(serial),
+                        controllable));
             }
             liveState.updateDecision(
                     socPct,
@@ -271,7 +281,7 @@ public final class ControlLoop {
                     dryRun ? " (rien envoye)" : ""));
         }
 
-        for (String serial : serials) {
+        for (String serial : controllableSerials) {
             LimitStatus status = limitStatus.get(serial);
             capacity.observe(
                     serial,
@@ -293,7 +303,11 @@ public final class ControlLoop {
      * blank out to "--" on the dashboard the moment injection turned OFF.
      */
     static List<Map<String, Object>> offStateInvertersPayload(
-            OpenDTUApi client, List<String> serials, Map<String, Double> nominalPowerW, Map<String, String> nameBySerial) {
+            OpenDTUApi client,
+            List<String> serials,
+            List<String> controllableSerials,
+            Map<String, Double> nominalPowerW,
+            Map<String, String> nameBySerial) {
         Map<String, String> names = nameBySerial != null ? nameBySerial : Map.of();
         Map<String, Double> livePowerW;
         try {
@@ -317,7 +331,8 @@ public final class ControlLoop {
                     100,
                     nominalPowerW.getOrDefault(serial, 0.0),
                     null,
-                    dataAgeS.get(serial)));
+                    dataAgeS.get(serial),
+                    controllableSerials.contains(serial)));
         }
         return result;
     }
@@ -346,6 +361,7 @@ public final class ControlLoop {
     static List<Map<String, Object>> manualOverridePayload(
             OpenDTUApi client,
             List<String> serials,
+            List<String> controllableSerials,
             double pct,
             Map<String, Double> nominalPowerW,
             Map<String, String> nameBySerial) {
@@ -370,16 +386,18 @@ public final class ControlLoop {
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
+            boolean controllable = controllableSerials.contains(serial);
             LimitStatus status = limitStatus.get(serial);
             result.add(inverterPayloadEntry(
                     serial,
                     names.get(serial),
-                    Math.round(pct / 100.0 * nominalPowerW.getOrDefault(serial, 0.0)),
+                    controllable ? (Object) Math.round(pct / 100.0 * nominalPowerW.getOrDefault(serial, 0.0)) : null,
                     livePowerW.getOrDefault(serial, 0.0),
-                    status != null ? status.limitRelative() : pct,
+                    controllable ? (Object) (status != null ? status.limitRelative() : pct) : 100,
                     nominalPowerW.getOrDefault(serial, 0.0),
-                    status != null ? status.acknowledged() : null,
-                    dataAgeS.get(serial)));
+                    controllable ? (status != null ? status.acknowledged() : null) : null,
+                    dataAgeS.get(serial),
+                    controllable));
         }
         return result;
     }
@@ -464,8 +482,17 @@ public final class ControlLoop {
         Map<String, String> nameBySerial = config.inverters().stream()
                 .filter(inv -> inv.name() != null)
                 .collect(Collectors.toMap(InverterConfig::serial, InverterConfig::name));
-        CapacityEstimator capacity = new CapacityEstimator(nominalPowerW, config.capacityProbe().stepW());
         List<String> serials = config.inverters().stream().map(InverterConfig::serial).toList();
+        // Never commanded, ever -- excluded from water-filling, CapacityEstimator
+        // and every setAbsoluteLimitW/setRelativeLimitPct call site (decisionCycle,
+        // releaseForCharging, applyFailsafe, sendManualOverride). Still read
+        // (livePowerW/YieldDay) and shown on the dashboard like any other inverter.
+        List<String> controllableSerials =
+                config.inverters().stream().filter(InverterConfig::controllable).map(InverterConfig::serial).toList();
+        Map<String, Double> controllableNominalPowerW = config.inverters().stream()
+                .filter(InverterConfig::controllable)
+                .collect(Collectors.toMap(InverterConfig::serial, InverterConfig::nominalPowerW));
+        CapacityEstimator capacity = new CapacityEstimator(controllableNominalPowerW, config.capacityProbe().stepW());
 
         double lastDecisionTime = 0.0;
         double lastProbeTime = 0.0;
@@ -494,7 +521,7 @@ public final class ControlLoop {
                 consecutiveGridFailures++;
                 LOG.severe(String.format("grid meter read failed (%d in a row): %s", consecutiveGridFailures, e.getMessage()));
                 if (consecutiveGridFailures >= FAILSAFE_AFTER_CONSECUTIVE_FAILURES) {
-                    applyFailsafe(client, serials, dryRun);
+                    applyFailsafe(client, controllableSerials, dryRun);
                 }
                 sleepSeconds(config.grid().readIntervalS());
                 continue;
@@ -576,7 +603,7 @@ public final class ControlLoop {
 
                 if (!injectionActive) {
                     if (!releasedForCharging) {
-                        releaseForCharging(client, serials, dryRun);
+                        releaseForCharging(client, controllableSerials, dryRun);
                         releasedForCharging = true;
                     }
                     // So a still-active % override gets re-sent (not skipped
@@ -587,7 +614,7 @@ public final class ControlLoop {
                             socPct,
                             "OFF",
                             null,
-                            offStateInvertersPayload(client, serials, nominalPowerW, nameBySerial),
+                            offStateInvertersPayload(client, serials, controllableSerials, nominalPowerW, nameBySerial),
                             batteryPowerW,
                             batteryVoltageV,
                             batteryCurrentA,
@@ -608,14 +635,14 @@ public final class ControlLoop {
                     Double overridePct = manualOverride.activePct();
                     if (overridePct != null) {
                         if (!overridePct.equals(lastOverridePctSent)) {
-                            sendManualOverride(client, serials, overridePct, dryRun);
+                            sendManualOverride(client, controllableSerials, overridePct, dryRun);
                             lastOverridePctSent = overridePct;
                         }
                         liveState.updateDecision(
                                 socPct,
                                 "OVERRIDE",
                                 null,
-                                manualOverridePayload(client, serials, overridePct, nominalPowerW, nameBySerial),
+                                manualOverridePayload(client, serials, controllableSerials, overridePct, nominalPowerW, nameBySerial),
                                 batteryPowerW,
                                 batteryVoltageV,
                                 batteryCurrentA,
@@ -629,6 +656,7 @@ public final class ControlLoop {
                                     controller,
                                     capacity,
                                     serials,
+                                    controllableSerials,
                                     gridPowerW,
                                     smoother.average(),
                                     liveState,
@@ -640,10 +668,11 @@ public final class ControlLoop {
                                     dryRun,
                                     config.logging().verboseTraces(),
                                     config.control().minInverterPct(),
-                                    nameBySerial);
+                                    nameBySerial,
+                                    nominalPowerW);
                         } catch (OpenDTUException e) {
                             LOG.severe("OpenDTU communication failed: " + e.getMessage());
-                            applyFailsafe(client, serials, dryRun);
+                            applyFailsafe(client, controllableSerials, dryRun);
                         }
                     }
                 }

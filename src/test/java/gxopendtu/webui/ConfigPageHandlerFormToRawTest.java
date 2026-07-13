@@ -40,6 +40,7 @@ class ConfigPageHandlerFormToRawTest {
         assertThat(config.inverters()).hasSize(2);
         assertThat(config.inverters().get(0).name()).isNull();
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
+        assertThat(config.inverters().get(0).controllable()).isTrue(); // default, absent from form
         assertThat(config.battery().enabled()).isFalse(); // checkbox absent from form
         assertThat(config.stats().highResRetentionDays()).isEqualTo(30); // default, absent from form
         assertThat(config.web().chartHeightPx()).isEqualTo(200); // default, absent from form
@@ -115,6 +116,21 @@ class ConfigPageHandlerFormToRawTest {
         JsonNode raw = ConfigPageHandler.formToRaw(form);
         assertThat(raw.path("inverters").size()).isEqualTo(1);
         assertThat(raw.path("inverters").get(0).path("serial").asText()).isEqualTo("a");
+    }
+
+    @Test
+    void inverterControllableRoundTripsPerRow() {
+        Map<String, List<String>> form = Map.of(
+                "opendtu.base_url", List.of("http://x"),
+                "grid.modbus.host", List.of("10.0.0.1"),
+                "inverter_serial", List.of("a", "b"),
+                "inverter_nominal_power_w", List.of("100", "200"),
+                "inverter_name", List.of("", ""),
+                "inverter_controllable", List.of("true", "false"));
+
+        AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
+        assertThat(config.inverters().get(0).controllable()).isTrue();
+        assertThat(config.inverters().get(1).controllable()).isFalse();
     }
 
     @Test
