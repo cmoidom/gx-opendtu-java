@@ -401,7 +401,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  * { box-sizing: border-box; }\n"
                 + "  body { font-family: system-ui, -apple-system, \"Segoe UI\", sans-serif; max-width: 960px; margin: 2rem auto;\n"
                 + "         padding: 0 1rem; color: var(--text-primary); background: var(--page); }\n"
-                + "  nav { margin-bottom: 1.2rem; display: flex; gap: 0.4rem; }\n"
+                + "  nav { margin-bottom: 1.2rem; display: flex; justify-content: center; gap: 0.4rem; }\n"
                 + "  nav a { padding: 0.4rem 0.9rem; border-radius: 6px; font-size: 0.85rem; text-decoration: none;\n"
                 + "          color: var(--text-secondary); border: 1px solid var(--border); background: var(--surface-1); }\n"
                 + "  nav a:hover { background: var(--border); }\n"
