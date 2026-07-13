@@ -26,10 +26,12 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Built-in config editor: GET "/" and "/index.html" render the form, POST
- * "/save" writes config.json without restarting, POST "/apply" writes then
- * restarts the whole process (the supervisor -- systemd -- relaunches it
- * with the new config on the next load).
+ * Built-in config editor: GET "/config" renders the form, POST
+ * "/config/save" writes config.json without restarting, POST
+ * "/config/apply" writes then restarts the whole process (the supervisor --
+ * systemd -- relaunches it with the new config on the next load). Lives at
+ * "/config" rather than "/" -- the dashboard (webui.DashboardHandler) takes
+ * the root path instead, since that's the page checked far more often.
  *
  * Deliberately does NOT touch the running control loop's in-memory state --
  * "Enregistrer" just writes the file and shows a message. Port of the config
@@ -82,7 +84,7 @@ final class ConfigPageHandler implements HttpHandler {
     }
 
     private void handleGet(HttpExchange exchange, String path) throws IOException {
-        if (!path.equals("/") && !path.equals("/index.html")) {
+        if (!path.equals("/config")) {
             exchange.sendResponseHeaders(404, -1);
             return;
         }
@@ -90,7 +92,7 @@ final class ConfigPageHandler implements HttpHandler {
     }
 
     private void handlePost(HttpExchange exchange, String path) throws IOException {
-        if (!path.equals("/save") && !path.equals("/apply")) {
+        if (!path.equals("/config/save") && !path.equals("/config/apply")) {
             exchange.sendResponseHeaders(404, -1);
             return;
         }
@@ -107,7 +109,7 @@ final class ConfigPageHandler implements HttpHandler {
             return;
         }
 
-        if (path.equals("/apply")) {
+        if (path.equals("/config/apply")) {
             sendHtml(exchange, 200, renderPage(raw, "", "Configuration enregistree, redemarrage du service en cours...", statsInfo()));
             LOG.warning(
                     "redemarrage demande via la page de configuration (bouton appliquer) -- "
@@ -450,14 +452,14 @@ final class ConfigPageHandler implements HttpHandler {
                 + "</style>\n"
                 + "</head>\n"
                 + "<body>\n"
-                + "<nav><a href=\"/\" class=\"active\">Configuration</a><a href=\"/dashboard\">Tableau de bord</a></nav>\n"
+                + "<nav><a href=\"/dashboard\">Tableau de bord</a><a href=\"/config\" class=\"active\">Configuration</a></nav>\n"
                 + "<p class=\"eyebrow\">GX-DTU Injection Controller"
                 + (BuildInfo.timestamp() != null
                         ? " <span class=\"build-tag\">(build " + escape(BuildInfo.timestamp()) + ")</span>"
                         : "")
                 + "</p>\n"
                 + banner
-                + "<form method=\"post\" action=\"/save\">\n"
+                + "<form method=\"post\" action=\"/config/save\">\n"
                 + "\n"
                 + "  <fieldset>\n"
                 + "    <legend>OpenDTU</legend>\n"
@@ -645,8 +647,8 @@ final class ConfigPageHandler implements HttpHandler {
                 + "Desactiver si le <a href=\"/dashboard\">tableau de bord</a> suffit.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
-                + "  <button type=\"submit\" formaction=\"/save\" class=\"primary\">Enregistrer</button>\n"
-                + "  <button type=\"submit\" formaction=\"/apply\" class=\"primary apply-btn\"\n"
+                + "  <button type=\"submit\" formaction=\"/config/save\" class=\"primary\">Enregistrer</button>\n"
+                + "  <button type=\"submit\" formaction=\"/config/apply\" class=\"primary apply-btn\"\n"
                 + "          onclick=\"return confirm('Enregistrer et redemarrer le service maintenant ? Le pilotage sera brievement interrompu.');\">\n"
                 + "    Enregistrer et appliquer (redemarre le service)\n"
                 + "  </button>\n"

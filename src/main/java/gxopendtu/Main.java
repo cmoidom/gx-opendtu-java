@@ -85,7 +85,7 @@ public final class Main {
         // update.sh, VM reboot) so a restart never loses more than the
         // in-memory samples since the last periodic write, rather than up to
         // a full stats.interval_s (default 5 min) -- covers every restart
-        // path, not just the ones that go through the config page's /apply.
+        // path, not just the ones that go through the config page's /config/apply.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             statsStore.persistSnapshot(liveState, energyHistory, inverterEnergyHistory);
             statsStore.close();
@@ -94,7 +94,8 @@ public final class Main {
         WebUiServer.start(
                 configPath, config.web().port(), liveState, energyHistory, inverterEnergyHistory, manualOverride,
                 injectionMode, statsStore);
-        LOG.info("page de configuration disponible sur http://0.0.0.0:" + config.web().port() + "/");
+        LOG.info("tableau de bord disponible sur http://0.0.0.0:" + config.web().port() + "/ "
+                + "(configuration sur http://0.0.0.0:" + config.web().port() + "/config)");
 
         ControlLoop.run(
                 config, dryRun, liveState, energyHistory, inverterEnergyHistory, configPath, manualOverride,

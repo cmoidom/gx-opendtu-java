@@ -75,6 +75,17 @@ final class DashboardHandler implements HttpHandler {
                 exchange.sendResponseHeaders(405, -1);
                 return;
             }
+            // Registered at both "/" and "/dashboard" (the JDK HttpServer
+            // routes any otherwise-unmatched path to whichever registered
+            // context is the longest matching prefix, so "/" is effectively
+            // a catch-all) -- reject anything else explicitly rather than
+            // silently serving the dashboard for e.g. "/nope" or favicon
+            // requests.
+            String path = exchange.getRequestURI().getPath();
+            if (!path.equals("/") && !path.equals("/dashboard")) {
+                exchange.sendResponseHeaders(404, -1);
+                return;
+            }
             byte[] body = TEMPLATE.replace("__CHART_HEIGHT_PX__", String.valueOf(chartHeightPx()))
                     .replace("__BUILD_TAG__", buildTag())
                     .getBytes(StandardCharsets.UTF_8);

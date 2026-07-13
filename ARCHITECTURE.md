@@ -77,8 +77,9 @@ gx-opendtu-java/
 │   │                                    decisionCycle/applyFailsafe/releaseForCharging/...)
 │   └── webui/
 │       ├── WebUiServer.java            com.sun.net.httpserver.HttpServer, routage
-│       ├── ConfigPageHandler.java      page de config ("/"), /save, /apply
-│       ├── DashboardHandler.java       sert dashboard.html (resource, 1 substitution : __CHART_HEIGHT_PX__)
+│       ├── ConfigPageHandler.java      page de config ("/config"), /config/save, /config/apply
+│       ├── DashboardHandler.java       sert dashboard.html sur "/" et "/dashboard" (2 substitutions :
+│       │                                __CHART_HEIGHT_PX__, __BUILD_TAG__)
 │       ├── StatusJsonHandler.java      GET /status.json?since=
 │       ├── FetchInvertersHandler.java  GET /fetch-inverters (proxy decouverte OpenDTU)
 │       └── OverrideHandlers.java       POST /override/pct, /pct/clear, /mode
@@ -99,17 +100,22 @@ choix D-Bus/Modbus à faire (c'est toujours Modbus).
 `webui/` démarre un `com.sun.net.httpserver.HttpServer` (JDK, aucune
 dépendance) sur `config.web.port` (8080 par défaut) -- toujours actif,
 contrairement au projet Python d'origine, pas d'option pour le désactiver.
+**Racine `/` = tableau de bord, pas la config (2026-07-13)** : `DashboardHandler`
+est enregistré à la fois sur `/` et `/dashboard` (page consultée bien plus
+souvent que la config), donc `http://<ip>:8080/` affiche directement le
+tableau de bord. La page de config a migré vers `/config` (`ConfigPageHandler`,
+avec `/config/save`/`/config/apply`).
 `HttpServer.start()` lance son propre thread d'écoute et
 retourne immédiatement -- pas besoin d'envelopper manuellement dans un
 thread, contrairement à `threading.Thread(target=server.serve_forever)`
 côté Python. Il lit/écrit directement `config.json` mais ne touche pas à
-l'état en mémoire de la boucle de contrôle : "Enregistrer" (`POST /save`)
+l'état en mémoire de la boucle de contrôle : "Enregistrer" (`POST /config/save`)
 écrit le fichier et affiche un message, sans redémarrer le service -- cohérent
 avec le choix de ne rien recharger à chaud. Pas d'authentification (comme
 l'API OpenDTU) : accessible à quiconque sur le LAN.
 
-"Enregistrer et appliquer" (`POST /apply`) valide et écrit la config comme
-`/save`, puis programme `System.exit(1)` (via un `Thread` avec
+"Enregistrer et appliquer" (`POST /config/apply`) valide et écrit la config comme
+`/config/save`, puis programme `System.exit(1)` (via un `Thread` avec
 `Thread.sleep(500)` pour laisser la réponse HTTP partir avant que le process
 ne meure) : pas de hot-reload en mémoire, on relance tout le process et on
 laisse systemd (`deploy/systemd/`) le redémarrer avec la nouvelle config.
@@ -248,7 +254,7 @@ dernier échantillon déjà en mémoire dans `LiveState` (`snapshotSince(0).late
 la page web n'a jamais besoin d'accéder directement aux lectures de la
 boucle de contrôle.
 
-**Flush avant arrêt (tout chemin de redémarrage, pas seulement `/apply`)** :
+**Flush avant arrêt (tout chemin de redémarrage, pas seulement `/config/apply`)** :
 `Main.main` enregistre un `Runtime.getRuntime().addShutdownHook(...)` qui
 appelle `statsStore.persistSnapshot(...)` puis `statsStore.close()` à la
 réception de `SIGTERM` -- couvre `systemctl restart`/`stop`, `update.sh`, un

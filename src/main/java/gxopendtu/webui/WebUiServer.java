@@ -15,11 +15,13 @@ import java.nio.file.Path;
 import java.util.concurrent.Executors;
 
 /**
- * Starts the built-in config editor ("/") and live dashboard ("/dashboard")
- * on config.web.port, using the JDK's own HttpServer (no external
- * dependency) -- the direct equivalent of Python's
- * http.server.ThreadingHTTPServer. HttpServer.start() spawns its own
- * listener thread and returns immediately, so no extra thread is needed here.
+ * Starts the live dashboard (both "/" and "/dashboard" -- landing on the
+ * dashboard by default is the common case, checked far more often than the
+ * config editor) and the built-in config editor ("/config") on
+ * config.web.port, using the JDK's own HttpServer (no external dependency)
+ * -- the direct equivalent of Python's http.server.ThreadingHTTPServer.
+ * HttpServer.start() spawns its own listener thread and returns immediately,
+ * so no extra thread is needed here.
  *
  * Port of src/webui.py's start_webui_server.
  */
@@ -48,9 +50,12 @@ public final class WebUiServer {
                 return thread;
             }));
 
+            DashboardHandler dashboardHandler = new DashboardHandler(configPath);
+            server.createContext("/", dashboardHandler);
+            server.createContext("/dashboard", dashboardHandler);
             server.createContext(
-                    "/", new ConfigPageHandler(configPath, liveState, energyHistory, inverterEnergyHistory, statsStore));
-            server.createContext("/dashboard", new DashboardHandler(configPath));
+                    "/config",
+                    new ConfigPageHandler(configPath, liveState, energyHistory, inverterEnergyHistory, statsStore));
             server.createContext(
                     "/status.json",
                     new StatusJsonHandler(

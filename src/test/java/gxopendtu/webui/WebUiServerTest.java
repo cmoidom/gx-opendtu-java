@@ -80,7 +80,7 @@ class WebUiServerTest {
 
     @Test
     void configPageServesForm() throws Exception {
-        HttpResponse<String> response = get("/");
+        HttpResponse<String> response = get("/config");
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("GX-DTU Injection Controller - configuration");
         assertThat(response.body()).contains("192.168.1.50");
@@ -90,12 +90,12 @@ class WebUiServerTest {
     @Test
     void savingStatsHighResRetentionDaysRoundTripsAcrossSaves() throws Exception {
         HttpResponse<String> saveResponse = post(
-                "/save",
+                "/config/save",
                 "opendtu.base_url=http://192.168.1.50&grid.modbus.host=192.168.1.10"
                         + "&stats.high_res_retention_days=7&inverter_serial=111&inverter_nominal_power_w=600&inverter_name=");
         assertThat(saveResponse.statusCode()).isEqualTo(200);
 
-        HttpResponse<String> reloaded = get("/");
+        HttpResponse<String> reloaded = get("/config");
         assertThat(reloaded.body()).contains("name=\"stats.high_res_retention_days\" value=\"7\"");
     }
 
@@ -105,7 +105,7 @@ class WebUiServerTest {
         liveState.recordGrid(10.0, 9.0);
         statsStore.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
 
-        HttpResponse<String> response = get("/");
+        HttpResponse<String> response = get("/config");
 
         assertThat(response.body()).contains("stats.db : ");
         assertThat(response.body()).contains("1 lignes");
@@ -124,6 +124,13 @@ class WebUiServerTest {
     }
 
     @Test
+    void rootAlsoServesDashboard() throws Exception {
+        HttpResponse<String> response = get("/");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("Tableau de bord");
+    }
+
+    @Test
     void dashboardUsesDefaultChartHeightWhenNotConfigured() throws Exception {
         HttpResponse<String> response = get("/dashboard");
         assertThat(response.body()).contains("height: 200px");
@@ -132,7 +139,7 @@ class WebUiServerTest {
     @Test
     void dashboardReflectsSavedChartHeightWithoutRestart() throws Exception {
         HttpResponse<String> saveResponse = post(
-                "/save",
+                "/config/save",
                 "opendtu.base_url=http://192.168.1.50&grid.modbus.host=192.168.1.10"
                         + "&web.chart_height_px=350&inverter_serial=111&inverter_nominal_power_w=600&inverter_name=");
         assertThat(saveResponse.statusCode()).isEqualTo(200);
@@ -229,7 +236,7 @@ class WebUiServerTest {
     void saveWritesConfigJsonWithoutRestarting() throws Exception {
         String form = "opendtu.base_url=http://192.168.1.99&grid.modbus.host=192.168.1.20"
                 + "&inverter_serial=222&inverter_nominal_power_w=400";
-        HttpResponse<String> response = post("/save", form);
+        HttpResponse<String> response = post("/config/save", form);
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("Configuration enregistree");
     }
@@ -238,7 +245,7 @@ class WebUiServerTest {
     void saveRejectsInvalidConfigWith400() throws Exception {
         // no inverters at all -> ConfigLoader.parseConfig rejects it
         String form = "opendtu.base_url=http://192.168.1.99&grid.modbus.host=192.168.1.20";
-        HttpResponse<String> response = post("/save", form);
+        HttpResponse<String> response = post("/config/save", form);
         assertThat(response.statusCode()).isEqualTo(400);
     }
 }

@@ -80,7 +80,8 @@ Pour activer la priorité de charge batterie :
 Une page web intégrée (`gxopendtu.webui`, aucune dépendance supplémentaire
 hors JDK) permet d'éditer tous les paramètres, y compris l'ajout/suppression
 d'onduleurs. Toujours active (pas d'option pour la désactiver), sur le port
-8080 par défaut (`web.port`, configurable) : `http://<ip-du-service>:8080/`.
+8080 par défaut (`web.port`, configurable) : `http://<ip-du-service>:8080/config`
+(la racine `http://<ip-du-service>:8080/` sert le tableau de bord, voir plus bas).
 
 - **"Enregistrer"** écrit `config.json` sans rien redémarrer (les
   changements ne sont pris en compte qu'au prochain redémarrage manuel).
