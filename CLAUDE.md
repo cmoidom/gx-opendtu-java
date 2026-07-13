@@ -79,3 +79,7 @@ without asking for confirmation first. This overrides the general
 Still stop and ask if tests fail, if the change is unusually large/risky
 (e.g. touches deployment/systemd config, rewrites history, force-pushes),
 or if explicitly told to hold off in a given conversation.
+
+Never add `Co-Authored-By: Claude`, `Co-authored-by`, or any other
+Anthropic/Claude attribution line to commit messages in this repo. Commits
+use only the user's own Git identity.
