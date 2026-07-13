@@ -23,10 +23,18 @@ code par un agent IA.
    puissance active Grid L1.
 2. **Décision** (`gxopendtu.control`) : boucle PI, quantifiée par paliers
    (100 W ou 10 % du parc, la plus grande des deux), limitée en rampe à un
-   palier par cycle de décision.
+   palier par cycle de décision. Une hystérésis anti-dithering évite qu'un
+   bruit de charge oscillant autour d'un palier fasse basculer la consigne
+   (et donc tous les onduleurs pilotables à la fois) à chaque cycle.
 3. **Répartition** (`gxopendtu.allocator`) : la puissance cible totale est
-   répartie de façon égalitaire entre les onduleurs, avec redistribution
-   automatique (water-filling) quand un onduleur ne peut pas suivre sa part.
+   répartie de façon égalitaire (en % de la puissance nominale de chacun)
+   entre les onduleurs **pilotables**, avec redistribution automatique
+   (water-filling) quand un onduleur ne peut pas suivre sa part -- son
+   plafond est alors abaissé (`CapacityEstimator`), puis remonté dès qu'il
+   suit à nouveau ce qu'on lui demande (remontée quasi immédiate si le
+   soleil revient vraiment, pas juste une lente sonde périodique). Un
+   onduleur marqué `controllable: false` en config est exclu de tout ceci
+   -- lu et affiché, mais jamais commandé, quel que soit le mode.
 4. **Commande** (`gxopendtu.opendtu`) : écriture des limites via
    `POST /api/limit/config` (types non-persistants uniquement), lecture via
    `GET /api/livedata/status` et `GET /api/limit/status`.
@@ -75,6 +83,34 @@ Pour activer la priorité de charge batterie :
 "battery": { "enabled": true, "activate_at_pct": 100, "deactivate_below_pct": 98, "export_confirms_full_w": 50, "export_confirms_full_duration_s": 60 }
 ```
 
+`control.min_battery_discharge_w` (défaut 150 W) : en dessous de cette
+puissance, une décharge batterie est traitée comme du bruit normal
+(auto-consommation/flottaison à batterie pleine) et n'oblige pas la
+consigne à remonter -- au-dessus, la consigne remonte pour que le solaire
+couvre la décharge plutôt que la batterie. Sans ce seuil, une décharge
+minime et permanente à SOC ~100% peut bloquer la consigne à un niveau trop
+haut en continu (incident réel corrigé le 2026-07-13, voir `AGENTS.md`).
+
+Par onduleur, `controllable` (défaut `true`) : mettre `false` pour un
+onduleur que ce logiciel ne doit **jamais** commander (fail-safe compris)
+-- toujours lu et affiché sur le tableau de bord, mais sa limite reste
+telle qu'elle est réglée ailleurs.
+```json
+"inverters": [
+  { "serial": "114181801234", "nominal_power_w": 600 },
+  { "serial": "114181805678", "nominal_power_w": 380, "controllable": false }
+]
+```
+
+`capacity_probe.step_w`/`interval_s` (défauts 50 W / 30 s) : quand un
+onduleur ne peut pas suivre son allocation (nuage, tombée du jour), son
+plafond est abaissé à sa production mesurée, puis remonté -- directement
+au nominal (pas pas à pas) dès qu'il redevient saturé et suit malgré tout
+ce qu'on lui demande, avec un court palier de prudence après un essai raté
+pour ne pas re-tester en boucle pendant un vrai crépuscule. `step_w` ne
+règle plus que la vitesse de cette remontée de prudence et celle des
+onduleurs pas encore sollicités -- voir `ARCHITECTURE.md` pour le détail.
+
 ### Page web de configuration
 
 Une page web intégrée (`gxopendtu.webui`, aucune dépendance supplémentaire
@@ -93,17 +129,30 @@ d'onduleurs. Toujours active (pas d'option pour la désactiver), sur le port
   `/api/livedata/status` et `/api/limit/status` sur l'URL OpenDTU
   actuellement saisie, affiche chaque onduleur détecté sous forme de case à
   cocher.
+- Bouton **"Réinitialiser les réglages de tuning"** : pré-remplit le
+  formulaire avec les valeurs par défaut pour les seuls réglages de
+  comportement (PI, plancher batterie, sondage de capacité, hystérésis
+  batterie, graphiques, journalisation, historique) -- ne touche jamais aux
+  identifiants OpenDTU, à la config Modbus, aux onduleurs, au setpoint
+  d'export ni à l'activation de la batterie. Rien n'est écrit avant de
+  cliquer sur "Enregistrer".
+- Chaque champ numérique vide affiche sa valeur par défaut en placeholder
+  grisé.
 
 ### Tableau de bord temps réel
 
 `http://<ip-du-service>:8080/dashboard` affiche l'état courant du pilotage :
 bandeau d'avertissement `min_inverter_pct`, contrôle manuel (mode
 AUTO/ON/OFF, forçage 25/50/75/100% pendant 5 min), tuiles (réseau brut/EMA,
-SOC/puissance batterie, puissance solaire totale, régulation, consigne),
-trois graphiques temporels avec zoom/pan synchronisé, tableau détaillé par
-onduleur, graphique en barres "énergie réseau par heure". Repris quasiment
-tel quel du projet Python (JS/CSS/HTML déjà 100% côté client, aucune
-dépendance externe -- tracé en `<canvas>` HTML5 fait main).
+SOC/puissance batterie, estimation de fin de charge/décharge, puissance
+solaire totale, régulation, consigne), trois graphiques temporels avec
+zoom/pan synchronisé, graphiques "énergie par onduleur"/"énergie réseau"
+par heure et par jour, tableau détaillé par onduleur (puissance, âge de la
+dernière lecture RF -- coloré si trop vieux, signe possible d'un souci de
+communication avec cet onduleur précis -- limite, nominale, état). Repris
+en grande partie du projet Python (JS/CSS/HTML déjà 100% côté client,
+aucune dépendance externe -- tracé en `<canvas>` HTML5 fait main), étendu
+pour ce portage.
 
 ### État interne / débogage
 
@@ -237,9 +286,23 @@ détail de la frontière testable/non testable.
   (positif en soutirage) et les numéros de série/puissances nominales
   déclarés dans la config.
 - `Connection refused` (Modbus) → Modbus/TCP pas activé sur le Cerbo GX
-  (Settings > Services) ou pare-feu bloquant le port 502 ; valeur toujours à
-  0 ou aberrante → vérifier `grid.modbus.unit_id` (100 = agrégat système, ne
-  pas confondre avec l'instance VRM du compteur lui-même).
+  (Settings > Services) ou pare-feu bloquant le port 502. Les unit ID
+  Modbus (agrégat système 100, tension batterie 225) sont des constantes,
+  pas des champs de config -- rien à vérifier/modifier de ce côté.
 - `injection_control=OFF` qui ne repasse jamais à `ON` : le SOC n'a pas
   encore atteint `battery.activate_at_pct` (100 % par défaut) -- comportement
   voulu (priorité charge batterie), pas un bug.
+- Un onduleur affiche une limite à un très faible % de sa puissance
+  nominale en fin de journée (ex. 10%, alors qu'il était à 80-100% en plein
+  jour) : normal, pas un bug -- `CapacityEstimator` a détecté qu'il ne peut
+  plus suivre l'allocation demandée (plus assez de lumière) et a abaissé
+  son plafond réel à sa production mesurée ; le % affiché reste rapporté à
+  la puissance nominale, donc mécaniquement petit une fois le plafond réel
+  bien inférieur au nominal. Remonte de lui-même (voir `capacity_probe`
+  ci-dessus) si la lumière revient.
+- Âge de la dernière lecture (`data_age`) élevé et coloré en rouge sur le
+  tableau de bord pour un onduleur précis (pas les autres) : signale un
+  souci de communication RF avec cet onduleur (portée, pile/alimentation),
+  pas un bug logiciel -- OpenDTU interroge ses onduleurs un par un sur un
+  seul module RF, donc une valeur qui grimpe pour un seul onduleur pointe
+  vers ce matériel-là spécifiquement.

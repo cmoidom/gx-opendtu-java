@@ -852,7 +852,7 @@ onduleurs. Testé par `loop/ControlLoopDryRunTest.java` via un
   `config.json`, comme dans le projet Python d'origine -- pas de coffre-fort
   de secrets, cohérent avec l'absence d'authentification sur la page de
   configuration elle-même.
-- `mvn test` passe (125 tests) et `mvn package` produit un jar exécutable
+- `mvn test` passe intégralement et `mvn package` produit un jar exécutable
   vérifié en `--dry-run` (serveur web + boucle de contrôle démarrent
   correctement, fail-safe déclenché face à un Modbus/OpenDTU factice
   injoignable) -- reste à valider contre du vrai matériel Victron/OpenDTU
