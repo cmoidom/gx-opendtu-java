@@ -189,15 +189,37 @@ final class ConfigPageHandler implements HttpHandler {
     }
 
     /**
+     * Like {@link #val}, but for numeric fields: reads the value as a
+     * double and formats it through {@link #d} instead of taking
+     * {@code JsonNode.asText()} verbatim. A value round-tripped through
+     * {@code formToRaw}'s {@code ObjectNode.put(String, double)} is written
+     * as a JSON double, and {@code asText()} on a whole-number double
+     * renders it with a trailing ".0" (e.g. "5.0") -- every saved config
+     * ends up displaying that way for any untouched whole-number default
+     * without this.
+     */
+    private static String numVal(JsonNode raw, String dottedPath, double defaultValue) {
+        return d(dig(raw, dottedPath).asDouble(defaultValue));
+    }
+
+    /**
      * " class=\"changed-value\"" if this field's current value differs from
      * its default, "" otherwise -- lets a saved config that drifted from
      * defaults be spotted at a glance on the config page, without needing a
      * separate source of truth (compares against the exact same
      * {@code defaultValue} string {@link #val} itself falls back to).
+     *
+     * Compares as numbers, not text: a value round-tripped through
+     * {@code formToRaw}'s {@code ObjectNode.put(String, double)} is written
+     * as a JSON double, and {@code JsonNode.asText()} on a whole-number
+     * double renders it with a trailing ".0" (e.g. "5.0") -- {@link #d}
+     * deliberately omits that for whole numbers, so a plain text comparison
+     * flagged every untouched whole-number default as "changed".
      */
     private static String changedClass(JsonNode raw, String dottedPath, String defaultValue) {
-        String current = dig(raw, dottedPath).asText(defaultValue);
-        return current.equals(defaultValue) ? "" : " class=\"changed-value\"";
+        double def = Double.parseDouble(defaultValue);
+        double current = dig(raw, dottedPath).asDouble(def);
+        return current == def ? "" : " class=\"changed-value\"";
     }
 
     /**
@@ -510,7 +532,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  <fieldset>\n"
                 + "    <legend>Reseau (grid, Modbus TCP)</legend>\n"
                 + "    <label>Consigne d'export (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"grid.export_setpoint_w\" value=\"" + val(raw, "grid.export_setpoint_w", d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W)) + "\"" + changedClass(raw, "grid.export_setpoint_w", d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"grid.export_setpoint_w\" value=\"" + numVal(raw, "grid.export_setpoint_w", ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W) + "\"" + changedClass(raw, "grid.export_setpoint_w", d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W) + "\" required>\n"
                 + "    <p class=\"hint\">C'est la puissance reseau (soutirage positif / export negatif) que le "
                 + "regulateur essaie de maintenir en permanence -- pas un budget d'energie, une cible de puissance "
                 + "instantanee reevaluee en continu. Valeur positive (defaut 30 W) : vise une petite marge de "
@@ -519,12 +541,12 @@ final class ConfigPageHandler implements HttpHandler {
                 + "negative (ex. -50) : vise au contraire un export reel controle de cette puissance (ici 50 W) en "
                 + "permanence, si vous voulez au contraire autoriser/viser une injection reseau continue.</p>\n"
                 + "    <label>Intervalle de lecture (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"grid.read_interval_s\" value=\"" + val(raw, "grid.read_interval_s", d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S)) + "\"" + changedClass(raw, "grid.read_interval_s", d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"grid.read_interval_s\" value=\"" + numVal(raw, "grid.read_interval_s", ConfigLoader.Defaults.GRID_READ_INTERVAL_S) + "\"" + changedClass(raw, "grid.read_interval_s", d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S) + "\" required>\n"
                 + "    <p class=\"hint\">Cadence de lecture de la puissance reseau (boucle rapide). C'est la resolution "
                 + "du tableau de bord temps reel et la base de temps du lissage EMA ci-dessous -- ne pilote pas "
                 + "directement les onduleurs (voir \"Intervalle de decision\" plus bas).</p>\n"
                 + "    <label>Coefficient EMA (0-1)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"1\" name=\"grid.ema_alpha\" value=\"" + val(raw, "grid.ema_alpha", d(ConfigLoader.Defaults.GRID_EMA_ALPHA)) + "\"" + changedClass(raw, "grid.ema_alpha", d(ConfigLoader.Defaults.GRID_EMA_ALPHA)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_EMA_ALPHA) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"1\" name=\"grid.ema_alpha\" value=\"" + numVal(raw, "grid.ema_alpha", ConfigLoader.Defaults.GRID_EMA_ALPHA) + "\"" + changedClass(raw, "grid.ema_alpha", d(ConfigLoader.Defaults.GRID_EMA_ALPHA)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_EMA_ALPHA) + "\" required>\n"
                 + "    <p class=\"hint\">Lissage de la puissance reseau (moyenne mobile exponentielle) avant qu'elle "
                 + "n'atteigne le regulateur -- une lecture brute unique est trop bruitee pour piloter directement. Plus "
                 + "proche de 1 : reagit vite aux vraies variations mais laisse plus de bruit passer. Plus proche de 0 : "
@@ -532,7 +554,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <label>Hote Modbus (IP Cerbo GX)</label>\n"
                 + "    <input type=\"text\" name=\"grid.modbus.host\" value=\"" + val(raw, "grid.modbus.host", "") + "\" required>\n"
                 + "    <label>Port Modbus</label>\n"
-                + "    <input type=\"number\" name=\"grid.modbus.port\" value=\"" + val(raw, "grid.modbus.port", d(ConfigLoader.Defaults.GRID_MODBUS_PORT)) + "\"" + changedClass(raw, "grid.modbus.port", d(ConfigLoader.Defaults.GRID_MODBUS_PORT)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_MODBUS_PORT) + "\">\n"
+                + "    <input type=\"number\" name=\"grid.modbus.port\" value=\"" + numVal(raw, "grid.modbus.port", ConfigLoader.Defaults.GRID_MODBUS_PORT) + "\"" + changedClass(raw, "grid.modbus.port", d(ConfigLoader.Defaults.GRID_MODBUS_PORT)) + " placeholder=\"" + d(ConfigLoader.Defaults.GRID_MODBUS_PORT) + "\">\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"
@@ -542,40 +564,40 @@ final class ConfigPageHandler implements HttpHandler {
                 + "reactivite -- inutile d'y toucher sauf si la regulation oscille (descendre kp) ou reagit trop "
                 + "lentement (monter kp/ki).</p>\n"
                 + "    <label>Gain proportionnel -- kp</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.kp\" value=\"" + val(raw, "control.kp", d(ConfigLoader.Defaults.CONTROL_KP)) + "\"" + changedClass(raw, "control.kp", d(ConfigLoader.Defaults.CONTROL_KP)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_KP) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.kp\" value=\"" + numVal(raw, "control.kp", ConfigLoader.Defaults.CONTROL_KP) + "\"" + changedClass(raw, "control.kp", d(ConfigLoader.Defaults.CONTROL_KP)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_KP) + "\" required>\n"
                 + "    <p class=\"hint\">Reaction immediate a l'ecart actuel : plus kp est grand, plus fort et rapide est "
                 + "l'ajustement a chaque cycle. Trop haut -- ca oscille (la puissance part dans un sens puis l'autre) ; "
                 + "trop bas -- la regulation reagit mollement aux variations rapides de production/consommation.</p>\n"
                 + "    <label>Gain integral -- ki</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.ki\" value=\"" + val(raw, "control.ki", d(ConfigLoader.Defaults.CONTROL_KI)) + "\"" + changedClass(raw, "control.ki", d(ConfigLoader.Defaults.CONTROL_KI)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_KI) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.ki\" value=\"" + numVal(raw, "control.ki", ConfigLoader.Defaults.CONTROL_KI) + "\"" + changedClass(raw, "control.ki", d(ConfigLoader.Defaults.CONTROL_KI)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_KI) + "\" required>\n"
                 + "    <p class=\"hint\">Corrige un ecart qui persiste dans le temps (kp seul ne l'annule jamais "
                 + "completement) en accumulant l'erreur cycle apres cycle. Trop haut -- la correction s'emballe et "
                 + "depasse la cible (overshoot) ; trop bas -- un petit ecart residuel peut rester longtemps.</p>\n"
                 + "    <label>Intervalle de decision (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.decision_interval_s\" value=\"" + val(raw, "control.decision_interval_s", d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S)) + "\"" + changedClass(raw, "control.decision_interval_s", d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.decision_interval_s\" value=\"" + numVal(raw, "control.decision_interval_s", ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S) + "\"" + changedClass(raw, "control.decision_interval_s", d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S) + "\" required>\n"
                 + "    <p class=\"hint\">Cadence a laquelle le regulateur PI recalcule sa cible ET envoie effectivement "
                 + "une commande a OpenDTU -- plus lente et distincte de l'intervalle de lecture reseau ci-dessus (qui ne "
                 + "fait que mettre a jour la mesure lissee en memoire). Trop court : sollicite OpenDTU/RF inutilement ; "
                 + "trop long : reagit plus lentement aux changements de consommation.</p>\n"
                 + "    <label>Palier absolu (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.step_absolute_w\" value=\"" + val(raw, "control.step_absolute_w", d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W)) + "\"" + changedClass(raw, "control.step_absolute_w", d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.step_absolute_w\" value=\"" + numVal(raw, "control.step_absolute_w", ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W) + "\"" + changedClass(raw, "control.step_absolute_w", d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W) + "\" required>\n"
                 + "    <label>Palier relatif (%)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.step_relative_pct\" value=\"" + val(raw, "control.step_relative_pct", d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT)) + "\"" + changedClass(raw, "control.step_relative_pct", d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.step_relative_pct\" value=\"" + numVal(raw, "control.step_relative_pct", ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT) + "\"" + changedClass(raw, "control.step_relative_pct", d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT) + "\" required>\n"
                 + "    <p class=\"hint\">Limite le changement de consigne autorise par cycle de decision (evite les a-coups) "
                 + "-- la limite reellement appliquee est la plus grande des deux : le palier absolu (W) ou le palier "
                 + "relatif (% de la capacite totale actuelle des onduleurs). Le palier absolu protege les petites "
                 + "installations (un pourcentage serait trop fin) ; le palier relatif evite qu'une grosse installation "
                 + "soit bridee par un palier absolu trop petit.</p>\n"
                 + "    <label>Changement minimal (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.min_change_w\" value=\"" + val(raw, "control.min_change_w", d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W)) + "\"" + changedClass(raw, "control.min_change_w", d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.min_change_w\" value=\"" + numVal(raw, "control.min_change_w", ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W) + "\"" + changedClass(raw, "control.min_change_w", d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W) + "\" required>\n"
                 + "    <p class=\"hint\">En dessous de cet ecart avec la derniere consigne envoyee, rien n'est renvoye a "
                 + "OpenDTU -- evite de solliciter la liaison RF/HTTP pour des variations negligeables.</p>\n"
                 + "    <label>Seuil mini onduleur (% de sa puissance nominale)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + val(raw, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT)) + "\"" + changedClass(raw, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + numVal(raw, "control.min_inverter_pct", ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT) + "\"" + changedClass(raw, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT) + "\" required>\n"
                 + "    <p class=\"hint\">Un onduleur qui produit n'est jamais commande sous ce seuil. Mettre 0 pour desactiver. "
                 + "Un arret complet (fail-safe, charge batterie) n'est jamais concerne.</p>\n"
                 + "    <label>Decharge batterie ignoree en dessous de (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"control.min_battery_discharge_w\" value=\"" + val(raw, "control.min_battery_discharge_w", d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W)) + "\"" + changedClass(raw, "control.min_battery_discharge_w", d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"control.min_battery_discharge_w\" value=\"" + numVal(raw, "control.min_battery_discharge_w", ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W) + "\"" + changedClass(raw, "control.min_battery_discharge_w", d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W) + "\" required>\n"
                 + "    <p class=\"hint\">En dessous de cette puissance, une decharge batterie est consideree comme du bruit "
                 + "normal (auto-consommation/flottaison a batterie pleine) et n'oblige pas la consigne a remonter. Au-dessus, "
                 + "la consigne est relevee pour que le solaire couvre la decharge plutot que la batterie. Mettre 0 pour "
@@ -590,11 +612,11 @@ final class ConfigPageHandler implements HttpHandler {
                 + "periodiquement ce plafond a la hausse, pour verifier s'il peut de nouveau produire plus (le nuage est "
                 + "passe) -- sans ca, un onduleur resterait bride en permanence apres une seule ombre passagere.</p>\n"
                 + "    <label>Palier de sonde (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.step_w\" value=\"" + val(raw, "capacity_probe.step_w", d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W)) + "\"" + changedClass(raw, "capacity_probe.step_w", d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.step_w\" value=\"" + numVal(raw, "capacity_probe.step_w", ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W) + "\"" + changedClass(raw, "capacity_probe.step_w", d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W) + "\" required>\n"
                 + "    <p class=\"hint\">De combien remonter le plafond estime a chaque sonde (jamais au-dela de la "
                 + "puissance nominale reelle de l'onduleur).</p>\n"
                 + "    <label>Intervalle de sonde (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.interval_s\" value=\"" + val(raw, "capacity_probe.interval_s", d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S)) + "\"" + changedClass(raw, "capacity_probe.interval_s", d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.interval_s\" value=\"" + numVal(raw, "capacity_probe.interval_s", ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S) + "\"" + changedClass(raw, "capacity_probe.interval_s", d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S) + "\" required>\n"
                 + "    <p class=\"hint\">A quelle frequence relancer le plafond a la hausse.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
@@ -607,16 +629,16 @@ final class ConfigPageHandler implements HttpHandler {
                 + "regroupes a l'intervalle de purge (un seul point conserve par intervalle) -- vous perdez alors le detail "
                 + "fin, pas la courbe elle-meme.</p>\n"
                 + "    <label>Duree haute resolution (jours)</label>\n"
-                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.high_res_retention_days\" value=\"" + val(raw, "stats.high_res_retention_days", d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS)) + "\"" + changedClass(raw, "stats.high_res_retention_days", d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS)) + " placeholder=\"" + d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS) + "\" required>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.high_res_retention_days\" value=\"" + numVal(raw, "stats.high_res_retention_days", ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS) + "\"" + changedClass(raw, "stats.high_res_retention_days", d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS)) + " placeholder=\"" + d(ConfigLoader.Defaults.STATS_HIGH_RES_RETENTION_DAYS) + "\" required>\n"
                 + "    <p class=\"hint\">Pendant ces N derniers jours, le tableau de bord peut zoomer sur n'importe quel "
                 + "instant precis (meme resolution que le direct). Au-dela, seule la tendance generale reste visible. "
                 + "Plus cette duree est longue, plus stats.db grossit vite -- voir la taille actuelle ci-dessous.</p>\n"
                 + "    <label>Intervalle de regroupement au-dela (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + val(raw, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S)) + "\"" + changedClass(raw, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.STATS_INTERVAL_S) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + numVal(raw, "stats.interval_s", ConfigLoader.Defaults.STATS_INTERVAL_S) + "\"" + changedClass(raw, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.STATS_INTERVAL_S) + "\" required>\n"
                 + "    <p class=\"hint\">Une fois la duree haute resolution depassee, un seul point conserve par intervalle "
                 + "de ce nombre de secondes (300s = 5 min par defaut).</p>\n"
                 + "    <label>Retention totale (jours)</label>\n"
-                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + val(raw, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS)) + "\"" + changedClass(raw, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS)) + " placeholder=\"" + d(ConfigLoader.Defaults.STATS_RETENTION_DAYS) + "\" required>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + numVal(raw, "stats.retention_days", ConfigLoader.Defaults.STATS_RETENTION_DAYS) + "\"" + changedClass(raw, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS)) + " placeholder=\"" + d(ConfigLoader.Defaults.STATS_RETENTION_DAYS) + "\" required>\n"
                 + "    <p class=\"hint\">Donnees plus vieilles que cette retention totale purgees automatiquement (doit "
                 + "etre >= duree haute resolution).</p>\n"
                 + "    <p class=\"hint\">stats.db : " + escape(statsInfo) + "</p>\n"
@@ -630,18 +652,18 @@ final class ConfigPageHandler implements HttpHandler {
                 + "debrides (100%) pour la charger au maximum, meme si ca veut dire exporter brievement -- la regulation "
                 + "zero-export ne reprend qu'une fois la batterie consideree pleine (voir les deux seuils ci-dessous).</p>\n"
                 + "    <label>Seuil d'activation SOC (%)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"battery.activate_at_pct\" value=\"" + val(raw, "battery.activate_at_pct", d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT)) + "\"" + changedClass(raw, "battery.activate_at_pct", d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"battery.activate_at_pct\" value=\"" + numVal(raw, "battery.activate_at_pct", ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT) + "\"" + changedClass(raw, "battery.activate_at_pct", d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT) + "\" required>\n"
                 + "    <label>Seuil de desactivation SOC (%)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"battery.deactivate_below_pct\" value=\"" + val(raw, "battery.deactivate_below_pct", d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT)) + "\"" + changedClass(raw, "battery.deactivate_below_pct", d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"battery.deactivate_below_pct\" value=\"" + numVal(raw, "battery.deactivate_below_pct", ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT) + "\"" + changedClass(raw, "battery.deactivate_below_pct", d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT) + "\" required>\n"
                 + "    <p class=\"hint\">Deux seuils distincts (avec une zone morte entre les deux) pour eviter que le "
                 + "systeme bascule sans arret entre les deux modes quand le SOC oscille autour d'une seule valeur. "
                 + "\"Activation\" = SOC a partir duquel la batterie est consideree pleine et la regulation zero-export "
                 + "reprend (onduleurs de nouveau brides). \"Desactivation\" = SOC en dessous duquel on repasse en charge "
                 + "prioritaire (onduleurs debrides). Toujours activation &gt;= desactivation.</p>\n"
                 + "    <label>Export confirmant la batterie pleine (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_w\" value=\"" + val(raw, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)) + "\"" + changedClass(raw, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_w\" value=\"" + numVal(raw, "battery.export_confirms_full_w", ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W) + "\"" + changedClass(raw, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W) + "\" required>\n"
                 + "    <label>Duree minimale de cet export (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_duration_s\" value=\"" + val(raw, "battery.export_confirms_full_duration_s", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S)) + "\"" + changedClass(raw, "battery.export_confirms_full_duration_s", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S) + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_duration_s\" value=\"" + numVal(raw, "battery.export_confirms_full_duration_s", ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S) + "\"" + changedClass(raw, "battery.export_confirms_full_duration_s", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S) + "\" required>\n"
                 + "    <p class=\"hint\">Passe en regulation ON dès que l'export reseau reel reste en continu au moins a "
                 + "cette puissance pendant au moins cette duree, alors que le SOC est deja au-dessus du seuil de "
                 + "desactivation -- l'estimation du SOC peut avoir du retard sur la realite (frequent en fin de charge "
@@ -676,12 +698,12 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  <fieldset>\n"
                 + "    <legend>Page de configuration (web)</legend>\n"
                 + "    <label>Port</label>\n"
-                + "    <input type=\"number\" name=\"web.port\" value=\"" + val(raw, "web.port", d(ConfigLoader.Defaults.WEB_PORT)) + "\"" + changedClass(raw, "web.port", d(ConfigLoader.Defaults.WEB_PORT)) + " placeholder=\"" + d(ConfigLoader.Defaults.WEB_PORT) + "\" required>\n"
+                + "    <input type=\"number\" name=\"web.port\" value=\"" + numVal(raw, "web.port", ConfigLoader.Defaults.WEB_PORT) + "\"" + changedClass(raw, "web.port", d(ConfigLoader.Defaults.WEB_PORT)) + " placeholder=\"" + d(ConfigLoader.Defaults.WEB_PORT) + "\" required>\n"
                 + "    <p class=\"hint\">Necessite un redemarrage du service pour prendre effet.</p>\n"
                 + "    <label>Hauteur des graphiques du tableau de bord (px)</label>\n"
                 + "    <input type=\"number\" name=\"web.chart_height_px\" min=\"" + ConfigLoader.Defaults.CHART_HEIGHT_PX_MIN
                 + "\" max=\"" + ConfigLoader.Defaults.CHART_HEIGHT_PX_MAX
-                + "\" value=\"" + val(raw, "web.chart_height_px", d(ConfigLoader.Defaults.CHART_HEIGHT_PX)) + "\"" + changedClass(raw, "web.chart_height_px", d(ConfigLoader.Defaults.CHART_HEIGHT_PX)) + " placeholder=\"" + d(ConfigLoader.Defaults.CHART_HEIGHT_PX) + "\" required>\n"
+                + "\" value=\"" + numVal(raw, "web.chart_height_px", ConfigLoader.Defaults.CHART_HEIGHT_PX) + "\"" + changedClass(raw, "web.chart_height_px", d(ConfigLoader.Defaults.CHART_HEIGHT_PX)) + " placeholder=\"" + d(ConfigLoader.Defaults.CHART_HEIGHT_PX) + "\" required>\n"
                 + "    <p class=\"hint\">De " + ConfigLoader.Defaults.CHART_HEIGHT_PX_MIN + " (defaut) a "
                 + ConfigLoader.Defaults.CHART_HEIGHT_PX_MAX + " -- meme hauteur pour tous les graphiques. "
                 + "Prend effet au prochain chargement de la page (pas besoin de redemarrer le service).</p>\n"
