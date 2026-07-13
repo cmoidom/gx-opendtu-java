@@ -72,7 +72,7 @@ réelle -- le tableau de bord affiche un avertissement quand ça arrive.
 
 Pour activer la priorité de charge batterie :
 ```json
-"battery": { "enabled": true, "activate_at_pct": 100, "deactivate_below_pct": 98, "export_confirms_full_w": 50 }
+"battery": { "enabled": true, "activate_at_pct": 100, "deactivate_below_pct": 98, "export_confirms_full_w": 50, "export_confirms_full_duration_s": 60 }
 ```
 
 ### Page web de configuration

@@ -395,7 +395,8 @@ public final class ControlLoop {
                         config.battery().activateAtPct(),
                         config.battery().deactivateBelowPct(),
                         persistedActive != null ? persistedActive : true,
-                        config.battery().exportConfirmsFullW())
+                        config.battery().exportConfirmsFullW(),
+                        config.battery().exportConfirmsFullDurationS())
                 : null;
         Boolean lastPersistedActive = persistedActive;
 
@@ -490,7 +491,7 @@ public final class ControlLoop {
                             hysteresis.setActive(false);
                             injectionActive = false;
                         } else {
-                            injectionActive = hysteresis.update(socPct, smoother.average());
+                            injectionActive = hysteresis.update(socPct, smoother.average(), now);
                         }
                     } catch (BatterySocUnavailableException e) {
                         // Safe default: if we can't tell whether the battery

@@ -64,6 +64,7 @@ public final class ConfigLoader {
         public static final double BATTERY_ACTIVATE_AT_PCT = 100.0;
         public static final double BATTERY_DEACTIVATE_BELOW_PCT = 98.0;
         public static final double BATTERY_EXPORT_CONFIRMS_FULL_W = 50.0;
+        public static final double BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S = 60.0;
 
         public static final int WEB_PORT = 8080;
         public static final int CHART_HEIGHT_PX = 200;
@@ -166,7 +167,9 @@ public final class ConfigLoader {
                         batteryRaw.path("enabled").asBoolean(Defaults.BATTERY_ENABLED),
                         batteryRaw.path("activate_at_pct").asDouble(Defaults.BATTERY_ACTIVATE_AT_PCT),
                         batteryRaw.path("deactivate_below_pct").asDouble(Defaults.BATTERY_DEACTIVATE_BELOW_PCT),
-                        batteryRaw.path("export_confirms_full_w").asDouble(Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)),
+                        batteryRaw.path("export_confirms_full_w").asDouble(Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W),
+                        batteryRaw.path("export_confirms_full_duration_s")
+                                .asDouble(Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S)),
                 new WebConfig(webRaw.path("port").asInt(Defaults.WEB_PORT), chartHeightPx),
                 new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(Defaults.LOGGING_VERBOSE_TRACES)),
                 new StatsConfig(

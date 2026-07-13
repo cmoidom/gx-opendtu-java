@@ -53,6 +53,8 @@ class ConfigLoaderTest {
         assertThat(config.stats().intervalS()).isEqualTo(300.0); // default
         assertThat(config.stats().retentionDays()).isEqualTo(730); // default, ~2 years
         assertThat(config.stats().highResRetentionDays()).isEqualTo(30); // default
+        assertThat(config.battery().exportConfirmsFullW()).isEqualTo(50.0); // default
+        assertThat(config.battery().exportConfirmsFullDurationS()).isEqualTo(60.0); // default
         assertThat(config.inverters()).hasSize(2);
         assertThat(config.inverters().get(1).name()).isEqualTo("Toit Sud");
         assertThat(config.totalNominalPowerW()).isEqualTo(980.0);
@@ -87,6 +89,20 @@ class ConfigLoaderTest {
         assertThatThrownBy(() -> ConfigLoader.parseConfig(json(raw)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("config.stats.high_res_retention_days must not exceed config.stats.retention_days");
+    }
+
+    @Test
+    void exportConfirmsFullDurationSCanBeOverridden() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "battery": { "export_confirms_full_duration_s": 15 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        AppConfig config = ConfigLoader.parseConfig(json(raw));
+        assertThat(config.battery().exportConfirmsFullDurationS()).isEqualTo(15.0);
     }
 
     @Test

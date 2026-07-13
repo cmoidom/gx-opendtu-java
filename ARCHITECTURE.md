@@ -668,9 +668,17 @@ variantes).
   seuils -- `activateAtPct` (défaut 100 %) pour passer `ON`, `deactivateBelowPct`
   (défaut 98 %) pour repasser `OFF`. La zone morte entre les deux évite le
   yoyo. Activation anticipée si un export réseau réel ≥
-  `exportConfirmsFullW` (défaut 50 W) est observé alors que le SOC est déjà
-  ≥ `deactivateBelowPct` -- preuve empirique que la batterie ne peut plus
-  absorber le surplus.
+  `exportConfirmsFullW` (défaut 50 W) est observé **en continu pendant au
+  moins `exportConfirmsFullDurationS`** (défaut 60s, 2026-07-13) alors que le
+  SOC est déjà ≥ `deactivateBelowPct` -- preuve empirique que la batterie ne
+  peut plus absorber le surplus. La durée minimale évite qu'un pic d'export
+  isolé et bref (une charge qui s'éteint un instant) déclenche ça à tort ; le
+  chronomètre interne (`exportAboveThresholdSince`) est remis à zéro dès que
+  l'export retombe sous le seuil, même une seule fois. `update(socPct,
+  gridPowerW, now)` prend `now` comme une horloge monotone quelconque (le
+  `now` de `loop.ControlLoop.run`, basé sur `System.nanoTime()`) -- jamais
+  interprété comme une vraie date, seulement pour mesurer un écart en
+  secondes entre deux appels.
 - **Repli si le SOC est illisible** : `injectionControl` reste `true` (ON,
   comme si la batterie était pleine) plutôt que de débloquer les onduleurs
   sans supervision -- ne jamais inverser ce défaut.

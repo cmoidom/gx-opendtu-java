@@ -42,7 +42,11 @@ public record AppConfig(
     public record CapacityProbeConfig(double stepW, double intervalS) {}
 
     public record BatteryConfig(
-            boolean enabled, double activateAtPct, double deactivateBelowPct, double exportConfirmsFullW) {}
+            boolean enabled,
+            double activateAtPct,
+            double deactivateBelowPct,
+            double exportConfirmsFullW,
+            double exportConfirmsFullDurationS) {}
 
     /** name is display-only (dashboard legend/table) -- never used to address the inverter. */
     public record InverterConfig(String serial, double nominalPowerW, String name) {}

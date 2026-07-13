@@ -314,6 +314,10 @@ final class ConfigPageHandler implements HttpHandler {
                 Double.parseDouble(first(form, "battery.deactivate_below_pct", d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT))));
         battery.put("export_confirms_full_w",
                 Double.parseDouble(first(form, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W))));
+        battery.put("export_confirms_full_duration_s",
+                Double.parseDouble(first(
+                        form, "battery.export_confirms_full_duration_s",
+                        d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S))));
         raw.set("battery", battery);
 
         ObjectNode web = MAPPER.createObjectNode();
@@ -600,11 +604,15 @@ final class ConfigPageHandler implements HttpHandler {
                 + "prioritaire (onduleurs debrides). Toujours activation &gt;= desactivation.</p>\n"
                 + "    <label>Export confirmant la batterie pleine (W)</label>\n"
                 + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_w\" value=\"" + val(raw, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)) + "\" required>\n"
-                + "    <p class=\"hint\">Passe en regulation ON des qu'un export reseau reel d'au moins cette puissance "
-                + "est observe alors que le SOC est deja au-dessus du seuil de desactivation -- l'estimation du SOC peut "
-                + "avoir du retard sur la realite (frequent en fin de charge sur certaines chimies de batterie type LFP), "
-                + "donc un export reel mesure est une preuve plus fiable que la batterie est pleine que le SOC lui-meme. "
-                + "Mettre 0 pour desactiver cette detection precoce.</p>\n"
+                + "    <label>Duree minimale de cet export (s)</label>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_duration_s\" value=\"" + val(raw, "battery.export_confirms_full_duration_s", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_DURATION_S)) + "\" required>\n"
+                + "    <p class=\"hint\">Passe en regulation ON dès que l'export reseau reel reste en continu au moins a "
+                + "cette puissance pendant au moins cette duree, alors que le SOC est deja au-dessus du seuil de "
+                + "desactivation -- l'estimation du SOC peut avoir du retard sur la realite (frequent en fin de charge "
+                + "sur certaines chimies de batterie type LFP), donc un export reel mesure est une preuve plus fiable "
+                + "que la batterie est pleine que le SOC lui-meme. La duree minimale evite qu'un pic d'export isole et "
+                + "bref (ex. une charge qui s'eteint un instant) declenche ca a tort. Mettre 0 pour desactiver cette "
+                + "detection precoce (la duree devient alors sans effet).</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

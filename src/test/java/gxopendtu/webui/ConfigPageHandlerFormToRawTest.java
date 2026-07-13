@@ -43,6 +43,21 @@ class ConfigPageHandlerFormToRawTest {
         assertThat(config.battery().enabled()).isFalse(); // checkbox absent from form
         assertThat(config.stats().highResRetentionDays()).isEqualTo(30); // default, absent from form
         assertThat(config.web().chartHeightPx()).isEqualTo(200); // default, absent from form
+        assertThat(config.battery().exportConfirmsFullDurationS()).isEqualTo(60.0); // default, absent from form
+    }
+
+    @Test
+    void exportConfirmsFullDurationSRoundTripsWhenProvided() {
+        Map<String, List<String>> form = Map.of(
+                "opendtu.base_url", List.of("http://x"),
+                "grid.modbus.host", List.of("10.0.0.1"),
+                "battery.export_confirms_full_duration_s", List.of("15"),
+                "inverter_serial", List.of("a"),
+                "inverter_nominal_power_w", List.of("100"),
+                "inverter_name", List.of(""));
+
+        AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
+        assertThat(config.battery().exportConfirmsFullDurationS()).isEqualTo(15.0);
     }
 
     @Test

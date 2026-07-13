@@ -95,6 +95,13 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   par un seuil unique -- c'est exactement le yoyo à éviter. Voir
   `BatteryHysteresisTest.noYoyoAround100OnceActive` et
   `doesNotReactivateUntilBackTo100AfterDeactivating`.
+- **Activation anticipée par export : jamais sur un seul relevé instantané**
+  (2026-07-13) -- `exportConfirmsFullW` doit rester dépassé **en continu**
+  pendant au moins `exportConfirmsFullDurationS` avant d'activer, pas sur un
+  seul appel à `update()`. Le chronomètre (`exportAboveThresholdSince`) doit
+  se réinitialiser dès que l'export retombe sous le seuil une seule fois,
+  sinon un pic isolé déclencherait `ON` à tort. Voir
+  `BatteryHysteresisTest.briefExportSpikeResetsTheStreakAndDoesNotActivate`.
 - **`StatsStore` ne doit jamais interrompre la boucle de contrôle** :
   `recordSample`/`upsertHourlyEnergy`/`downsampleOlderThan`/`pruneOlderThan`
   attrapent et loguent toute `SQLException` plutôt que de la laisser
