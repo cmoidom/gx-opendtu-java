@@ -68,6 +68,7 @@ gx-opendtu-java/
 │   │   └── WaterFillAllocator.java     repartition water-filling multi-onduleurs (pure)
 │   ├── state/                          thread-safe, ephemere sauf StateStore
 │   │   ├── LiveState.java              tampon circulaire pour le tableau de bord
+│   │   ├── InternalStatus.java         idem, mais pour la page de debogage "/internal"
 │   │   ├── HourlyEnergyHistory.java    energie reseau horaire (graphique en barres)
 │   │   ├── ManualOverride.java         forcage %, expiration 5 min
 │   │   ├── InjectionModeOverride.java  AUTO/ON/OFF sticky
@@ -80,10 +81,13 @@ gx-opendtu-java/
 │       ├── ConfigPageHandler.java      page de config ("/config"), /config/save, /config/apply
 │       ├── DashboardHandler.java       sert dashboard.html sur "/" et "/dashboard" (2 substitutions :
 │       │                                __CHART_HEIGHT_PX__, __BUILD_TAG__)
+│       ├── InternalPageHandler.java    sert internal.html sur "/internal" (1 substitution : __BUILD_TAG__)
 │       ├── StatusJsonHandler.java      GET /status.json?since=
+│       ├── InternalStatusJsonHandler.java   GET /internal-status.json?since=
 │       ├── FetchInvertersHandler.java  GET /fetch-inverters (proxy decouverte OpenDTU)
 │       └── OverrideHandlers.java       POST /override/pct, /pct/clear, /mode
 ├── src/main/resources/webui/dashboard.html   repris quasi verbatim du Python (100% cote client)
+├── src/main/resources/webui/internal.html    page de debogage, ecrite pour ce portage (pas d'equivalent Python)
 ├── src/test/java/gxopendtu/...         tests miroir de tests/ (JUnit 5 + AssertJ)
 ├── config/config.example.json          un seul exemple (toujours grid.modbus.*)
 └── deploy/systemd/gx-opendtu-zero-export.service
@@ -147,6 +151,28 @@ la page `/dashboard`, qui interroge cet endpoint toutes les 2s. L'état est
 perdu à chaque redémarrage du service : c'est une vue en direct sur les
 30 dernières minutes, pas un historique persistant -- voir `stats/StatsStore`
 ci-dessous pour la persistance long terme.
+
+**`state/InternalStatus` (2026-07-13, sans équivalent Python)** : même
+principe que `LiveState` (tampon circulaire + verrou, ~360 échantillons soit
+~30 min au `control.decision_interval_s` par défaut de 5s), mais pour des
+données qui n'apparaissaient nulle part -- `error`/`pi_integral` du PI,
+`rawTarget` avant/après le plancher batterie, `battery_discharge_w`,
+les plafonds `CapacityEstimator.ceilingsW()` par onduleur, l'état de
+l'hystérésis batterie (`active`, streak d'export soutenu en secondes),
+le mode d'injection choisi et l'override manuel. Alimenté par deux méthodes
+distinctes : `updateControl(...)` (uniquement quand le PI tourne vraiment,
+donc seulement dans `decisionCycle`, branche ON) et `updateMode(...)`
+(à chaque cycle de décision quelle que soit la branche ON/OFF/OVERRIDE).
+Jamais lu par la boucle de contrôle elle-même -- aucune décision n'en dépend,
+c'est de l'introspection pure. Né directement de l'incident de sur-export du
+2026-07-13 : sans cette vue, diagnostiquer le plancher batterie qui
+combattait silencieusement le PI a nécessité de relire le code source et de
+reconstruire l'historique à la main depuis les logs. `webui/InternalStatusJsonHandler`
+expose `GET /internal-status.json?since=<epoch>` (même forme incrémentale
+que `/status.json`) ; la page `/internal` l'interroge toutes les 5s et
+affiche un tableau brut par section plus deux sparklines (erreur, intégrale
+PI) -- volontairement pas d'esthétique poussée, c'est un outil de
+débogage, pas une vitrine.
 
 **Graphique SOC/tension/courant (exception délibérée à "jamais de double
 axe")** : `dashboard.html`'s `drawChart()` supporte un mode multi-axes

@@ -74,6 +74,16 @@ class ControllerTest {
     }
 
     @Test
+    void controlDecisionExposesErrorAndPiIntegralForDebugging() {
+        SoftTargetController controller = new SoftTargetController(30, 1.0, 0.5, 100, 0, 5);
+        ControlDecision decision = controller.computeTarget(50, 200, 1000);
+        assertThat(decision.error()).isEqualTo(20.0); // 50 - setpoint(30)
+        assertThat(decision.piIntegral()).isEqualTo(10.0); // error(20) * ki(0.5)
+        assertThat(decision.stepW()).isEqualTo(100.0);
+        assertThat(decision.quantizedW()).isEqualTo(200.0); // rawTarget(230) quantized to nearest 100
+    }
+
+    @Test
     void softTargetControllerRampsLargeJumpsOverMultipleCycles() {
         SoftTargetController controller = new SoftTargetController(0, 2.0, 0.0, 100, 0, 5);
 
@@ -96,6 +106,10 @@ class ControllerTest {
         // must boost the target to replace that discharge with production.
         ControlDecision decision = controller.computeTarget(30, 200, 1000, -100.0);
         assertThat(decision.targetW()).isEqualTo(300.0); // 200 + 100 discharge, already a clean step multiple
+        assertThat(decision.batteryFloorEngaged()).isTrue();
+        assertThat(decision.batteryDischargeW()).isEqualTo(100.0);
+        assertThat(decision.rawTargetBeforeFloor()).isEqualTo(200.0); // error=0 -- PI alone wants current production
+        assertThat(decision.rawTargetAfterFloor()).isEqualTo(300.0);
     }
 
     @Test
@@ -147,6 +161,8 @@ class ControllerTest {
                 new SoftTargetController(30, 1.0, 0.0, 100, 0, 5, null, 150.0);
         ControlDecision decision = controller.computeTarget(30, 200, 1000, -100.0);
         assertThat(decision.targetW()).isEqualTo(200.0); // no boost, discharge is below the 150W threshold
+        assertThat(decision.batteryFloorEngaged()).isFalse();
+        assertThat(decision.batteryDischargeW()).isEqualTo(100.0); // still reported, just didn't engage the floor
     }
 
     @Test
@@ -164,6 +180,8 @@ class ControllerTest {
                 new SoftTargetController(30, 1.0, 0.0, 100, 0, 5, null, 150.0);
         ControlDecision decision = controller.computeTarget(30, 200, 1000, -300.0);
         assertThat(decision.targetW()).isEqualTo(500.0); // 200 + 300 discharge, above the 150W threshold
+        assertThat(decision.batteryFloorEngaged()).isTrue();
+        assertThat(decision.batteryDischargeW()).isEqualTo(300.0);
     }
 
     @Test

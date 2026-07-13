@@ -121,6 +121,19 @@ class BatteryHysteresisTest {
     }
 
     @Test
+    void exportStreakElapsedSReflectsTheOngoingStreakAndClearsAfterwards() {
+        BatteryFullHysteresis h = make();
+        assertThat(h.exportStreakElapsedS(0.0)).isNull(); // no streak yet
+
+        h.update(99, -60.0, 10.0); // streak starts
+        assertThat(h.exportStreakElapsedS(10.0)).isEqualTo(0.0);
+        assertThat(h.exportStreakElapsedS(40.0)).isEqualTo(30.0);
+
+        h.update(99, 10.0, 41.0); // export stops -- streak resets
+        assertThat(h.exportStreakElapsedS(41.0)).isNull();
+    }
+
+    @Test
     void exportConfirmsFullDisabledWhenThresholdIsZero() {
         BatteryFullHysteresis h = new BatteryFullHysteresis(100.0, 98.0, false, 0.0, 60.0);
         assertThat(h.update(99, -500.0, 0.0)).isFalse();

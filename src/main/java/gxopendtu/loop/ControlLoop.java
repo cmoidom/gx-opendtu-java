@@ -21,6 +21,7 @@ import gxopendtu.opendtu.OpenDTUClient;
 import gxopendtu.opendtu.OpenDTUException;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InternalStatus;
 import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
@@ -148,6 +149,7 @@ public final class ControlLoop {
             double gridPowerRawW,
             double gridPowerAvgW,
             LiveState liveState,
+            InternalStatus internalStatus,
             Double socPct,
             Double batteryPowerW,
             Double batteryVoltageV,
@@ -217,6 +219,24 @@ public final class ControlLoop {
                     batteryPowerW,
                     batteryVoltageV,
                     batteryCurrentA,
+                    floorWarning.warning(),
+                    floorWarning.recommendedPct());
+        }
+
+        if (internalStatus != null) {
+            internalStatus.updateControl(
+                    decision.error(),
+                    decision.piIntegral(),
+                    decision.rawTargetBeforeFloor(),
+                    decision.rawTargetAfterFloor(),
+                    decision.batteryFloorEngaged(),
+                    decision.batteryDischargeW(),
+                    decision.stepW(),
+                    decision.quantizedW(),
+                    decision.changed(),
+                    decision.targetW(),
+                    capacity.ceilingsW(),
+                    capacity.nominalPowerW(),
                     floorWarning.warning(),
                     floorWarning.recommendedPct());
         }
@@ -373,6 +393,7 @@ public final class ControlLoop {
             AppConfig config,
             boolean dryRun,
             LiveState liveState,
+            InternalStatus internalStatus,
             HourlyEnergyHistory energyHistory,
             InverterEnergyHistory inverterEnergyHistory,
             Path configPath,
@@ -585,6 +606,7 @@ public final class ControlLoop {
                                     gridPowerW,
                                     smoother.average(),
                                     liveState,
+                                    internalStatus,
                                     socPct,
                                     batteryPowerW,
                                     batteryVoltageV,
@@ -598,6 +620,16 @@ public final class ControlLoop {
                             applyFailsafe(client, serials, dryRun);
                         }
                     }
+                }
+
+                if (internalStatus != null) {
+                    internalStatus.updateMode(
+                            hysteresis != null && hysteresis.isActive(),
+                            hysteresis != null ? hysteresis.exportStreakElapsedS(now) : null,
+                            injectionMode.getMode().name(),
+                            manualOverride.snapshot(),
+                            consecutiveGridFailures,
+                            releasedForCharging);
                 }
             }
 

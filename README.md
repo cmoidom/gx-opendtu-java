@@ -105,6 +105,17 @@ onduleur, graphique en barres "énergie réseau par heure". Repris quasiment
 tel quel du projet Python (JS/CSS/HTML déjà 100% côté client, aucune
 dépendance externe -- tracé en `<canvas>` HTML5 fait main).
 
+### État interne / débogage
+
+`http://<ip-du-service>:8080/internal` expose ce que le tableau de bord ne
+montre pas : erreur et intégrale du PI, `rawTarget` avant/après le plancher
+anti-décharge batterie, plafonds par onduleur (`CapacityEstimator`), état de
+l'hystérésis batterie (streak d'export soutenu), override manuel/mode
+d'injection. Lecture seule (aucune décision de contrôle n'en dépend) --
+pensé pour diagnostiquer un comportement inattendu (ex. consigne bloquée)
+sans avoir à relire le code source ou reconstruire l'historique depuis les
+logs.
+
 ### Historique long terme (`stats.db`)
 
 Les courbes du tableau de bord (réseau, SOC, batterie, par onduleur, énergie

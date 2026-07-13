@@ -76,7 +76,8 @@ public final class SoftTargetController {
             double gridPowerAvgW, double currentTotalActualW, double totalCapacityW, Double batteryPowerW) {
         double error = gridPowerAvgW - exportSetpointW;
         double delta = pi.step(error);
-        double rawTarget = ControlMath.clamp(currentTotalActualW + delta, 0.0, totalCapacityW);
+        double rawTargetBeforeFloor = ControlMath.clamp(currentTotalActualW + delta, 0.0, totalCapacityW);
+        double rawTarget = rawTargetBeforeFloor;
 
         // Never let the battery cover a shortfall solar could cover instead:
         // the grid-power PI above is blind to the battery entirely, so it can
@@ -95,8 +96,9 @@ public final class SoftTargetController {
         // install) -- without a threshold that noise kept flooring the
         // target back up and fighting the PI's own correct downward
         // correction indefinitely (2026-07-13 production incident).
-        if (batteryPowerW != null && batteryPowerW < -minBatteryDischargeW) {
-            double batteryDischargeW = -batteryPowerW;
+        double batteryDischargeW = batteryPowerW != null && batteryPowerW < 0 ? -batteryPowerW : 0.0;
+        boolean batteryFloorEngaged = batteryPowerW != null && batteryPowerW < -minBatteryDischargeW;
+        if (batteryFloorEngaged) {
             rawTarget = ControlMath.clamp(
                     Math.max(rawTarget, currentTotalActualW + batteryDischargeW), 0.0, totalCapacityW);
         }
@@ -112,8 +114,33 @@ public final class SoftTargetController {
             lastSentTotalW = nextTarget;
         }
 
-        return new ControlDecision(nextTarget, changed);
+        return new ControlDecision(
+                nextTarget,
+                changed,
+                error,
+                pi.integral(),
+                rawTargetBeforeFloor,
+                rawTarget,
+                batteryFloorEngaged,
+                batteryDischargeW,
+                step,
+                quantized);
     }
 
-    public record ControlDecision(double targetW, boolean changed) {}
+    /**
+     * Debug fields (error..quantizedW) exist purely so a live introspection
+     * view (see webui/InternalStatusJsonHandler) can show why the controller
+     * landed on targetW -- none of them feed back into the control math.
+     */
+    public record ControlDecision(
+            double targetW,
+            boolean changed,
+            double error,
+            double piIntegral,
+            double rawTargetBeforeFloor,
+            double rawTargetAfterFloor,
+            boolean batteryFloorEngaged,
+            double batteryDischargeW,
+            double stepW,
+            double quantizedW) {}
 }

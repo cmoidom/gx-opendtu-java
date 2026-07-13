@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>GX-DTU Injection Controller - etat interne</title>
+<style>
+  :root {
+    --surface-1: #fcfcfb; --page: #f9f9f7; --text-primary: #0b0b0b; --text-secondary: #52514e;
+    --muted: #898781; --gridline: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #1baf7a; --series-3: #eda100; --series-4: #008300;
+    --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1: #1a1a19; --page: #0d0d0d; --text-primary: #ffffff; --text-secondary: #c3c2b7;
+      --muted: #898781; --gridline: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5; --series-2: #199e70; --series-3: #c98500; --series-4: #008300;
+      --good: #0ca30c; --warning: #fab219; --critical: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1400px; margin: 2rem auto;
+         padding: 0 1rem; color: var(--text-primary); background: var(--page); }
+  nav { margin-bottom: 1.2rem; display: flex; justify-content: center; gap: 0.4rem; }
+  nav a { padding: 0.4rem 0.9rem; border-radius: 6px; font-size: 0.85rem; text-decoration: none;
+          color: var(--text-secondary); border: 1px solid var(--border); background: var(--surface-1); }
+  nav a:hover { background: var(--border); }
+  nav a.active { background: var(--series-1); color: white; border-color: var(--series-1); }
+  .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+             color: var(--muted); margin: 0 0 1rem; text-align: center; }
+  .eyebrow .build-tag { font-weight: 400; text-transform: none; letter-spacing: normal; }
+  h2 { font-size: 1rem; margin: 1.6rem 0 0.5rem; }
+  .hint { color: var(--muted); font-size: 0.82rem; }
+  .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+             padding: 0.8rem; margin-bottom: 1rem; }
+  .sparklines { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+  .sparkline-box { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+                   padding: 0.6rem 0.8rem; flex: 1; min-width: 280px; }
+  .sparkline-box .label { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 0.3rem; }
+  .sparkline-box canvas { width: 100%; height: 90px; display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--gridline); }
+  th { color: var(--text-secondary); font-weight: 600; width: 45%; }
+  th.num, td.num, th.center, td.center { text-align: center; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .flag-yes { color: var(--warning); font-weight: 600; }
+  .flag-no { color: var(--muted); }
+  #conn-status.stale { color: var(--critical); }
+</style>
+</head>
+<body>
+<nav><a href="/dashboard">Tableau de bord</a><a href="/config">Configuration</a><a href="/internal" class="active">Etat interne</a></nav>
+<p class="eyebrow">GX-DTU Injection Controller__BUILD_TAG__</p>
+<p class="hint"><span id="conn-status">Connexion...</span></p>
+<p class="hint">Vue de debogage : donnees internes du cycle de decision (PI, plancher batterie,
+allocation, hysteresis, overrides) qui n'apparaissent nulle part ailleurs. Rafraichi toutes les
+5s. Rien ici n'influence la regulation -- lecture seule.</p>
+
+<div class="sparklines">
+  <div class="sparkline-box">
+    <div class="label">Erreur PI (W) -- ecart au setpoint d'export</div>
+    <canvas id="spark-error"></canvas>
+  </div>
+  <div class="sparkline-box">
+    <div class="label">Integrale PI (W) -- surveiller un emballement (windup)</div>
+    <canvas id="spark-integral"></canvas>
+  </div>
+</div>
+
+<div class="section">
+  <h2>PI / consigne</h2>
+  <table>
+    <tr><th>Erreur (grid_ema - setpoint)</th><td class="num" id="v-error">--</td></tr>
+    <tr><th>Integrale PI</th><td class="num" id="v-pi-integral">--</td></tr>
+    <tr><th>rawTarget avant plancher batterie</th><td class="num" id="v-raw-before">--</td></tr>
+    <tr><th>rawTarget apres plancher batterie</th><td class="num" id="v-raw-after">--</td></tr>
+    <tr><th>Plancher batterie declenche ce cycle</th><td class="num" id="v-floor-engaged">--</td></tr>
+    <tr><th>Decharge batterie (W)</th><td class="num" id="v-battery-discharge">--</td></tr>
+    <tr><th>Palier effectif (step_w)</th><td class="num" id="v-step">--</td></tr>
+    <tr><th>Consigne quantifiee (avant rampe)</th><td class="num" id="v-quantized">--</td></tr>
+    <tr><th>Consigne envoyee (target_w)</th><td class="num" id="v-target">--</td></tr>
+    <tr><th>Changed (envoi HTTP ce cycle)</th><td class="num" id="v-changed">--</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Hysteresis batterie / mode</h2>
+  <table>
+    <tr><th>Hysteresis active (injection ON)</th><td class="num" id="v-hyst-active">--</td></tr>
+    <tr><th>Streak export soutenu en cours (s)</th><td class="num" id="v-export-streak">--</td></tr>
+    <tr><th>Mode injection (AUTO/ON/OFF)</th><td class="num" id="v-mode-override">--</td></tr>
+    <tr><th>Override manuel actif</th><td class="num" id="v-manual-override">--</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Allocation / capacite par onduleur</h2>
+  <table>
+    <thead><tr><th>Onduleur</th><th class="num">Plafond (ceiling_w)</th><th class="num">Nominal (W)</th><th class="num">Plafond abaisse ?</th></tr></thead>
+    <tbody id="inverter-rows"></tbody>
+  </table>
+  <p class="hint" id="floor-warning-line"></p>
+</div>
+
+<div class="section">
+  <h2>Boucle</h2>
+  <table>
+    <tr><th>Echecs consecutifs grid meter</th><td class="num" id="v-grid-failures">--</td></tr>
+    <tr><th>Charge batterie prioritaire en cours</th><td class="num" id="v-released">--</td></tr>
+  </table>
+</div>
+
+<script>
+let history = [];
+
+function fmt(v, digits) {
+  if (v === null || v === undefined) return '--';
+  return Number(v).toFixed(digits === undefined ? 0 : digits);
+}
+
+function boolCell(v, yesLabel, noLabel) {
+  if (v === null || v === undefined) return '--';
+  return v ? '<span class="flag-yes">' + (yesLabel || 'oui') + '</span>' : '<span class="flag-no">' + (noLabel || 'non') + '</span>';
+}
+
+function drawSparkline(canvas, values) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (values.length < 2) return;
+
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = (max - min) || 1;
+  const pad = 6;
+  const stepX = (w - 2 * pad) / (values.length - 1);
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  // zero line, if zero falls within the visible range
+  if (min < 0 && max > 0) {
+    const zeroY = pad + (h - 2 * pad) * (1 - (0 - min) / span);
+    ctx.strokeStyle = isDark ? '#383835' : '#c3c2b7';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, zeroY); ctx.lineTo(w - pad, zeroY); ctx.stroke();
+  }
+
+  ctx.strokeStyle = isDark ? '#3987e5' : '#2a78d6';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = pad + i * stepX;
+    const y = pad + (h - 2 * pad) * (1 - (v - min) / span);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function render(payload) {
+  const latest = payload.latest || {};
+  document.getElementById('v-error').textContent = fmt(latest.error, 1);
+  document.getElementById('v-pi-integral').textContent = fmt(latest.pi_integral, 1);
+  document.getElementById('v-raw-before').textContent = fmt(latest.raw_target_before_floor, 0);
+  document.getElementById('v-raw-after').textContent = fmt(latest.raw_target_after_floor, 0);
+  document.getElementById('v-floor-engaged').innerHTML = boolCell(latest.battery_floor_engaged);
+  document.getElementById('v-battery-discharge').textContent = fmt(latest.battery_discharge_w, 0);
+  document.getElementById('v-step').textContent = fmt(latest.step_w, 0);
+  document.getElementById('v-quantized').textContent = fmt(latest.quantized_w, 0);
+  document.getElementById('v-target').textContent = fmt(latest.target_w, 0);
+  document.getElementById('v-changed').innerHTML = boolCell(latest.changed);
+
+  document.getElementById('v-hyst-active').innerHTML = boolCell(latest.hysteresis_active, 'ON', 'OFF');
+  document.getElementById('v-export-streak').textContent = latest.export_streak_elapsed_s != null ? fmt(latest.export_streak_elapsed_s, 0) + ' s' : '--';
+  document.getElementById('v-mode-override').textContent = latest.injection_mode_override || '--';
+  document.getElementById('v-manual-override').textContent = latest.manual_override
+      ? Math.round(latest.manual_override.pct) + '% (' + Math.round(latest.manual_override.remaining_s) + 's restantes)'
+      : 'inactif';
+
+  const ceilings = latest.ceilings_w || {};
+  const nominals = latest.nominal_power_w || {};
+  const rows = Object.keys(nominals).sort().map(serial => {
+    const ceiling = ceilings[serial];
+    const nominal = nominals[serial];
+    const lowered = ceiling != null && nominal != null && ceiling < nominal - 1e-6;
+    return '<tr><td>' + serial + '</td><td class="num">' + fmt(ceiling, 0) + '</td><td class="num">' + fmt(nominal, 0)
+        + '</td><td class="num">' + boolCell(lowered) + '</td></tr>';
+  });
+  document.getElementById('inverter-rows').innerHTML = rows.join('') || '<tr><td colspan="4" class="hint">aucun onduleur</td></tr>';
+
+  document.getElementById('floor-warning-line').textContent = latest.min_inverter_floor_warning
+      ? 'min_inverter_pct force la consigne au-dessus de la cible ce cycle (recommande: ' + fmt(latest.recommended_min_inverter_pct, 1) + '%)'
+      : '';
+
+  document.getElementById('v-grid-failures').textContent = latest.consecutive_grid_failures != null ? latest.consecutive_grid_failures : '--';
+  document.getElementById('v-released').innerHTML = boolCell(latest.released_for_charging);
+
+  document.getElementById('conn-status').textContent = 'Connecte (' + new Date().toLocaleTimeString() + ')';
+  document.getElementById('conn-status').classList.remove('stale');
+
+  drawSparkline(document.getElementById('spark-error'), history.map(s => s.error).filter(v => v != null));
+  drawSparkline(document.getElementById('spark-integral'), history.map(s => s.pi_integral).filter(v => v != null));
+}
+
+async function poll() {
+  try {
+    const since = history.length ? history[history.length - 1].t : 0;
+    const resp = await fetch('/internal-status.json?since=' + since);
+    const payload = await resp.json();
+    history = history.concat(payload.history || []).slice(-360);
+    render(payload);
+  } catch (e) {
+    document.getElementById('conn-status').textContent = 'Connexion perdue';
+    document.getElementById('conn-status').classList.add('stale');
+  }
+}
+
+poll();
+setInterval(poll, 5000);
+window.addEventListener('resize', () => {
+  drawSparkline(document.getElementById('spark-error'), history.map(s => s.error).filter(v => v != null));
+  drawSparkline(document.getElementById('spark-integral'), history.map(s => s.pi_integral).filter(v => v != null));
+});
+</script>
+</body>
+</html>

@@ -66,6 +66,15 @@ public final class BatteryFullHysteresis {
         this.active = active;
     }
 
+    /**
+     * Seconds elapsed in the current sustained-export streak, or null if no
+     * streak is running -- debug/introspection only (see
+     * webui/InternalStatusJsonHandler), never read by update() itself.
+     */
+    public Double exportStreakElapsedS(double now) {
+        return exportAboveThresholdSince != null ? now - exportAboveThresholdSince : null;
+    }
+
     public boolean update(double socPct, Double gridPowerW, double now) {
         if (active) {
             exportAboveThresholdSince = null;

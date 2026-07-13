@@ -162,6 +162,13 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   changement ou non -- mais n'écrit vers OpenDTU que si `decision.changed()`
   (mode normal) et jamais en `--dry-run`. Ne pas confondre les deux en
   modifiant l'un pour "corriger" l'autre.
+- **`state/InternalStatus` (page `/internal`) est strictement en lecture --
+  jamais lu par `ControlLoop`/`SoftTargetController`/`BatteryFullHysteresis`
+  eux-mêmes.** Les champs de debug ajoutés à `ControlDecision` (`error`,
+  `piIntegral`, `rawTargetBeforeFloor`/`AfterFloor`, `batteryDischargeW`, ...)
+  n'influencent jamais `computeTarget` -- ce sont des sorties, pas des entrées.
+  Ne pas faire dépendre une décision de contrôle d'un champ qui n'existe que
+  pour ce débogage.
 
 ## Style / conventions Java de ce projet
 
@@ -196,8 +203,9 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
 
 `mvn test` passe intégralement. `mvn package` produit un jar
 exécutable fonctionnel (`java -jar target/gx-opendtu-java.jar --help`,
-`--dry-run` avec le serveur web démarré et `/dashboard`, `/`, `/status.json`
-répondant correctement). Non encore validé : contre du vrai matériel
+`--dry-run` avec le serveur web démarré et `/dashboard`, `/`, `/config`,
+`/internal`, `/status.json`, `/internal-status.json` répondant correctement).
+Non encore validé : contre du vrai matériel
 Victron/OpenDTU -- seul un Modbus TCP/OpenDTU factice a été utilisé pour ce
 smoke test. Avant tout déploiement réel :
 1. Valider en `--dry-run` contre une installation réelle (Cerbo GX +

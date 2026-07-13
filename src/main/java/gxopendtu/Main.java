@@ -5,6 +5,7 @@ import gxopendtu.config.ConfigLoader;
 import gxopendtu.loop.ControlLoop;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InternalStatus;
 import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
@@ -59,6 +60,7 @@ public final class Main {
         Path configPath = Path.of(configPathArg);
         AppConfig config = ConfigLoader.loadConfig(configPath);
         LiveState liveState = new LiveState();
+        InternalStatus internalStatus = new InternalStatus();
         HourlyEnergyHistory energyHistory = new HourlyEnergyHistory();
         InverterEnergyHistory inverterEnergyHistory = new InverterEnergyHistory();
         ManualOverride manualOverride = new ManualOverride();
@@ -92,14 +94,15 @@ public final class Main {
         }, "stats-shutdown-flush"));
 
         WebUiServer.start(
-                configPath, config.web().port(), liveState, energyHistory, inverterEnergyHistory, manualOverride,
-                injectionMode, statsStore);
+                configPath, config.web().port(), liveState, internalStatus, energyHistory, inverterEnergyHistory,
+                manualOverride, injectionMode, statsStore);
         LOG.info("tableau de bord disponible sur http://0.0.0.0:" + config.web().port() + "/ "
-                + "(configuration sur http://0.0.0.0:" + config.web().port() + "/config)");
+                + "(configuration sur http://0.0.0.0:" + config.web().port() + "/config, "
+                + "etat interne sur http://0.0.0.0:" + config.web().port() + "/internal)");
 
         ControlLoop.run(
-                config, dryRun, liveState, energyHistory, inverterEnergyHistory, configPath, manualOverride,
-                injectionMode, statsStore);
+                config, dryRun, liveState, internalStatus, energyHistory, inverterEnergyHistory, configPath,
+                manualOverride, injectionMode, statsStore);
     }
 
     private static void printUsage() {

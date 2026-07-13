@@ -3,6 +3,7 @@ package gxopendtu.webui;
 import com.sun.net.httpserver.HttpServer;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InternalStatus;
 import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
@@ -37,6 +38,7 @@ public final class WebUiServer {
             Path configPath,
             int port,
             LiveState liveState,
+            InternalStatus internalStatus,
             HourlyEnergyHistory energyHistory,
             InverterEnergyHistory inverterEnergyHistory,
             ManualOverride manualOverride,
@@ -56,10 +58,12 @@ public final class WebUiServer {
             server.createContext(
                     "/config",
                     new ConfigPageHandler(configPath, liveState, energyHistory, inverterEnergyHistory, statsStore));
+            server.createContext("/internal", new InternalPageHandler());
             server.createContext(
                     "/status.json",
                     new StatusJsonHandler(
                             liveState, energyHistory, inverterEnergyHistory, manualOverride, injectionMode));
+            server.createContext("/internal-status.json", new InternalStatusJsonHandler(internalStatus));
             server.createContext("/history.json", new HistoryJsonHandler(statsStore));
             server.createContext("/hourly-energy.json", new HourlyEnergyJsonHandler(statsStore));
             server.createContext("/fetch-inverters", new FetchInvertersHandler());

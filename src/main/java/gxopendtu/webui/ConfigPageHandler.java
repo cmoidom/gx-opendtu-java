@@ -459,7 +459,8 @@ final class ConfigPageHandler implements HttpHandler {
                 + "</style>\n"
                 + "</head>\n"
                 + "<body>\n"
-                + "<nav><a href=\"/dashboard\">Tableau de bord</a><a href=\"/config\" class=\"active\">Configuration</a></nav>\n"
+                + "<nav><a href=\"/dashboard\">Tableau de bord</a><a href=\"/config\" class=\"active\">Configuration</a>"
+                + "<a href=\"/internal\">Etat interne</a></nav>\n"
                 + "<p class=\"eyebrow\">GX-DTU Injection Controller"
                 + (BuildInfo.timestamp() != null
                         ? " <span class=\"build-tag\">(build " + escape(BuildInfo.timestamp()) + ")</span>"

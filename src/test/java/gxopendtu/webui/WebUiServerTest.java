@@ -2,6 +2,7 @@ package gxopendtu.webui;
 
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
+import gxopendtu.state.InternalStatus;
 import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
@@ -49,6 +50,7 @@ class WebUiServerTest {
                 configPath,
                 0,
                 new LiveState(),
+                new InternalStatus(),
                 new HourlyEnergyHistory(),
                 new InverterEnergyHistory(),
                 new ManualOverride(),
