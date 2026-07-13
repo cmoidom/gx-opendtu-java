@@ -17,6 +17,22 @@ package gxopendtu.control;
  */
 public final class SoftTargetController {
 
+    /**
+     * Half-width of the quantization dead zone, as a fraction of one step,
+     * on top of the plain "round to nearest step" midpoint. Without it, a
+     * rawTarget hovering near a step boundary (ordinary grid-power noise --
+     * a fridge cycling, not a real change in demand) flips the quantized
+     * level back and forth every decision cycle: a real yoyo, since every
+     * flip re-commands every controllable inverter simultaneously via
+     * water-filling. Once "held" at a level, rawTarget must clear the
+     * midpoint by this extra margin before the level actually moves --
+     * mirrors BatteryFullHysteresis's asymmetric activate/deactivate
+     * thresholds (same dead-zone idea, applied to quantization instead of
+     * SOC). Doesn't blunt a genuine, sustained change -- only the amount of
+     * noise this margin can absorb before it's crossed for good.
+     */
+    private static final double QUANTIZE_HYSTERESIS_RATIO = 0.15;
+
     private final double exportSetpointW;
     private final PIController pi;
     private final double stepAbsoluteW;
@@ -24,6 +40,7 @@ public final class SoftTargetController {
     private final double minChangeW;
     private final double minBatteryDischargeW;
     private Double lastSentTotalW;
+    private Double heldQuantizedW;
 
     public SoftTargetController(
             double exportSetpointW,
@@ -68,6 +85,29 @@ public final class SoftTargetController {
         return Math.max(stepAbsoluteW, relativeStep);
     }
 
+    /**
+     * Quantizes to the nearest step, but "holds" the previously quantized
+     * level until rawTarget clears the midpoint by
+     * {@link #QUANTIZE_HYSTERESIS_RATIO} * step -- see the field javadoc.
+     * The first-ever call has no held level yet, so it quantizes plainly.
+     */
+    private double quantizeWithHysteresis(double rawTarget, double step) {
+        if (step <= 0) {
+            return rawTarget;
+        }
+        if (heldQuantizedW == null) {
+            heldQuantizedW = ControlMath.quantize(rawTarget, step);
+            return heldQuantizedW;
+        }
+        double margin = QUANTIZE_HYSTERESIS_RATIO * step;
+        double upThreshold = heldQuantizedW + step / 2.0 + margin;
+        double downThreshold = heldQuantizedW - step / 2.0 - margin;
+        if (rawTarget > upThreshold || rawTarget < downThreshold) {
+            heldQuantizedW = ControlMath.quantize(rawTarget, step);
+        }
+        return heldQuantizedW;
+    }
+
     public ControlDecision computeTarget(double gridPowerAvgW, double currentTotalActualW, double totalCapacityW) {
         return computeTarget(gridPowerAvgW, currentTotalActualW, totalCapacityW, null);
     }
@@ -104,7 +144,7 @@ public final class SoftTargetController {
         }
 
         double step = effectiveStepW(totalCapacityW);
-        double quantized = ControlMath.quantize(rawTarget, step);
+        double quantized = quantizeWithHysteresis(rawTarget, step);
 
         double baseline = lastSentTotalW != null ? lastSentTotalW : quantized;
         double nextTarget = ControlMath.rampLimit(baseline, quantized, step);

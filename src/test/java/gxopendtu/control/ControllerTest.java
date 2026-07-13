@@ -193,6 +193,39 @@ class ControllerTest {
     }
 
     @Test
+    void quantizationHysteresisHoldsCurrentLevelUntilMidpointPlusMarginIsCrossed() {
+        // kp=1, ki=0, setpoint=0, currentTotalActualW=0 -- rawTarget tracks gridPowerAvgW directly.
+        SoftTargetController controller = new SoftTargetController(0, 1.0, 0.0, 100, 0, 0);
+        assertThat(controller.computeTarget(200, 0, 10000).quantizedW()).isEqualTo(200.0); // first call -- no held level yet
+
+        // Plain round-to-nearest would push 255 to 300 (past the 250 midpoint) -- the
+        // hysteresis margin (15W = 15% of the 100W step) holds it at 200 instead.
+        assertThat(controller.computeTarget(255, 0, 10000).quantizedW()).isEqualTo(200.0);
+
+        // Comfortably past the margin (265) -- switches for good.
+        assertThat(controller.computeTarget(270, 0, 10000).quantizedW()).isEqualTo(300.0);
+    }
+
+    @Test
+    void quantizationHysteresisSwitchesBackDownPastItsOwnMargin() {
+        SoftTargetController controller = new SoftTargetController(0, 1.0, 0.0, 100, 0, 0);
+        controller.computeTarget(300, 0, 10000); // held at 300
+
+        // Plain round-to-nearest would push 245 to 200 (past the 250 midpoint) -- held at 300 instead.
+        assertThat(controller.computeTarget(245, 0, 10000).quantizedW()).isEqualTo(300.0);
+
+        // Comfortably past the margin (235) -- switches down.
+        assertThat(controller.computeTarget(230, 0, 10000).quantizedW()).isEqualTo(200.0);
+    }
+
+    @Test
+    void quantizationHysteresisDoesNotBlockALargeGenuineJump() {
+        SoftTargetController controller = new SoftTargetController(0, 1.0, 0.0, 100, 0, 0);
+        controller.computeTarget(200, 0, 10000); // held at 200
+        assertThat(controller.computeTarget(900, 0, 10000).quantizedW()).isEqualTo(900.0); // far past any margin
+    }
+
+    @Test
     void effectiveStepUsesLargerOfAbsoluteAndRelative() {
         SoftTargetController controller = new SoftTargetController(0, 1.0, 0.0, 100, 10, 5);
         assertThat(controller.effectiveStepW(3000)).isEqualTo(300.0); // 10% of 3000W > 100W floor

@@ -62,6 +62,15 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   (`max(step_absolute_w, step_relative_pct%)`) et la rampe (1 palier par
   cycle de décision maximum). Ne pas revenir à un envoi de commande à chaque
   tick "pour plus de réactivité" sans validation explicite.
+- **Hystérésis anti-dithering sur la quantification** (2026-07-13) :
+  `quantizeWithHysteresis` ne bascule d'un palier à l'autre que si `rawTarget`
+  dépasse le milieu entre les deux paliers d'une marge
+  (`QUANTIZE_HYSTERESIS_RATIO`, 15% du palier) -- sans ça, un `rawTarget` qui
+  oscille naturellement (bruit de charge réel, pas juste de mesure) autour
+  d'un milieu de palier fait basculer la consigne à chaque cycle, ce qui
+  recommande **tous** les onduleurs pilotables simultanément (le
+  water-filling redistribue le total). Ne pas revenir à `ControlMath.quantize`
+  seul dans `computeTarget` sans réintroduire ce risque de yoyo.
 - **Priorité solaire sur batterie** : `SoftTargetController.computeTarget`
   ne doit jamais laisser la batterie couvrir un manque que les onduleurs
   avaient la capacité de couvrir -- le plancher sur `rawTarget` (jamais dans

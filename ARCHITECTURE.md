@@ -493,7 +493,7 @@ si battery_power_w < 0 (decharge) :                      // voir "Priorite solai
     raw_target = clamp(max(raw_target, current_actual + |battery_power_w|), 0, capacite_totale)
 
 step             = max(step_absolute_w, step_relative_pct% * capacite_totale)
-quantized        = round(raw_target / step) * step        // palier
+quantized        = quantize_avec_hysteresis(raw_target, step)   // palier + anti-dithering, voir plus bas
 next_target      = last_sent + clamp(quantized - last_sent, -step, +step)  // rampe: 1 palier/cycle max
 
 si next_target n'a pas bouge d'au moins min_change_w depuis le dernier envoi :
@@ -501,6 +501,25 @@ si next_target n'a pas bouge d'au moins min_change_w depuis le dernier envoi :
 sinon :
     -> repartition + envoi (voir ci-dessous)
 ```
+
+**Hystérésis anti-dithering sur la quantification (2026-07-13)** : un simple
+`round(raw_target / step) * step` bascule exactement au milieu entre deux
+paliers -- si `raw_target` oscille naturellement autour de ce milieu (bruit
+de charge réel, ex. un frigo qui démarre/s'arrête, pas seulement du bruit de
+mesure), la consigne bascule d'un palier à l'autre à chaque cycle de
+décision. Puisque le water-filling redistribue le total à **tous** les
+onduleurs pilotables à chaque bascule, ce yoyo logiciel se voit sur chaque
+courbe de production individuelle, et sollicite en boucle la rampe physique
+de chaque onduleur (~3 W/s, voir plus haut) sans jamais lui laisser le temps
+de se stabiliser -- pire qu'un seul gros saut net.
+`SoftTargetController.quantizeWithHysteresis` retient le dernier palier
+choisi et exige que `raw_target` dépasse le milieu d'une marge
+(`QUANTIZE_HYSTERESIS_RATIO`, 15% du palier) avant de basculer, dans les deux
+sens -- même principe que les deux seuils asymétriques de
+`BatteryFullHysteresis` (zone morte), appliqué ici à la quantification
+plutôt qu'au SOC. Un vrai changement soutenu n'est pas freiné, seulement
+retardé du temps de traverser cette marge ; un bruit qui reste dans la marge
+ne fait plus jamais basculer la consigne.
 
 ### Priorité solaire sur batterie
 
