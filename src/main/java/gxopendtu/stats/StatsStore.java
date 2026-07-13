@@ -113,7 +113,6 @@ public final class StatsStore implements AutoCloseable {
         upsertHourlyEnergy(energyHistory.snapshot());
     }
 
-    @SuppressWarnings("unchecked")
     private void recordSampleFromLiveState(Map<String, Object> sample) {
         if (sample == null) {
             return;
