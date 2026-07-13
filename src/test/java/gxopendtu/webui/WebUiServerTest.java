@@ -117,6 +117,26 @@ class WebUiServerTest {
     }
 
     @Test
+    void historyJsonServesStatsDbRange() throws Exception {
+        double now = System.currentTimeMillis() / 1000.0;
+        LiveState liveState = new LiveState();
+        liveState.recordGrid(42.0, 40.0);
+        statsStore.persistSnapshot(liveState, new HourlyEnergyHistory());
+
+        HttpResponse<String> response = get("/history.json?since=" + (now - 5) + "&until=" + (now + 5));
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("\"history\"").contains("\"grid_raw_w\":42.0");
+    }
+
+    @Test
+    void historyJsonMissingParamsReturnsEmptyHistory() throws Exception {
+        HttpResponse<String> response = get("/history.json");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEqualTo("{\"history\":[]}");
+    }
+
+    @Test
     void overrideModeChangesReflectInStatusJson() throws Exception {
         assertThat(post("/override/mode", "mode=ON").statusCode()).isEqualTo(200);
         assertThat(get("/status.json").body()).contains("\"injection_mode\":\"ON\"");

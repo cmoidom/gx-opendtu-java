@@ -79,7 +79,8 @@
   <button type="button" id="reset-zoom" onclick="resetZoom()" style="display:none">Reinitialiser le zoom</button>
 </p>
 <p class="hint">Molette pour zoomer, glisser pour deplacer, double-clic pour reinitialiser --
-synchronise sur les trois graphiques temporels.</p>
+synchronise sur les trois graphiques temporels. Glisser au-dela des ~30 dernieres minutes
+charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 
 <div id="floor-warning" class="banner warning" style="display:none"></div>
 
@@ -187,7 +188,44 @@ let viewTMin = null;
 let viewTMax = null;
 let isDragging = false;
 
+// Earliest timestamp `history` currently covers, whether from the live
+// buffer's own startup backfill or from a /history.json fetch below -- null
+// until the first poll() populates `history` at all. Distinct from
+// history[0].t: it also serves as "how far back have we already asked
+// stats.db," so a chunk we queried and got nothing for doesn't get
+// re-requested on every subsequent pan.
+let loadedTMin = null;
+let historyFetchInFlight = false;
+// Cap per-request span so zooming/panning all the way out doesn't try to
+// pull stats.db's entire multi-year retention in one HTTP round trip.
+const HISTORY_FETCH_MAX_SPAN_S = 7 * 24 * 3600;
+
 function resetZoom() { viewTMin = null; viewTMax = null; renderCharts(); }
+
+// Pages in older samples from stats.db when the user pans/zooms earlier
+// than what's already loaded -- LiveState's live buffer only ever holds
+// ~30 min, but stats.db keeps config.stats.retention_days (2 years by
+// default), so "go back further" just means asking for it. Merges the
+// result into `history` (which drawChart/renderCharts already read from) and
+// re-renders; a chunk with no data still advances loadedTMin so we don't
+// ask again for the same empty range on the very next pan/zoom tick.
+function maybeLoadOlderHistory(requestedTMin) {
+  if (historyFetchInFlight || loadedTMin === null || requestedTMin >= loadedTMin) return;
+  historyFetchInFlight = true;
+  const until = loadedTMin;
+  const span = Math.min(HISTORY_FETCH_MAX_SPAN_S, Math.max(3600, (until - requestedTMin) * 2));
+  const since = until - span;
+  fetch('/history.json?since=' + since.toFixed(3) + '&until=' + until.toFixed(3))
+    .then(r => r.json())
+    .then(data => {
+      const older = (data.history || []).filter(s => s.t < until);
+      if (older.length) history = older.concat(history);
+      loadedTMin = since; // checked this far back regardless of what we found
+      renderCharts();
+    })
+    .catch(() => {})
+    .finally(() => { historyFetchInFlight = false; });
+}
 
 function setInjectionMode(mode) {
   fetch('/override/mode', {
@@ -234,7 +272,13 @@ function fullHistoryRange() {
 }
 
 function clampView(tMin, tMax) {
-  const [fMin, fMax] = fullHistoryRange();
+  const [dataMin, fMax] = fullHistoryRange();
+  // Lower bound for interactive pan/zoom: loadedTMin extends backward as
+  // maybeLoadOlderHistory pages in more from stats.db, independently of
+  // history[0].t (which only reflects what's in the array right now, before
+  // any such fetch has resolved) -- this is what actually lifts the "can
+  // only go back ~30 min" wall.
+  const fMin = loadedTMin !== null ? loadedTMin : dataMin;
   const span = Math.min(tMax - tMin, fMax - fMin);
   if (span <= 0) return [fMin, fMax];
   let newMin = tMin, newMax = tMin + span;
@@ -681,8 +725,10 @@ function attachZoomPan(canvas) {
 document.addEventListener('mousemove', (ev) => {
   if (!isDragging || dragPlotW === 0) return;
   const dt = -(ev.clientX - dragStartX) / dragPlotW * (dragStartTMax - dragStartTMin);
-  const [newTMin, newTMax] = clampView(dragStartTMin + dt, dragStartTMax + dt);
+  const requestedTMin = dragStartTMin + dt;
+  const [newTMin, newTMax] = clampView(requestedTMin, dragStartTMax + dt);
   viewTMin = newTMin; viewTMax = newTMax;
+  maybeLoadOlderHistory(requestedTMin);
   renderCharts();
 });
 document.addEventListener('mouseup', () => {
@@ -815,8 +861,16 @@ function poll() {
     .then(data => {
       document.getElementById('conn-status').textContent = 'Connecte -- mise a jour toutes les 2s';
       if (data.history.length) {
+        if (loadedTMin === null && history.length === 0) loadedTMin = data.history[0].t;
         history.push.apply(history, data.history);
-        if (history.length > MAX_POINTS) history.splice(0, history.length - MAX_POINTS);
+        // Only trim the live buffer down to MAX_POINTS while showing the
+        // default/live view -- once the user has zoomed/panned into older
+        // history (viewTMin/viewTMax set), don't silently evict whatever
+        // maybeLoadOlderHistory already fetched for them to look at.
+        if (viewTMin === null && viewTMax === null && history.length > MAX_POINTS) {
+          history.splice(0, history.length - MAX_POINTS);
+          if (loadedTMin !== null) loadedTMin = Math.max(loadedTMin, history[0].t);
+        }
         lastT = data.history[data.history.length - 1].t;
       }
       if (data.hourly_energy) hourlyEnergy = data.hourly_energy;

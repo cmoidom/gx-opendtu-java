@@ -222,6 +222,77 @@ public final class StatsStore implements AutoCloseable {
     }
 
     /**
+     * Samples strictly within {@code [sinceEpochSeconds, untilEpochSeconds]}
+     * (chronological order), same map shape as {@link #loadRecentSamples} --
+     * used by {@code webui.HistoryJsonHandler} so the dashboard can page in
+     * older history from stats.db's multi-year retention as the user pans/
+     * zooms earlier than {@code LiveState}'s ~30 min in-memory window, rather
+     * than only ever seeing the one-time startup backfill.
+     */
+    public List<Map<String, Object>> loadSamplesBetween(double sinceEpochSeconds, double untilEpochSeconds) {
+        lock.lock();
+        try {
+            long since = Math.round(sinceEpochSeconds);
+            long until = Math.round(untilEpochSeconds);
+            List<Map<String, Object>> rows = new ArrayList<>();
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "SELECT t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
+                            + "battery_current_a, injection_control FROM samples WHERE t >= ? AND t <= ? ORDER BY t")) {
+                stmt.setLong(1, since);
+                stmt.setLong(2, until);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, Object> sample = new LinkedHashMap<>();
+                        sample.put("t", (double) rs.getLong("t"));
+                        sample.put("grid_raw_w", rs.getDouble("grid_raw_w"));
+                        sample.put("grid_ema_w", rs.getDouble("grid_ema_w"));
+                        sample.put("soc_pct", nullableColumn(rs, "soc_pct"));
+                        sample.put("battery_power_w", nullableColumn(rs, "battery_power_w"));
+                        sample.put("battery_voltage_v", nullableColumn(rs, "battery_voltage_v"));
+                        sample.put("battery_current_a", nullableColumn(rs, "battery_current_a"));
+                        sample.put("injection_control", rs.getString("injection_control"));
+                        sample.put("consigne_w", null);
+                        sample.put("inverters", List.of());
+                        sample.put("min_inverter_floor_warning", false);
+                        sample.put("recommended_min_inverter_pct", null);
+                        sample.put("backfilled", true); // see loadRecentSamples's javadoc
+                        rows.add(sample);
+                    }
+                }
+            }
+            if (rows.isEmpty()) {
+                return rows;
+            }
+
+            Map<Long, List<Map<String, Object>>> invertersByT = new LinkedHashMap<>();
+            try (PreparedStatement stmt = connection.prepareStatement(
+                    "SELECT t, serial, actual_w FROM inverter_samples WHERE t >= ? AND t <= ? ORDER BY t")) {
+                stmt.setLong(1, since);
+                stmt.setLong(2, until);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        long t = rs.getLong("t");
+                        Map<String, Object> inv = new LinkedHashMap<>();
+                        inv.put("serial", rs.getString("serial"));
+                        inv.put("actual_w", rs.getDouble("actual_w"));
+                        invertersByT.computeIfAbsent(t, k -> new ArrayList<>()).add(inv);
+                    }
+                }
+            }
+            for (Map<String, Object> sample : rows) {
+                long t = Math.round((Double) sample.get("t"));
+                sample.put("inverters", invertersByT.getOrDefault(t, List.of()));
+            }
+            return rows;
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to load stats range for dashboard history paging", e);
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * Hourly energy buckets since {@code sinceEpochSeconds} (chronological
      * order), in the same map shape {@link HourlyEnergyHistory#snapshot()}
      * produces -- used to seed {@code HourlyEnergyHistory} at startup so the

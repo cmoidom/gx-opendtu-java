@@ -7,6 +7,8 @@ package gxopendtu.battery;
  */
 public class BatterySocUnavailableException extends RuntimeException {
 
+    private static final long serialVersionUID = -7749985016686640920L;
+
     public BatterySocUnavailableException(String message) {
         super(message);
     }

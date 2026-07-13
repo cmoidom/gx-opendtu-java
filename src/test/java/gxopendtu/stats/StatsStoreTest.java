@@ -250,6 +250,52 @@ class StatsStoreTest {
     }
 
     @Test
+    void loadSamplesBetweenReturnsOnlyRowsInRangeWithInvertersAttached(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordSample(1_000.0, 1.0, 1.0, 70.0, null, null, null, "ON", Map.of("a", 50.0));
+            store.recordSample(2_000.0, 2.0, 2.0, 71.0, null, null, null, "ON", Map.of("a", 60.0));
+            store.recordSample(3_000.0, 3.0, 3.0, 72.0, null, null, null, "ON", Map.of("a", 70.0));
+
+            List<Map<String, Object>> rows = store.loadSamplesBetween(1_500.0, 2_500.0);
+
+            assertThat(rows).hasSize(1); // only the 2000 sample falls inside (1500, 2500]
+            assertThat(rows.get(0).get("t")).isEqualTo(2000.0);
+            assertThat(rows.get(0).get("soc_pct")).isEqualTo(71.0);
+            assertThat(rows.get(0).get("backfilled")).isEqualTo(true);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> inverters = (List<Map<String, Object>>) rows.get(0).get("inverters");
+            assertThat(inverters).hasSize(1);
+            assertThat(inverters.get(0).get("actual_w")).isEqualTo(60.0);
+        }
+    }
+
+    @Test
+    void loadSamplesBetweenIsInclusiveOfBothEndpoints(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordSample(1_000.0, 1.0, 1.0, null, null, null, null, "ON", Map.of());
+            store.recordSample(2_000.0, 2.0, 2.0, null, null, null, null, "ON", Map.of());
+
+            List<Map<String, Object>> rows = store.loadSamplesBetween(1_000.0, 2_000.0);
+
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).get("t")).isEqualTo(1000.0);
+            assertThat(rows.get(1).get("t")).isEqualTo(2000.0);
+        }
+    }
+
+    @Test
+    void loadSamplesBetweenNoMatchReturnsEmptyList(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordSample(1_000.0, 1.0, 1.0, null, null, null, null, "ON", Map.of());
+
+            assertThat(store.loadSamplesBetween(5_000.0, 6_000.0)).isEmpty();
+        }
+    }
+
+    @Test
     void sampleCountAndSizeBytesReflectWrittenData(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         try (StatsStore store = new StatsStore(dbPath)) {

@@ -270,6 +270,32 @@ seuil fixe de 60s que si au moins un des deux est un point du direct -- seul
 cas où un écart signale une vraie interruption en cours de fonctionnement.
 Robuste par construction, contrairement à une statistique inférée des écarts.
 
+**Navigation dans les 2 ans d'historique (`GET /history.json`, `dashboard.html`)** :
+même après le backfill au démarrage, le tableau de bord ne pouvait remonter
+que dans les ~30 dernières minutes (la fenêtre de `LiveState`, `history` côté
+JS) -- rien ne permettait de consulter le reste de `stats.db` malgré ses 2 ans
+de rétention. `webui/HistoryJsonHandler` (`GET /history.json?since=&until=`)
+expose `StatsStore#loadSamplesBetween(since, until)` (même forme de map que
+`loadRecentSamples`, `backfilled=true`) pour interroger une plage arbitraire.
+Côté client, `dashboard.html`'s `maybeLoadOlderHistory(requestedTMin)` est
+appelée par le glisser-déposer (pan) existant : dès que l'utilisateur tente de
+remonter avant `loadedTMin` (la borne la plus ancienne déjà chargée, qu'elle
+vienne du backfill initial ou d'un fetch précédent), elle déclenche une requête
+`/history.json` pour le morceau manquant, fusionne le résultat dans `history`,
+et avance `loadedTMin` -- que des données aient été trouvées ou non, pour ne
+pas requêter la même plage vide en boucle. `clampView` utilise désormais
+`loadedTMin` (pas `history[0].t`) comme borne basse du pan/zoom, ce qui lève
+concrètement le mur des 30 minutes. La molette de zoom garde son comportement
+inchangé (plafonné à l'étendue déjà chargée) -- volontairement pas modifiée,
+risque plus élevé pour un gain marginal vu que le glisser-déposer est le geste
+naturel pour "remonter dans le temps". `poll()` ne purge plus le tampon à
+`MAX_POINTS` (900) tant qu'une vue zoomée est active (`viewTMin`/`viewTMax`
+non nuls), pour ne pas évincer un morceau d'historique que l'utilisateur vient
+de charger explicitement ; la purge normale reprend dès le retour à la vue
+par défaut. Chaque requête est plafonnée à `HISTORY_FETCH_MAX_SPAN_S` (7
+jours) pour qu'un zoom-arrière total sur 2 ans ne tente pas de récupérer toute
+la table en un seul aller-retour HTTP.
+
 **Taille et nombre de lignes affichés sur la page de config** :
 `ConfigPageHandler` affiche `statsStore.sizeBytes()` (taille du fichier
 `stats.db` principal, sans les fichiers annexes `-wal`/`-shm` du mode WAL)
