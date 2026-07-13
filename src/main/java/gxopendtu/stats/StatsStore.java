@@ -38,14 +38,27 @@ import java.util.logging.Logger;
  * alongside {@link #pruneOlderThan} which bounds the database to
  * config.stats.retentionDays overall).
  *
+ * {@link #recordLatestSample} does NOT write to SQLite itself -- it buffers
+ * the sample in memory ({@code pendingSamples}), and {@link #flushBufferedSamples}
+ * writes everything buffered so far in one transaction. loop.ControlLoop.run
+ * calls the latter once a minute (a fixed constant, deliberately separate
+ * from config.stats.intervalS -- that value already means "downsample bucket
+ * width," reusing it here would silently change the crash-loss window
+ * whenever someone tunes downsampling), turning what would otherwise be one
+ * fsync every ~2s into one every ~60s for however many samples accumulated.
+ * The tradeoff: an unclean shutdown (crash, power loss -- NOT a normal
+ * systemd stop/restart, which flushes explicitly, see below) can now lose up
+ * to ~1 minute of high-resolution samples instead of ~2s.
+ *
  * Written from two places, both threads: continuously from the control loop
  * thread (see loop.ControlLoop.run) and immediately from an HTTP handler
  * thread when "Enregistrer et appliquer" is pressed (see
- * webui.ConfigPageHandler), so a restart never loses more than a couple of
- * seconds of data. All operations are serialized behind a single lock --
- * SQLite itself serializes writes at the file level, but this keeps a
- * multi-statement operation (e.g. the per-inverter batch insert) from
- * interleaving with a concurrent call from the other thread.
+ * webui.ConfigPageHandler, which calls {@link #flushBufferedSamples} itself
+ * so a planned restart never loses anything still buffered). All operations
+ * are serialized behind a single lock -- SQLite itself serializes writes at
+ * the file level, but this keeps a multi-statement operation (e.g. the
+ * per-inverter batch insert) from interleaving with a concurrent call from
+ * the other thread.
  *
  * Never throws on a failed write/prune/downsample (logs and drops the
  * sample instead): a hiccup persisting long-term stats must never interrupt
@@ -59,6 +72,21 @@ public final class StatsStore implements AutoCloseable {
     private final ReentrantLock lock = new ReentrantLock();
     private final Connection connection;
     private final Path dbPath;
+    private final PreparedStatement insertSampleStmt;
+    private final PreparedStatement insertInverterSampleStmt;
+    private final List<BufferedSample> pendingSamples = new ArrayList<>();
+
+    /** One recordLatestSample call's worth of data, held in memory until the next {@link #flushBufferedSamples}. */
+    private record BufferedSample(
+            double t,
+            double gridRawW,
+            double gridEmaW,
+            Double socPct,
+            Double batteryPowerW,
+            Double batteryVoltageV,
+            Double batteryCurrentA,
+            String injectionControl,
+            Map<String, Double> inverterActualW) {}
 
     public StatsStore(Path dbPath) {
         this.dbPath = dbPath;
@@ -66,6 +94,13 @@ public final class StatsStore implements AutoCloseable {
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
             try (Statement statement = connection.createStatement()) {
                 statement.execute("PRAGMA journal_mode=WAL");
+                // NORMAL (rather than the default FULL) skips an fsync on
+                // every commit that WAL mode's own checkpointing already
+                // makes safe against corruption -- the only added risk is
+                // losing the last few not-yet-checkpointed transactions on
+                // an unclean shutdown, which is already the accepted
+                // trade-off documented above for the sample buffer itself.
+                statement.execute("PRAGMA synchronous=NORMAL");
                 statement.execute(
                         "CREATE TABLE IF NOT EXISTS samples ("
                                 + "t INTEGER PRIMARY KEY, "
@@ -100,6 +135,17 @@ public final class StatsStore implements AutoCloseable {
                 ensureColumn(statement, "samples", "battery_voltage_v", "REAL");
                 ensureColumn(statement, "samples", "battery_current_a", "REAL");
             }
+            // Prepared once and reused for the lifetime of this StatsStore
+            // (both by recordSample's direct callers and by
+            // flushBufferedSamples) instead of recompiling the same SQL on
+            // every single sample.
+            insertSampleStmt = connection.prepareStatement(
+                    "INSERT OR REPLACE INTO samples "
+                            + "(t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
+                            + "battery_current_a, injection_control) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            insertInverterSampleStmt = connection.prepareStatement(
+                    "INSERT OR REPLACE INTO inverter_samples (t, serial, actual_w) VALUES (?, ?, ?)");
         } catch (SQLException e) {
             throw new StatsStoreException("failed to open stats database at " + dbPath, e);
         }
@@ -122,28 +168,33 @@ public final class StatsStore implements AutoCloseable {
 
     /**
      * Reads the latest LiveState sample and the current HourlyEnergyHistory/
-     * InverterEnergyHistory buckets, and persists all three.
+     * InverterEnergyHistory buckets, and persists all three -- including an
+     * explicit {@link #flushBufferedSamples} so a planned restart/shutdown
+     * never loses whatever recordLatestSample has buffered but not yet
+     * written to disk.
      */
     public void persistSnapshot(
             LiveState liveState, HourlyEnergyHistory energyHistory, InverterEnergyHistory inverterEnergyHistory) {
         recordLatestSample(liveState);
+        flushBufferedSamples();
         upsertHourlyEnergy(energyHistory.snapshot());
         upsertInverterHourlyEnergy(inverterEnergyHistory.snapshot());
     }
 
     /**
-     * Persists just the latest LiveState sample (not the hourly energy
-     * buckets) -- called every fast-loop tick (see loop.ControlLoop.run) so
-     * stats.db's resolution matches the live view's for the most recent
-     * config.stats.highResRetentionDays. Older rows are later thinned down
-     * to config.stats.intervalS by {@link #downsampleOlderThan}, which is
-     * what actually keeps the database from growing at this cadence forever.
+     * Buffers the latest LiveState sample in memory -- called every
+     * fast-loop tick (see loop.ControlLoop.run) so stats.db's resolution
+     * matches the live view's for the most recent config.stats.highResRetentionDays.
+     * Does NOT write to SQLite itself; see {@link #flushBufferedSamples}.
+     * Older rows are later thinned down to config.stats.intervalS by
+     * {@link #downsampleOlderThan}, which is what actually keeps the
+     * database from growing at this cadence forever.
      */
     public void recordLatestSample(LiveState liveState) {
-        recordSampleFromLiveState(liveState.snapshotSince(0).latest());
+        bufferSampleFromLiveState(liveState.snapshotSince(0).latest());
     }
 
-    private void recordSampleFromLiveState(Map<String, Object> sample) {
+    private void bufferSampleFromLiveState(Map<String, Object> sample) {
         if (sample == null) {
             return;
         }
@@ -169,7 +220,75 @@ public final class StatsStore implements AutoCloseable {
                 }
             }
         }
-        recordSample(t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA, injectionControl, inverterActualW);
+        lock.lock();
+        try {
+            pendingSamples.add(new BufferedSample(
+                    t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA,
+                    injectionControl, inverterActualW));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Writes every sample buffered by {@link #recordLatestSample} since the
+     * last flush, in a single transaction -- one fsync for however many ~2s
+     * ticks have accumulated, instead of one per tick. Called once a minute
+     * from loop.ControlLoop.run, and once more explicitly from
+     * {@link #persistSnapshot} before a planned restart/shutdown. A no-op if
+     * nothing has been buffered since the last call.
+     */
+    public void flushBufferedSamples() {
+        lock.lock();
+        try {
+            if (pendingSamples.isEmpty()) {
+                return;
+            }
+            writeSamplesBatch(pendingSamples);
+            pendingSamples.clear();
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to flush buffered stats samples", e);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Caller must hold {@code lock}. Writes every sample in {@code samples} in one transaction. */
+    private void writeSamplesBatch(List<BufferedSample> samples) throws SQLException {
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try {
+            for (BufferedSample s : samples) {
+                long tSeconds = Math.round(s.t());
+                insertSampleStmt.setLong(1, tSeconds);
+                insertSampleStmt.setDouble(2, s.gridRawW());
+                insertSampleStmt.setDouble(3, s.gridEmaW());
+                setNullableDouble(insertSampleStmt, 4, s.socPct());
+                setNullableDouble(insertSampleStmt, 5, s.batteryPowerW());
+                setNullableDouble(insertSampleStmt, 6, s.batteryVoltageV());
+                setNullableDouble(insertSampleStmt, 7, s.batteryCurrentA());
+                insertSampleStmt.setString(8, s.injectionControl());
+                insertSampleStmt.addBatch();
+
+                Map<String, Double> inverterActualW = s.inverterActualW();
+                if (inverterActualW != null) {
+                    for (Map.Entry<String, Double> entry : inverterActualW.entrySet()) {
+                        insertInverterSampleStmt.setLong(1, tSeconds);
+                        insertInverterSampleStmt.setString(2, entry.getKey());
+                        insertInverterSampleStmt.setDouble(3, entry.getValue());
+                        insertInverterSampleStmt.addBatch();
+                    }
+                }
+            }
+            insertSampleStmt.executeBatch();
+            insertInverterSampleStmt.executeBatch();
+            connection.commit();
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
     }
 
     /**
@@ -478,6 +597,12 @@ public final class StatsStore implements AutoCloseable {
         return rs.wasNull() ? null : v;
     }
 
+    /**
+     * Writes a single sample immediately (unlike {@link #recordLatestSample},
+     * which only buffers) -- used directly by tests, and as the single-item
+     * case of the same {@link #writeSamplesBatch} transaction logic
+     * {@link #flushBufferedSamples} uses for a whole buffer at once.
+     */
     void recordSample(
             double t,
             double gridRawW,
@@ -490,34 +615,9 @@ public final class StatsStore implements AutoCloseable {
             Map<String, Double> inverterActualW) {
         lock.lock();
         try {
-            long tSeconds = Math.round(t);
-            try (PreparedStatement stmt = connection.prepareStatement(
-                    "INSERT OR REPLACE INTO samples "
-                            + "(t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
-                            + "battery_current_a, injection_control) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
-                stmt.setLong(1, tSeconds);
-                stmt.setDouble(2, gridRawW);
-                stmt.setDouble(3, gridEmaW);
-                setNullableDouble(stmt, 4, socPct);
-                setNullableDouble(stmt, 5, batteryPowerW);
-                setNullableDouble(stmt, 6, batteryVoltageV);
-                setNullableDouble(stmt, 7, batteryCurrentA);
-                stmt.setString(8, injectionControl);
-                stmt.executeUpdate();
-            }
-            if (inverterActualW != null && !inverterActualW.isEmpty()) {
-                try (PreparedStatement stmt = connection.prepareStatement(
-                        "INSERT OR REPLACE INTO inverter_samples (t, serial, actual_w) VALUES (?, ?, ?)")) {
-                    for (Map.Entry<String, Double> entry : inverterActualW.entrySet()) {
-                        stmt.setLong(1, tSeconds);
-                        stmt.setString(2, entry.getKey());
-                        stmt.setDouble(3, entry.getValue());
-                        stmt.addBatch();
-                    }
-                    stmt.executeBatch();
-                }
-            }
+            writeSamplesBatch(List.of(new BufferedSample(
+                    t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA,
+                    injectionControl, inverterActualW)));
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "failed to persist stats sample", e);
         } finally {
@@ -654,6 +754,8 @@ public final class StatsStore implements AutoCloseable {
     public void close() {
         lock.lock();
         try {
+            insertSampleStmt.close();
+            insertInverterSampleStmt.close();
             connection.close();
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "failed to close stats database", e);

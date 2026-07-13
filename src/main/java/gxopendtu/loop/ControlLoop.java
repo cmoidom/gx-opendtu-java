@@ -48,6 +48,13 @@ public final class ControlLoop {
     private static final int FAILSAFE_AFTER_CONSECUTIVE_FAILURES = 3;
     private static final double SECONDS_PER_DAY = 86400.0;
     private static final double PRUNE_INTERVAL_S = SECONDS_PER_DAY;
+    // Deliberately a fixed constant, not config.stats.intervalS -- that value
+    // already means "downsample bucket width" (see StatsStore's javadoc);
+    // reusing it here would silently change the crash-loss window (how much
+    // buffered high-res data an unclean shutdown could lose) whenever
+    // someone tunes downsampling. 1 minute keeps that window small while
+    // still turning ~30 individual per-tick writes into one batched one.
+    private static final double SAMPLE_FLUSH_INTERVAL_S = 60.0;
     private static final Logger LOG = Logger.getLogger("gx-opendtu-zero-export");
 
     private ControlLoop() {}
@@ -413,6 +420,7 @@ public final class ControlLoop {
         double lastDecisionTime = 0.0;
         double lastProbeTime = 0.0;
         double lastStatsWriteTime = 0.0;
+        double lastSampleFlushTime = 0.0;
         double lastPruneTime = 0.0;
         int consecutiveGridFailures = 0;
         boolean releasedForCharging = false;
@@ -602,6 +610,14 @@ public final class ControlLoop {
                 lastStatsWriteTime = now;
                 statsStore.upsertHourlyEnergy(energyHistory.snapshot());
                 statsStore.upsertInverterHourlyEnergy(inverterEnergyHistory.snapshot());
+            }
+            // recordLatestSample (above) only buffers in memory -- this is
+            // what actually writes those buffered samples to disk, batched
+            // into one transaction per SAMPLE_FLUSH_INTERVAL_S instead of one
+            // per tick. See StatsStore's javadoc for the crash-loss tradeoff.
+            if (now - lastSampleFlushTime >= SAMPLE_FLUSH_INTERVAL_S) {
+                lastSampleFlushTime = now;
+                statsStore.flushBufferedSamples();
             }
             if (now - lastPruneTime >= PRUNE_INTERVAL_S) {
                 lastPruneTime = now;

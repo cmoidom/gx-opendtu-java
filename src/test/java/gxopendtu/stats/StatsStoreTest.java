@@ -169,15 +169,28 @@ class StatsStoreTest {
     }
 
     @Test
-    void recordLatestSamplePersistsSampleWithoutTouchingHourlyEnergy(@TempDir Path tmpDir) throws Exception {
+    void recordLatestSampleBuffersUntilFlushed(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         LiveState liveState = new LiveState();
         liveState.recordGrid(42.0, 40.0);
         try (StatsStore store = new StatsStore(dbPath)) {
             store.recordLatestSample(liveState);
+            assertThat(countRows(dbPath, "samples")).isZero(); // buffered in memory, not yet written
+
+            store.flushBufferedSamples();
+
+            assertThat(countRows(dbPath, "samples")).isEqualTo(1);
+            assertThat(countRows(dbPath, "hourly_energy")).isZero(); // separate cadence, untouched
         }
-        assertThat(countRows(dbPath, "samples")).isEqualTo(1);
-        assertThat(countRows(dbPath, "hourly_energy")).isZero();
+    }
+
+    @Test
+    void flushBufferedSamplesOnEmptyBufferIsNoOp(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.flushBufferedSamples();
+            assertThat(store.sampleCount()).isZero();
+        }
     }
 
     @Test
