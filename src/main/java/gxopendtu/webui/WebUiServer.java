@@ -50,7 +50,7 @@ public final class WebUiServer {
 
             server.createContext(
                     "/", new ConfigPageHandler(configPath, liveState, energyHistory, inverterEnergyHistory, statsStore));
-            server.createContext("/dashboard", new DashboardHandler());
+            server.createContext("/dashboard", new DashboardHandler(configPath));
             server.createContext(
                     "/status.json",
                     new StatusJsonHandler(

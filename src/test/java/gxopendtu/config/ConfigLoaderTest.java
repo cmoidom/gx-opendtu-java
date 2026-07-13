@@ -48,6 +48,7 @@ class ConfigLoaderTest {
         assertThat(config.grid().modbus().host()).isEqualTo("192.168.1.10");
         assertThat(config.control().minInverterPct()).isEqualTo(5.0); // default, absent from FULL_CONFIG
         assertThat(config.web().port()).isEqualTo(8080);
+        assertThat(config.web().chartHeightPx()).isEqualTo(200); // default
         assertThat(config.logging().verboseTraces()).isTrue();
         assertThat(config.stats().intervalS()).isEqualTo(300.0); // default
         assertThat(config.stats().retentionDays()).isEqualTo(730); // default, ~2 years
@@ -86,6 +87,50 @@ class ConfigLoaderTest {
         assertThatThrownBy(() -> ConfigLoader.parseConfig(json(raw)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("config.stats.high_res_retention_days must not exceed config.stats.retention_days");
+    }
+
+    @Test
+    void chartHeightPxCanBeOverridden() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "web": { "chart_height_px": 350 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        AppConfig config = ConfigLoader.parseConfig(json(raw));
+        assertThat(config.web().chartHeightPx()).isEqualTo(350);
+    }
+
+    @Test
+    void chartHeightPxBelowMinimumIsRejected() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "web": { "chart_height_px": 199 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        assertThatThrownBy(() -> ConfigLoader.parseConfig(json(raw)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("config.web.chart_height_px must be between 200 and 500");
+    }
+
+    @Test
+    void chartHeightPxAboveMaximumIsRejected() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "web": { "chart_height_px": 501 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        assertThatThrownBy(() -> ConfigLoader.parseConfig(json(raw)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("config.web.chart_height_px must be between 200 and 500");
     }
 
     @Test

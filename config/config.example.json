@@ -31,7 +31,8 @@
     "export_confirms_full_w": 50
   },
   "web": {
-    "port": 8080
+    "port": 8080,
+    "chart_height_px": 200
   },
   "logging": {
     "verbose_traces": true

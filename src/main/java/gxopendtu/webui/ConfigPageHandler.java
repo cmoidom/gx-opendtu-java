@@ -316,6 +316,8 @@ final class ConfigPageHandler implements HttpHandler {
 
         ObjectNode web = MAPPER.createObjectNode();
         web.put("port", (int) Double.parseDouble(first(form, "web.port", d(ConfigLoader.Defaults.WEB_PORT))));
+        web.put("chart_height_px",
+                (int) Double.parseDouble(first(form, "web.chart_height_px", d(ConfigLoader.Defaults.CHART_HEIGHT_PX))));
         raw.set("web", web);
 
         ObjectNode logging = MAPPER.createObjectNode();
@@ -591,6 +593,13 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <label>Port</label>\n"
                 + "    <input type=\"number\" name=\"web.port\" value=\"" + val(raw, "web.port", d(ConfigLoader.Defaults.WEB_PORT)) + "\" required>\n"
                 + "    <p class=\"hint\">Necessite un redemarrage du service pour prendre effet.</p>\n"
+                + "    <label>Hauteur des graphiques du tableau de bord (px)</label>\n"
+                + "    <input type=\"number\" name=\"web.chart_height_px\" min=\"" + ConfigLoader.Defaults.CHART_HEIGHT_PX_MIN
+                + "\" max=\"" + ConfigLoader.Defaults.CHART_HEIGHT_PX_MAX
+                + "\" value=\"" + val(raw, "web.chart_height_px", d(ConfigLoader.Defaults.CHART_HEIGHT_PX)) + "\" required>\n"
+                + "    <p class=\"hint\">De " + ConfigLoader.Defaults.CHART_HEIGHT_PX_MIN + " (defaut) a "
+                + ConfigLoader.Defaults.CHART_HEIGHT_PX_MAX + " -- meme hauteur pour tous les graphiques. "
+                + "Prend effet au prochain chargement de la page (pas besoin de redemarrer le service).</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

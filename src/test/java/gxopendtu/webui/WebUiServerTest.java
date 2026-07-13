@@ -124,6 +124,24 @@ class WebUiServerTest {
     }
 
     @Test
+    void dashboardUsesDefaultChartHeightWhenNotConfigured() throws Exception {
+        HttpResponse<String> response = get("/dashboard");
+        assertThat(response.body()).contains("height: 200px");
+    }
+
+    @Test
+    void dashboardReflectsSavedChartHeightWithoutRestart() throws Exception {
+        HttpResponse<String> saveResponse = post(
+                "/save",
+                "opendtu.base_url=http://192.168.1.50&grid.modbus.host=192.168.1.10"
+                        + "&web.chart_height_px=350&inverter_serial=111&inverter_nominal_power_w=600&inverter_name=");
+        assertThat(saveResponse.statusCode()).isEqualTo(200);
+
+        HttpResponse<String> response = get("/dashboard");
+        assertThat(response.body()).contains("height: 350px");
+    }
+
+    @Test
     void statusJsonReturnsExpectedShape() throws Exception {
         HttpResponse<String> response = get("/status.json");
         assertThat(response.statusCode()).isEqualTo(200);

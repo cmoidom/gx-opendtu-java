@@ -66,6 +66,9 @@ public final class ConfigLoader {
         public static final double BATTERY_EXPORT_CONFIRMS_FULL_W = 50.0;
 
         public static final int WEB_PORT = 8080;
+        public static final int CHART_HEIGHT_PX = 200;
+        public static final int CHART_HEIGHT_PX_MIN = 200;
+        public static final int CHART_HEIGHT_PX_MAX = 500;
 
         public static final boolean LOGGING_VERBOSE_TRACES = true;
 
@@ -128,6 +131,13 @@ public final class ConfigLoader {
                     "config.stats.high_res_retention_days must not exceed config.stats.retention_days");
         }
 
+        int chartHeightPx = webRaw.path("chart_height_px").asInt(Defaults.CHART_HEIGHT_PX);
+        if (chartHeightPx < Defaults.CHART_HEIGHT_PX_MIN || chartHeightPx > Defaults.CHART_HEIGHT_PX_MAX) {
+            throw new IllegalArgumentException(String.format(
+                    "config.web.chart_height_px must be between %d and %d",
+                    Defaults.CHART_HEIGHT_PX_MIN, Defaults.CHART_HEIGHT_PX_MAX));
+        }
+
         String username = textOrNull(opendtuRaw, "username");
         String password = textOrNull(opendtuRaw, "password");
 
@@ -157,7 +167,7 @@ public final class ConfigLoader {
                         batteryRaw.path("activate_at_pct").asDouble(Defaults.BATTERY_ACTIVATE_AT_PCT),
                         batteryRaw.path("deactivate_below_pct").asDouble(Defaults.BATTERY_DEACTIVATE_BELOW_PCT),
                         batteryRaw.path("export_confirms_full_w").asDouble(Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)),
-                new WebConfig(webRaw.path("port").asInt(Defaults.WEB_PORT)),
+                new WebConfig(webRaw.path("port").asInt(Defaults.WEB_PORT), chartHeightPx),
                 new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(Defaults.LOGGING_VERBOSE_TRACES)),
                 new StatsConfig(
                         statsRaw.path("interval_s").asDouble(Defaults.STATS_INTERVAL_S),

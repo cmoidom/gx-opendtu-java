@@ -78,7 +78,7 @@ gx-opendtu-java/
 │   └── webui/
 │       ├── WebUiServer.java            com.sun.net.httpserver.HttpServer, routage
 │       ├── ConfigPageHandler.java      page de config ("/"), /save, /apply
-│       ├── DashboardHandler.java       sert dashboard.html (resource statique)
+│       ├── DashboardHandler.java       sert dashboard.html (resource, 1 substitution : __CHART_HEIGHT_PX__)
 │       ├── StatusJsonHandler.java      GET /status.json?since=
 │       ├── FetchInvertersHandler.java  GET /fetch-inverters (proxy decouverte OpenDTU)
 │       └── OverrideHandlers.java       POST /override/pct, /pct/clear, /mode

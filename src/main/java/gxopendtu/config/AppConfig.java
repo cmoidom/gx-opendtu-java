@@ -47,8 +47,13 @@ public record AppConfig(
     /** name is display-only (dashboard legend/table) -- never used to address the inverter. */
     public record InverterConfig(String serial, double nominalPowerW, String name) {}
 
-    /** The config page + live dashboard are always on -- only the port is configurable. */
-    public record WebConfig(int port) {}
+    /**
+     * The config page + live dashboard are always on -- port and dashboard
+     * chart height are the only configurable bits. chartHeightPx applies to
+     * every chart on /dashboard uniformly, clamped to
+     * [ConfigLoader.Defaults.CHART_HEIGHT_PX_MIN, ..._MAX] at load time.
+     */
+    public record WebConfig(int port, int chartHeightPx) {}
 
     /**
      * verboseTraces gates only the per-cycle state line, never errors/warnings
