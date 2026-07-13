@@ -961,13 +961,18 @@ function attachZoomPan(canvas) {
     const curTMax = viewTMax !== null ? viewTMax : data.dataTMax;
     const span = curTMax - curTMin;
     const cursorT = curTMin + (x - data.padding.left) / data.plotW * span;
-    const fullSpan = data.dataTMax - data.dataTMin;
-    let newSpan = Math.min(span * (ev.deltaY > 0 ? 1.2 : 1 / 1.2), fullSpan);
+    // Deliberately NOT capped to what's already loaded in `history` (unlike
+    // the old data.dataTMax - data.dataTMin fullSpan cap) -- that made it
+    // impossible to ever zoom out past the live ~30 min window with the
+    // wheel alone. maybeLoadOlderHistory below pages in more from stats.db
+    // as needed, exactly like dragging past the edge already does.
+    let newSpan = span * (ev.deltaY > 0 ? 1.2 : 1 / 1.2);
     if (newSpan < 10) newSpan = 10;  // floor so scrolling in can't collapse to an unusable sliver
     const ratio = span > 0 ? (cursorT - curTMin) / span : 0.5;
-    const [newTMin, newTMax] = clampView(cursorT - ratio * newSpan, cursorT - ratio * newSpan + newSpan);
-    if (newSpan >= fullSpan - 1e-6) { viewTMin = null; viewTMax = null; }
-    else { viewTMin = newTMin; viewTMax = newTMax; }
+    const requestedTMin = cursorT - ratio * newSpan;
+    const [newTMin, newTMax] = clampView(requestedTMin, requestedTMin + newSpan);
+    viewTMin = newTMin; viewTMax = newTMax;
+    maybeLoadOlderHistory(requestedTMin);
     renderCharts();
   }, { passive: false });
 
