@@ -256,7 +256,7 @@ par du direct plus fin, il l'est déjà). `consigne_w`, `min_inverter_floor_warn
 terme) -- `loadRecentSamples` les renvoie donc à leur valeur "non défini".
 
 **`HourlyEnergyHistory` est backfillée de la même façon** : le graphique
-"Energie reseau par heure" lit `HourlyEnergyHistory` (mémoire, 48h), pas
+"Energie reseau (par heure)" lit `HourlyEnergyHistory` (mémoire, 48h), pas
 `stats.db`, donc sans backfill il se serait vidé à chaque redémarrage
 exactement comme `LiveState` avant `seedHistory`. `Main.main` appelle
 `energyHistory.seedBuckets(statsStore.loadHourlyEnergy(cutoff))` juste après
@@ -291,7 +291,7 @@ cycle de décision, négligeable. Persisté dans une quatrième table SQLite,
 `inverter_hourly_energy (hour, serial, wh)`, avec les mêmes conventions que
 `hourly_energy` (`INSERT OR REPLACE`, backfillé au démarrage via
 `loadInverterHourlyEnergy`, purgé par `pruneOlderThan`). Affiché en barres
-groupées sur `dashboard.html` ("Energie par onduleur"),
+groupées sur `dashboard.html` ("Energie par onduleur (par heure)"),
 toujours en Wh (jamais basculé en kWh comme `fmtEnergy` le fait pour
 l'énergie réseau) -- une décision explicite pour garder les valeurs
 lisibles onduleur par onduleur, qui sont typiquement de quelques centaines

@@ -11,7 +11,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Hourly-bucketed per-inverter energy yield (Wh) for the dashboard's
- * "Energie par onduleur" bar chart -- the per-inverter counterpart of
+ * "Energie par onduleur (par heure)" bar chart -- the per-inverter counterpart of
  * {@link HourlyEnergyHistory} (whole-system grid import/export).
  *
  * Derived from each inverter's own OpenDTU-reported YieldDay counter (Wh,

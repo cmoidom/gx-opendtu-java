@@ -85,7 +85,7 @@ public final class HourlyEnergyHistory {
     /**
      * Repopulates the bucket deque from persisted long-term history (see
      * {@code stats.StatsStore#loadHourlyEnergy}), called once at startup --
-     * otherwise the "Energie reseau par heure" chart resets to empty on
+     * otherwise the "Energie reseau (par heure)" chart resets to empty on
      * every restart, same reasoning as {@code LiveState#seedHistory}.
      * {@code buckets} must already be in chronological order (oldest
      * first). Deliberately leaves {@code lastFromKwh}/{@code lastToKwh}

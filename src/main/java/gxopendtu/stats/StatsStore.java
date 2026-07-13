@@ -325,7 +325,7 @@ public final class StatsStore implements AutoCloseable {
      * Hourly energy buckets since {@code sinceEpochSeconds} (chronological
      * order), in the same map shape {@link HourlyEnergyHistory#snapshot()}
      * produces -- used to seed {@code HourlyEnergyHistory} at startup so the
-     * "Energie reseau par heure" bar chart doesn't reset to empty on every
+     * "Energie reseau (par heure)" bar chart doesn't reset to empty on every
      * restart, same reasoning as {@link #loadRecentSamples}.
      */
     public List<Map<String, Object>> loadHourlyEnergy(double sinceEpochSeconds) {
