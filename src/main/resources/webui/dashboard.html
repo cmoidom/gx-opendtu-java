@@ -175,6 +175,14 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
   sur ce jour-la (aucun zoom/deplacement, deja agrege a l'heure) -- "Aujourd'hui (direct)" revient au direct.</p>
 </div>
 
+<h2>Energie par onduleur (7 derniers jours)</h2>
+<div class="chart-box">
+  <canvas id="chart-inverter-week"></canvas>
+  <div class="legend" id="inverter-week-legend"></div>
+  <p class="hint">Somme quotidienne des memes donnees que le graphique precedent (pas de nouvelle mesure) --
+  aujourd'hui est partiel.</p>
+</div>
+
 <div id="tooltip"></div>
 
 <script>
@@ -312,6 +320,45 @@ function shiftEnergyDay(chartId, deltaDays) {
   setEnergyDay(chartId, toDateStr(d));
 }
 
+// "Energie par onduleur (7 derniers jours)" -- reuses the exact same
+// hourly_inverter_energy rows as the per-hour chart above (no new stats.db
+// column/table), just summed client-side into one bucket per calendar day
+// instead of per hour.
+let dailyInverterEnergy = [];
+
+function localDayStart(epochSeconds) {
+  const d = new Date(epochSeconds * 1000);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime() / 1000;
+}
+
+/** Sums each hourly bucket's per-serial values into its calendar day -- keys are read from the data itself, not inverterOrder, so a serial isn't silently dropped if it hasn't been seen live yet. */
+function aggregateToDayBuckets(hourlyBuckets) {
+  const byDay = new Map();
+  hourlyBuckets.forEach(hourBucket => {
+    const day = localDayStart(hourBucket.hour);
+    let dayBucket = byDay.get(day);
+    if (!dayBucket) { dayBucket = { day: day }; byDay.set(day, dayBucket); }
+    Object.keys(hourBucket).forEach(key => {
+      if (key === 'hour') return;
+      dayBucket[key] = (dayBucket[key] || 0) + hourBucket[key];
+    });
+  });
+  return Array.from(byDay.values()).sort((a, b) => a.day - b.day);
+}
+
+function fetchWeeklyInverterEnergy() {
+  const untilDay = localDayStart(Date.now() / 1000) + 86400; // tomorrow's local midnight
+  const sinceDay = untilDay - 7 * 86400;
+  fetch('/hourly-energy.json?since=' + sinceDay.toFixed(0) + '&until=' + untilDay.toFixed(0))
+    .then(r => r.json())
+    .then(data => {
+      dailyInverterEnergy = aggregateToDayBuckets(data.hourly_inverter_energy || []);
+      renderCharts();
+    })
+    .catch(() => {});
+}
+
 // Shared zoom/pan window, synchronized across all time-series charts. null
 // means "auto, full extent" -- both bounds are epoch seconds so a zoomed-in
 // window stays anchored to real time as new samples arrive, rather than
@@ -440,6 +487,7 @@ function fmtEnergy(v) {
 }
 function fmtWh(v) { return (v === null || v === undefined) ? '-' : Math.round(v) + ' Wh'; }
 function fmtHour(h) { return new Date(h * 1000).toLocaleTimeString([], { hour: '2-digit' }); }
+function fmtDay(t) { return new Date(t * 1000).toLocaleDateString([], { day: '2-digit', month: '2-digit' }); }
 function fmtVolt(v) { return (v === null || v === undefined) ? '-' : v.toFixed(2) + ' V'; }
 function fmtAmp(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' A'; }
 
@@ -706,6 +754,13 @@ function redrawChart(canvas) {
 // (per-mark tooltip, as opposed to drawChart's continuous crosshair).
 function drawBarChart(canvas, buckets, seriesKeys, colors, labels, opts) {
   opts = opts || {};
+  // xKey/xFormat default to the original hourly-bucket behavior (buckets
+  // keyed by "hour", labelled with fmtHour) -- passing e.g. xKey: 'day',
+  // xFormat: fmtDay reuses this same function for a day-bucketed chart
+  // (see "Energie par onduleur (7 derniers jours)") without touching the
+  // two existing hourly bar charts' calls.
+  const xKey = opts.xKey || 'hour';
+  const xFormat = opts.xFormat || fmtHour;
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (w === 0 || h === 0) return;
@@ -754,16 +809,16 @@ function drawBarChart(canvas, buckets, seriesKeys, colors, labels, opts) {
       const barH = (padding.top + plotH) - y;
       ctx.fillStyle = colors[k];
       ctx.fillRect(x, y, Math.max(1, barW - 2), barH);
-      bars.push({ x, y, w: barW - 2, h: barH, value: v, label: labels[k], hour: b.hour });
+      bars.push({ x, y, w: barW - 2, h: barH, value: v, label: labels[k], bucketX: b[xKey] });
     });
   });
 
-  // one label per hour slot (skip some if too narrow to avoid overlap)
+  // one label per slot (skip some if too narrow to avoid overlap)
   const labelEvery = Math.max(1, Math.ceil(60 / slotW));
   ctx.fillStyle = cssVar('--muted');
   buckets.forEach((b, i) => {
     if (i % labelEvery !== 0) return;
-    const label = fmtHour(b.hour);
+    const label = xFormat(b[xKey]);
     const x = padding.left + i * slotW + slotW / 2 - ctx.measureText(label).width / 2;
     ctx.fillText(label, x, h - 5);
   });
@@ -771,7 +826,11 @@ function drawBarChart(canvas, buckets, seriesKeys, colors, labels, opts) {
   canvas._barData = { bars, padding, plotW, plotH };
 }
 
-function attachBarHover(canvas) {
+function attachBarHover(canvas, opts) {
+  opts = opts || {};
+  const yFormat = opts.yFormat || fmtEnergy;
+  const xFormat = opts.xFormat || fmtHour;
+  const bucketSeconds = opts.bucketSeconds || 3600;
   const tooltip = document.getElementById('tooltip');
   canvas.addEventListener('mousemove', (ev) => {
     const data = canvas._barData;
@@ -783,8 +842,8 @@ function attachBarHover(canvas) {
     tooltip.style.display = 'block';
     tooltip.style.left = (ev.clientX + 12) + 'px';
     tooltip.style.top = (ev.clientY - 10) + 'px';
-    tooltip.innerHTML = '<div>' + fmtHour(hit.hour) + '-' + fmtHour(hit.hour + 3600) + '</div>' +
-      '<div>' + hit.label + ': ' + fmtEnergy(hit.value) + '</div>';
+    tooltip.innerHTML = '<div>' + xFormat(hit.bucketX) + '-' + xFormat(hit.bucketX + bucketSeconds) + '</div>' +
+      '<div>' + hit.label + ': ' + yFormat(hit.value) + '</div>';
   });
   canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 }
@@ -884,11 +943,13 @@ const chartGrid = document.getElementById('chart-grid');
 const chartInverters = document.getElementById('chart-inverters');
 const chartEnergy = document.getElementById('chart-energy');
 const chartInverterEnergy = document.getElementById('chart-inverter-energy');
+const chartInverterWeek = document.getElementById('chart-inverter-week');
 attachHover(chartSoc, { yFormat: fmtPct });
 attachHover(chartGrid, { yFormat: fmtW });
 attachHover(chartInverters, { yFormat: fmtW });
 attachBarHover(chartEnergy);
-attachBarHover(chartInverterEnergy);
+attachBarHover(chartInverterEnergy, { yFormat: fmtWh });
+attachBarHover(chartInverterWeek, { yFormat: fmtWh, xFormat: fmtDay, bucketSeconds: 86400 });
 attachZoomPan(chartSoc);
 attachZoomPan(chartGrid);
 attachZoomPan(chartInverters);
@@ -975,6 +1036,9 @@ function renderCharts() {
   hourlyInverterEnergy.forEach(bucket => Object.keys(bucket).forEach(key => {
     if (key !== 'hour' && !inverterOrder.includes(key)) inverterOrder.push(key);
   }));
+  dailyInverterEnergy.forEach(bucket => Object.keys(bucket).forEach(key => {
+    if (key !== 'day' && !inverterOrder.includes(key)) inverterOrder.push(key);
+  }));
   const inverterColor = (serial) => cssVar(SERIES_COLORS[inverterOrder.indexOf(serial) % SERIES_COLORS.length]);
 
   const invSeries = inverterOrder.map(serial => ({
@@ -1007,6 +1071,15 @@ function renderCharts() {
       chartInverterEnergy, trimNightBuckets(hourlyInverterEnergy, inverterOrder), inverterEnergyBars.keys,
       inverterEnergyBars.colors, inverterEnergyBars.labels, { yFormat: fmtWh });
   renderLegend('inverter-energy-legend', 'inverter-energy', inverterOrder.map(serial => ({
+    key: serial, label: inverterLabel(serial), color: inverterColor(serial),
+  })));
+
+  const inverterWeekBars = visibleBarSeries(
+      'inverter-week', inverterOrder, inverterOrder.map(inverterColor), inverterOrder.map(inverterLabel));
+  drawBarChart(
+      chartInverterWeek, dailyInverterEnergy, inverterWeekBars.keys, inverterWeekBars.colors,
+      inverterWeekBars.labels, { yFormat: fmtWh, xKey: 'day', xFormat: fmtDay, bucketSeconds: 86400 });
+  renderLegend('inverter-week-legend', 'inverter-week', inverterOrder.map(serial => ({
     key: serial, label: inverterLabel(serial), color: inverterColor(serial),
   })));
 }
@@ -1049,6 +1122,8 @@ updateDayControls('inverter-energy');
 window.addEventListener('resize', renderCharts);
 poll();
 setInterval(poll, 2000);
+fetchWeeklyInverterEnergy();
+setInterval(fetchWeeklyInverterEnergy, 5 * 60 * 1000); // slow-changing daily totals, no need for the 2s poll cadence
 </script>
 </body>
 </html>
