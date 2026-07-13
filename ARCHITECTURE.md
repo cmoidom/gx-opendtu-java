@@ -212,6 +212,26 @@ tables.
   haute résolution ; doit être `>= high_res_retention_days` (validé au
   chargement de la config, `ConfigLoader.parseConfig`).
 
+**Tampon en mémoire + vidange groupée toutes les 60s (2026-07-13)** :
+`recordLatestSample` n'écrit plus dans SQLite -- il empile l'échantillon
+dans `pendingSamples` (en mémoire), et `flushBufferedSamples` écrit tout ce
+qui s'est accumulé en **une seule transaction** (un seul fsync, quel que
+soit le nombre de ticks accumulés, au lieu d'un par tick). `ControlLoop.run`
+appelle `flushBufferedSamples` une fois par minute -- une constante fixe,
+`SAMPLE_FLUSH_INTERVAL_S`, délibérément séparée de `config.stats.interval_s`
+(qui garde son sens ci-dessus, "largeur du bucket de downsampling") : les
+coupler aurait fait varier la fenêtre de perte en cas de crash au gré d'un
+réglage qui n'a rien à voir. Compromis assumé : une coupure brutale (crash,
+coupure secteur -- pas un arrêt propre, voir plus bas) peut désormais perdre
+jusqu'à 1 min de données haute résolution au lieu de ~2s. `recordSample`
+(l'écriture directe bas niveau, toujours utilisée par les tests et en
+interne par `flushBufferedSamples`) et le tampon partagent la même logique
+de transaction (`writeSamplesBatch`), avec les `PreparedStatement`
+d'insertion préparés une seule fois à l'ouverture de la base plutôt que
+recompilés à chaque échantillon. `PRAGMA synchronous=NORMAL` (en plus du
+`WAL` déjà actif) réduit encore le coût disque par transaction, sans risque
+supplémentaire au-delà de celui déjà accepté ci-dessus.
+
 **Tailles mesurées** (schéma réel, 6 onduleurs, ~383,7 octets par
 échantillon complet -- 1 ligne `samples` + 6 lignes `inverter_samples`) :
 5 min partout (ancien design) ≈ 77 Mo/2 ans ; 2s partout ≈ 11,3 Go/2 ans ;
@@ -219,12 +239,14 @@ tables.
 
 **Écriture immédiate sur "Enregistrer et appliquer"** : `webui/ConfigPageHandler`
 appelle `statsStore.persistSnapshot(liveState, energyHistory, inverterEnergyHistory)` juste avant
-de programmer `System.exit(1)` -- l'échantillon lui-même est déjà écrit en
-continu (voir ci-dessus), mais ça flush aussi immédiatement `hourly_energy`
-plutôt que de le laisser jusqu'à `stats.interval_s` en retard. Cet appel
-relit simplement le dernier échantillon déjà en mémoire dans `LiveState`
-(`snapshotSince(0).latest()`) : la page web n'a jamais besoin d'accéder
-directement aux lectures de la boucle de contrôle.
+de programmer `System.exit(1)` -- `persistSnapshot` appelle explicitement
+`flushBufferedSamples` (voir ci-dessus), donc tout ce qui était encore dans
+le tampon en mémoire est écrit avant l'arrêt, en plus de flusher
+immédiatement `hourly_energy`/`inverter_hourly_energy` plutôt que de les
+laisser jusqu'à `stats.interval_s` en retard. Cet appel relit simplement le
+dernier échantillon déjà en mémoire dans `LiveState` (`snapshotSince(0).latest()`) :
+la page web n'a jamais besoin d'accéder directement aux lectures de la
+boucle de contrôle.
 
 **Flush avant arrêt (tout chemin de redémarrage, pas seulement `/apply`)** :
 `Main.main` enregistre un `Runtime.getRuntime().addShutdownHook(...)` qui
@@ -232,9 +254,10 @@ appelle `statsStore.persistSnapshot(...)` puis `statsStore.close()` à la
 réception de `SIGTERM` -- couvre `systemctl restart`/`stop`, `update.sh`, un
 redémarrage de VM, pas seulement le bouton "Enregistrer et appliquer" de la
 page de config (qui, lui, flush explicitement avant son propre
-`System.exit(1)`, voir ci-dessus). Vu que l'échantillon est désormais écrit
-en continu, ce hook ne protège plus qu'`hourly_energy` (quelques secondes de
-perte possible au pire, pas un `stats.interval_s` entier comme avant).
+`System.exit(1)`, voir ci-dessus). Un arrêt propre (`SIGTERM`) ne perd donc
+jamais rien, ni le tampon d'échantillons haute résolution ni les buckets
+horaires -- seule une coupure brutale (crash, coupure secteur, ne passant
+pas par ce hook) peut perdre jusqu'à 1 min de données, voir ci-dessus.
 
 **Recharge de `LiveState` au démarrage (`LiveState.seedHistory`)** : le
 tableau de bord live (`/status.json`) ne lit **que** `LiveState` (mémoire),
