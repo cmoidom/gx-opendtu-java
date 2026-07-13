@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import gxopendtu.BuildInfo;
 import gxopendtu.config.ConfigLoader;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InverterEnergyHistory;
@@ -384,7 +385,10 @@ final class ConfigPageHandler implements HttpHandler {
                 + "<title>gx-opendtu-java - configuration</title>\n"
                 + "<style>\n"
                 + "  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }\n"
-                + "  h1 { font-size: 1.3rem; }\n"
+                + "  .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;\n"
+                + "             color: #888; margin: 0 0 0.15rem; }\n"
+                + "  h1 { font-size: 1.5rem; margin: 0 0 1rem; }\n"
+                + "  h1 .build-tag { font-size: 0.65rem; font-weight: 400; color: #888; vertical-align: middle; }\n"
                 + "  fieldset { margin-bottom: 1.2rem; border: 1px solid #ccc; border-radius: 6px; }\n"
                 + "  legend { font-weight: 600; padding: 0 0.4rem; }\n"
                 + "  label { display: block; margin: 0.5rem 0 0.15rem; font-size: 0.9rem; }\n"
@@ -408,7 +412,12 @@ final class ConfigPageHandler implements HttpHandler {
                 + "</head>\n"
                 + "<body>\n"
                 + "<nav><a href=\"/\">Configuration</a> &middot; <a href=\"/dashboard\">Tableau de bord</a></nav>\n"
-                + "<h1>gx-opendtu-java - configuration</h1>\n"
+                + "<p class=\"eyebrow\">gx-opendtu-java</p>\n"
+                + "<h1>Configuration"
+                + (BuildInfo.timestamp() != null
+                        ? " <span class=\"build-tag\">(build " + escape(BuildInfo.timestamp()) + ")</span>"
+                        : "")
+                + "</h1>\n"
                 + banner
                 + "<form method=\"post\" action=\"/save\">\n"
                 + "\n"

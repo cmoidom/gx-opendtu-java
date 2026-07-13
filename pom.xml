@@ -51,6 +51,26 @@
 
   <build>
     <finalName>gx-opendtu-java</finalName>
+    <resources>
+      <!-- Everything except version.properties: copied as-is, no ${...}
+           interpolation; dashboard.html's inline JS must never be touched
+           by resource filtering. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>version.properties</exclude>
+        </excludes>
+      </resource>
+      <!-- Only version.properties gets ${maven.build.timestamp} interpolated. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>version.properties</include>
+        </includes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
