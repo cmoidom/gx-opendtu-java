@@ -35,8 +35,8 @@ import java.util.Map;
  * would defeat the point of requiring independent observations.
  *
  * <p><b>Recovery speed (2026-07-13).</b> The plain per-tick nudge
- * ({@code probeStepW}, e.g. 10W/30s) recovers a deeply-lowered ceiling in
- * tens of minutes -- too slow if the sun genuinely returns (a cloud clears,
+ * ({@code probeStepW}, default 50W/30s) alone would still take a while to
+ * recover a deeply-lowered ceiling -- too slow if the sun genuinely returns (a cloud clears,
  * dawn) and a real consumption spike needs covering right away: the
  * water-filling allocator can never exceed the tracked ceiling, so solar
  * stays artificially capped and the battery/grid covers the gap instead,

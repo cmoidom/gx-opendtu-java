@@ -634,9 +634,15 @@ onduleur précis.
 
 **Remontée du plafond : optimiste sur saturation, avec anti-rechute
 (2026-07-13).** La nudge linéaire seule (`capacity_probe.step_w`/
-`interval_s`, ex. 10W/30s) est bien trop lente pour un vrai retour de
-soleil : remonter un plafond de 100W à 800W prend `(800-100)/10 = 70`
-cycles de sonde, soit ~35 minutes à 30s/cycle. Pendant tout ce temps, le
+`interval_s`, ancien défaut 10W/30s) est bien trop lente pour un vrai
+retour de soleil : remonter un plafond de 100W à 800W prenait
+`(800-100)/10 = 70` cycles de sonde, soit ~35 minutes à 30s/cycle -- c'est
+précisément ce qui a motivé le saut optimiste ci-dessous, et pourquoi le
+défaut de `step_w` est passé à **50W** le même jour : une fois le saut
+optimiste en place, la nudge linéaire ne couvre plus que le backoff et le
+cas non saturé (voir plus bas), où une valeur plus grande ne présente pas
+plus de risque (le critère de persistance corrige une nudge de 50W qui se
+trompe exactement comme une de 10W). Pendant tout ce temps, le
 water-filling ne peut jamais allouer au-dessus du plafond suivi -- un pic
 de consommation avec du soleil pourtant revenu (nuage qui se dégage, aube)
 ne serait pas couvert par le solaire, c'est la batterie/le réseau qui

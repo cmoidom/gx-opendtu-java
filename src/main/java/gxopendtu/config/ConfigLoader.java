@@ -58,7 +58,13 @@ public final class ConfigLoader {
         public static final double CONTROL_MIN_INVERTER_PCT = 5.0;
         public static final double CONTROL_MIN_BATTERY_DISCHARGE_W = 150.0;
 
-        public static final double CAPACITY_PROBE_STEP_W = 10.0;
+        // 50W (2026-07-13, was 10W): the linear nudge only needs to cover the
+        // backoff cooldown and non-saturated ambient recovery now -- the
+        // saturated/still-keeping-up case jumps straight to nominal instead
+        // (CapacityEstimator.probeTick's optimistic-recovery path), which is
+        // just as safe with a bigger step since the persistence check
+        // corrects either size of guess in the same few cycles.
+        public static final double CAPACITY_PROBE_STEP_W = 50.0;
         public static final double CAPACITY_PROBE_INTERVAL_S = 30.0;
 
         public static final boolean BATTERY_ENABLED = false;
