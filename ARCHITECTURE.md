@@ -291,7 +291,7 @@ cycle de décision, négligeable. Persisté dans une quatrième table SQLite,
 `inverter_hourly_energy (hour, serial, wh)`, avec les mêmes conventions que
 `hourly_energy` (`INSERT OR REPLACE`, backfillé au démarrage via
 `loadInverterHourlyEnergy`, purgé par `pruneOlderThan`). Affiché en barres
-groupées sur `dashboard.html` ("Energie par onduleur (Wh) par heure"),
+groupées sur `dashboard.html` ("Energie par onduleur"),
 toujours en Wh (jamais basculé en kWh comme `fmtEnergy` le fait pour
 l'énergie réseau) -- une décision explicite pour garder les valeurs
 lisibles onduleur par onduleur, qui sont typiquement de quelques centaines
