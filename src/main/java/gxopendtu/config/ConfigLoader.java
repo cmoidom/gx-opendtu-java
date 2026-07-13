@@ -33,6 +33,46 @@ public final class ConfigLoader {
 
     private ConfigLoader() {}
 
+    /**
+     * Single source of truth for every config.json field's default value --
+     * referenced both here (parsing/validation) and by
+     * {@code webui.ConfigPageHandler} (the form's fallback values and the
+     * config page's displayed defaults), so the two can never silently drift
+     * apart the way they previously could (each kept its own hand-typed copy
+     * of the same default).
+     */
+    public static final class Defaults {
+        private Defaults() {}
+
+        public static final double GRID_EXPORT_SETPOINT_W = 30.0;
+        public static final double GRID_READ_INTERVAL_S = 2.0;
+        public static final double GRID_EMA_ALPHA = 0.5;
+        public static final int GRID_MODBUS_PORT = 502;
+
+        public static final double CONTROL_KP = 0.4;
+        public static final double CONTROL_KI = 0.05;
+        public static final double CONTROL_DECISION_INTERVAL_S = 5.0;
+        public static final double CONTROL_STEP_ABSOLUTE_W = 100.0;
+        public static final double CONTROL_STEP_RELATIVE_PCT = 10.0;
+        public static final double CONTROL_MIN_CHANGE_W = 5.0;
+        public static final double CONTROL_MIN_INVERTER_PCT = 5.0;
+
+        public static final double CAPACITY_PROBE_STEP_W = 10.0;
+        public static final double CAPACITY_PROBE_INTERVAL_S = 30.0;
+
+        public static final boolean BATTERY_ENABLED = false;
+        public static final double BATTERY_ACTIVATE_AT_PCT = 100.0;
+        public static final double BATTERY_DEACTIVATE_BELOW_PCT = 98.0;
+        public static final double BATTERY_EXPORT_CONFIRMS_FULL_W = 50.0;
+
+        public static final int WEB_PORT = 8080;
+
+        public static final boolean LOGGING_VERBOSE_TRACES = true;
+
+        public static final double STATS_INTERVAL_S = 300.0;
+        public static final int STATS_RETENTION_DAYS = 730;
+    }
+
     public static AppConfig loadConfig(Path path) {
         JsonNode raw;
         try {
@@ -76,7 +116,8 @@ public final class ConfigLoader {
         if (modbusRaw.path("host").isMissingNode()) {
             throw new IllegalArgumentException("config.grid.modbus.host is required");
         }
-        ModbusGridConfig modbusCfg = new ModbusGridConfig(modbusRaw.path("host").asText(), modbusRaw.path("port").asInt(502));
+        ModbusGridConfig modbusCfg = new ModbusGridConfig(
+                modbusRaw.path("host").asText(), modbusRaw.path("port").asInt(Defaults.GRID_MODBUS_PORT));
 
         String username = textOrNull(opendtuRaw, "username");
         String password = textOrNull(opendtuRaw, "password");
@@ -87,29 +128,31 @@ public final class ConfigLoader {
                         (username != null && !username.isEmpty()) ? username : null,
                         (password != null && !password.isEmpty()) ? password : null),
                 new GridConfig(
-                        gridRaw.path("export_setpoint_w").asDouble(30.0),
-                        gridRaw.path("read_interval_s").asDouble(2.0),
-                        gridRaw.path("ema_alpha").asDouble(0.5),
+                        gridRaw.path("export_setpoint_w").asDouble(Defaults.GRID_EXPORT_SETPOINT_W),
+                        gridRaw.path("read_interval_s").asDouble(Defaults.GRID_READ_INTERVAL_S),
+                        gridRaw.path("ema_alpha").asDouble(Defaults.GRID_EMA_ALPHA),
                         modbusCfg),
                 new ControlConfig(
-                        controlRaw.path("kp").asDouble(0.4),
-                        controlRaw.path("ki").asDouble(0.05),
-                        controlRaw.path("decision_interval_s").asDouble(5.0),
-                        controlRaw.path("step_absolute_w").asDouble(100.0),
-                        controlRaw.path("step_relative_pct").asDouble(10.0),
-                        controlRaw.path("min_change_w").asDouble(5.0),
-                        controlRaw.path("min_inverter_pct").asDouble(5.0)),
+                        controlRaw.path("kp").asDouble(Defaults.CONTROL_KP),
+                        controlRaw.path("ki").asDouble(Defaults.CONTROL_KI),
+                        controlRaw.path("decision_interval_s").asDouble(Defaults.CONTROL_DECISION_INTERVAL_S),
+                        controlRaw.path("step_absolute_w").asDouble(Defaults.CONTROL_STEP_ABSOLUTE_W),
+                        controlRaw.path("step_relative_pct").asDouble(Defaults.CONTROL_STEP_RELATIVE_PCT),
+                        controlRaw.path("min_change_w").asDouble(Defaults.CONTROL_MIN_CHANGE_W),
+                        controlRaw.path("min_inverter_pct").asDouble(Defaults.CONTROL_MIN_INVERTER_PCT)),
                 new CapacityProbeConfig(
-                        probeRaw.path("step_w").asDouble(10.0), probeRaw.path("interval_s").asDouble(30.0)),
+                        probeRaw.path("step_w").asDouble(Defaults.CAPACITY_PROBE_STEP_W),
+                        probeRaw.path("interval_s").asDouble(Defaults.CAPACITY_PROBE_INTERVAL_S)),
                 new BatteryConfig(
-                        batteryRaw.path("enabled").asBoolean(false),
-                        batteryRaw.path("activate_at_pct").asDouble(100.0),
-                        batteryRaw.path("deactivate_below_pct").asDouble(98.0),
-                        batteryRaw.path("export_confirms_full_w").asDouble(50.0)),
-                new WebConfig(webRaw.path("port").asInt(8080)),
-                new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(true)),
+                        batteryRaw.path("enabled").asBoolean(Defaults.BATTERY_ENABLED),
+                        batteryRaw.path("activate_at_pct").asDouble(Defaults.BATTERY_ACTIVATE_AT_PCT),
+                        batteryRaw.path("deactivate_below_pct").asDouble(Defaults.BATTERY_DEACTIVATE_BELOW_PCT),
+                        batteryRaw.path("export_confirms_full_w").asDouble(Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)),
+                new WebConfig(webRaw.path("port").asInt(Defaults.WEB_PORT)),
+                new LoggingConfig(loggingRaw.path("verbose_traces").asBoolean(Defaults.LOGGING_VERBOSE_TRACES)),
                 new StatsConfig(
-                        statsRaw.path("interval_s").asDouble(300.0), statsRaw.path("retention_days").asInt(730)),
+                        statsRaw.path("interval_s").asDouble(Defaults.STATS_INTERVAL_S),
+                        statsRaw.path("retention_days").asInt(Defaults.STATS_RETENTION_DAYS)),
                 inverters);
     }
 

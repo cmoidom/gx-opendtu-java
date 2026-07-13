@@ -176,6 +176,17 @@ final class ConfigPageHandler implements HttpHandler {
         return escape(dig(raw, dottedPath).asText(defaultValue));
     }
 
+    /**
+     * Formats a {@code ConfigLoader.Defaults} double the same way the
+     * hand-typed literals it replaces read (no trailing ".0" on whole
+     * numbers) -- so every default here and in {@link #formToRaw} comes from
+     * that single shared constant instead of a second, independently typed
+     * copy of the same value that could silently drift out of sync with it.
+     */
+    private static String d(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
+    }
+
     private static String readBody(HttpExchange exchange) throws IOException {
         return new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
     }
@@ -242,45 +253,57 @@ final class ConfigPageHandler implements HttpHandler {
         raw.set("opendtu", opendtu);
 
         ObjectNode grid = MAPPER.createObjectNode();
-        grid.put("export_setpoint_w", Double.parseDouble(first(form, "grid.export_setpoint_w", "30")));
-        grid.put("read_interval_s", Double.parseDouble(first(form, "grid.read_interval_s", "2")));
-        grid.put("ema_alpha", Double.parseDouble(first(form, "grid.ema_alpha", "0.5")));
+        grid.put("export_setpoint_w",
+                Double.parseDouble(first(form, "grid.export_setpoint_w", d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W))));
+        grid.put("read_interval_s",
+                Double.parseDouble(first(form, "grid.read_interval_s", d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S))));
+        grid.put("ema_alpha", Double.parseDouble(first(form, "grid.ema_alpha", d(ConfigLoader.Defaults.GRID_EMA_ALPHA))));
         ObjectNode modbus = MAPPER.createObjectNode();
         modbus.put("host", first(form, "grid.modbus.host", "").trim());
-        modbus.put("port", (int) Double.parseDouble(first(form, "grid.modbus.port", "502")));
+        modbus.put("port",
+                (int) Double.parseDouble(first(form, "grid.modbus.port", d(ConfigLoader.Defaults.GRID_MODBUS_PORT))));
         grid.set("modbus", modbus);
         raw.set("grid", grid);
 
         ObjectNode control = MAPPER.createObjectNode();
-        control.put("kp", Double.parseDouble(first(form, "control.kp", "0.4")));
-        control.put("ki", Double.parseDouble(first(form, "control.ki", "0.05")));
-        control.put("decision_interval_s", Double.parseDouble(first(form, "control.decision_interval_s", "5")));
-        control.put("step_absolute_w", Double.parseDouble(first(form, "control.step_absolute_w", "100")));
-        control.put("step_relative_pct", Double.parseDouble(first(form, "control.step_relative_pct", "10")));
-        control.put("min_change_w", Double.parseDouble(first(form, "control.min_change_w", "5")));
-        control.put("min_inverter_pct", Double.parseDouble(first(form, "control.min_inverter_pct", "5")));
+        control.put("kp", Double.parseDouble(first(form, "control.kp", d(ConfigLoader.Defaults.CONTROL_KP))));
+        control.put("ki", Double.parseDouble(first(form, "control.ki", d(ConfigLoader.Defaults.CONTROL_KI))));
+        control.put("decision_interval_s",
+                Double.parseDouble(first(form, "control.decision_interval_s", d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S))));
+        control.put("step_absolute_w",
+                Double.parseDouble(first(form, "control.step_absolute_w", d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W))));
+        control.put("step_relative_pct",
+                Double.parseDouble(first(form, "control.step_relative_pct", d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT))));
+        control.put("min_change_w",
+                Double.parseDouble(first(form, "control.min_change_w", d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W))));
+        control.put("min_inverter_pct",
+                Double.parseDouble(first(form, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT))));
         raw.set("control", control);
 
         ObjectNode probe = MAPPER.createObjectNode();
-        probe.put("step_w", Double.parseDouble(first(form, "capacity_probe.step_w", "10")));
-        probe.put("interval_s", Double.parseDouble(first(form, "capacity_probe.interval_s", "30")));
+        probe.put("step_w", Double.parseDouble(first(form, "capacity_probe.step_w", d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W))));
+        probe.put("interval_s",
+                Double.parseDouble(first(form, "capacity_probe.interval_s", d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S))));
         raw.set("capacity_probe", probe);
 
         ObjectNode stats = MAPPER.createObjectNode();
-        stats.put("interval_s", Double.parseDouble(first(form, "stats.interval_s", "300")));
-        stats.put("retention_days", (int) Double.parseDouble(first(form, "stats.retention_days", "730")));
+        stats.put("interval_s", Double.parseDouble(first(form, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S))));
+        stats.put("retention_days",
+                (int) Double.parseDouble(first(form, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS))));
         raw.set("stats", stats);
 
         ObjectNode battery = MAPPER.createObjectNode();
         battery.put("enabled", form.containsKey("battery.enabled"));
-        battery.put("activate_at_pct", Double.parseDouble(first(form, "battery.activate_at_pct", "100")));
-        battery.put("deactivate_below_pct", Double.parseDouble(first(form, "battery.deactivate_below_pct", "98")));
-        battery.put(
-                "export_confirms_full_w", Double.parseDouble(first(form, "battery.export_confirms_full_w", "50")));
+        battery.put("activate_at_pct",
+                Double.parseDouble(first(form, "battery.activate_at_pct", d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT))));
+        battery.put("deactivate_below_pct",
+                Double.parseDouble(first(form, "battery.deactivate_below_pct", d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT))));
+        battery.put("export_confirms_full_w",
+                Double.parseDouble(first(form, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W))));
         raw.set("battery", battery);
 
         ObjectNode web = MAPPER.createObjectNode();
-        web.put("port", (int) Double.parseDouble(first(form, "web.port", "8080")));
+        web.put("port", (int) Double.parseDouble(first(form, "web.port", d(ConfigLoader.Defaults.WEB_PORT))));
         raw.set("web", web);
 
         ObjectNode logging = MAPPER.createObjectNode();
@@ -340,8 +363,8 @@ final class ConfigPageHandler implements HttpHandler {
         }
 
         String invertersHtml = inverterRowsHtml(dig(raw, "inverters"));
-        boolean batteryEnabled = dig(raw, "battery.enabled").asBoolean(false);
-        boolean verboseTraces = dig(raw, "logging.verbose_traces").asBoolean(true);
+        boolean batteryEnabled = dig(raw, "battery.enabled").asBoolean(ConfigLoader.Defaults.BATTERY_ENABLED);
+        boolean verboseTraces = dig(raw, "logging.verbose_traces").asBoolean(ConfigLoader.Defaults.LOGGING_VERBOSE_TRACES);
 
         return "<!doctype html>\n"
                 + "<html lang=\"fr\">\n"
@@ -393,7 +416,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  <fieldset>\n"
                 + "    <legend>Reseau (grid, Modbus TCP)</legend>\n"
                 + "    <label>Consigne d'export (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"grid.export_setpoint_w\" value=\"" + val(raw, "grid.export_setpoint_w", "30") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"grid.export_setpoint_w\" value=\"" + val(raw, "grid.export_setpoint_w", d(ConfigLoader.Defaults.GRID_EXPORT_SETPOINT_W)) + "\" required>\n"
                 + "    <p class=\"hint\">C'est la puissance reseau (soutirage positif / export negatif) que le "
                 + "regulateur essaie de maintenir en permanence -- pas un budget d'energie, une cible de puissance "
                 + "instantanee reevaluee en continu. Valeur positive (defaut 30 W) : vise une petite marge de "
@@ -402,12 +425,12 @@ final class ConfigPageHandler implements HttpHandler {
                 + "negative (ex. -50) : vise au contraire un export reel controle de cette puissance (ici 50 W) en "
                 + "permanence, si vous voulez au contraire autoriser/viser une injection reseau continue.</p>\n"
                 + "    <label>Intervalle de lecture (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"grid.read_interval_s\" value=\"" + val(raw, "grid.read_interval_s", "2") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"grid.read_interval_s\" value=\"" + val(raw, "grid.read_interval_s", d(ConfigLoader.Defaults.GRID_READ_INTERVAL_S)) + "\" required>\n"
                 + "    <p class=\"hint\">Cadence de lecture de la puissance reseau (boucle rapide). C'est la resolution "
                 + "du tableau de bord temps reel et la base de temps du lissage EMA ci-dessous -- ne pilote pas "
                 + "directement les onduleurs (voir \"Intervalle de decision\" plus bas).</p>\n"
                 + "    <label>Coefficient EMA (0-1)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"1\" name=\"grid.ema_alpha\" value=\"" + val(raw, "grid.ema_alpha", "0.5") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"1\" name=\"grid.ema_alpha\" value=\"" + val(raw, "grid.ema_alpha", d(ConfigLoader.Defaults.GRID_EMA_ALPHA)) + "\" required>\n"
                 + "    <p class=\"hint\">Lissage de la puissance reseau (moyenne mobile exponentielle) avant qu'elle "
                 + "n'atteigne le regulateur -- une lecture brute unique est trop bruitee pour piloter directement. Plus "
                 + "proche de 1 : reagit vite aux vraies variations mais laisse plus de bruit passer. Plus proche de 0 : "
@@ -415,7 +438,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <label>Hote Modbus (IP Cerbo GX)</label>\n"
                 + "    <input type=\"text\" name=\"grid.modbus.host\" value=\"" + val(raw, "grid.modbus.host", "") + "\" required>\n"
                 + "    <label>Port Modbus</label>\n"
-                + "    <input type=\"number\" name=\"grid.modbus.port\" value=\"" + val(raw, "grid.modbus.port", "502") + "\">\n"
+                + "    <input type=\"number\" name=\"grid.modbus.port\" value=\"" + val(raw, "grid.modbus.port", d(ConfigLoader.Defaults.GRID_MODBUS_PORT)) + "\">\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"
@@ -425,36 +448,36 @@ final class ConfigPageHandler implements HttpHandler {
                 + "reactivite -- inutile d'y toucher sauf si la regulation oscille (descendre kp) ou reagit trop "
                 + "lentement (monter kp/ki).</p>\n"
                 + "    <label>Gain proportionnel -- kp</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.kp\" value=\"" + val(raw, "control.kp", "0.4") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.kp\" value=\"" + val(raw, "control.kp", d(ConfigLoader.Defaults.CONTROL_KP)) + "\" required>\n"
                 + "    <p class=\"hint\">Reaction immediate a l'ecart actuel : plus kp est grand, plus fort et rapide est "
                 + "l'ajustement a chaque cycle. Trop haut -- ca oscille (la puissance part dans un sens puis l'autre) ; "
                 + "trop bas -- la regulation reagit mollement aux variations rapides de production/consommation.</p>\n"
                 + "    <label>Gain integral -- ki</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.ki\" value=\"" + val(raw, "control.ki", "0.05") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.ki\" value=\"" + val(raw, "control.ki", d(ConfigLoader.Defaults.CONTROL_KI)) + "\" required>\n"
                 + "    <p class=\"hint\">Corrige un ecart qui persiste dans le temps (kp seul ne l'annule jamais "
                 + "completement) en accumulant l'erreur cycle apres cycle. Trop haut -- la correction s'emballe et "
                 + "depasse la cible (overshoot) ; trop bas -- un petit ecart residuel peut rester longtemps.</p>\n"
                 + "    <label>Intervalle de decision (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.decision_interval_s\" value=\"" + val(raw, "control.decision_interval_s", "5") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.decision_interval_s\" value=\"" + val(raw, "control.decision_interval_s", d(ConfigLoader.Defaults.CONTROL_DECISION_INTERVAL_S)) + "\" required>\n"
                 + "    <p class=\"hint\">Cadence a laquelle le regulateur PI recalcule sa cible ET envoie effectivement "
                 + "une commande a OpenDTU -- plus lente et distincte de l'intervalle de lecture reseau ci-dessus (qui ne "
                 + "fait que mettre a jour la mesure lissee en memoire). Trop court : sollicite OpenDTU/RF inutilement ; "
                 + "trop long : reagit plus lentement aux changements de consommation.</p>\n"
                 + "    <label>Palier absolu (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.step_absolute_w\" value=\"" + val(raw, "control.step_absolute_w", "100") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.step_absolute_w\" value=\"" + val(raw, "control.step_absolute_w", d(ConfigLoader.Defaults.CONTROL_STEP_ABSOLUTE_W)) + "\" required>\n"
                 + "    <label>Palier relatif (%)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.step_relative_pct\" value=\"" + val(raw, "control.step_relative_pct", "10") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.step_relative_pct\" value=\"" + val(raw, "control.step_relative_pct", d(ConfigLoader.Defaults.CONTROL_STEP_RELATIVE_PCT)) + "\" required>\n"
                 + "    <p class=\"hint\">Limite le changement de consigne autorise par cycle de decision (evite les a-coups) "
                 + "-- la limite reellement appliquee est la plus grande des deux : le palier absolu (W) ou le palier "
                 + "relatif (% de la capacite totale actuelle des onduleurs). Le palier absolu protege les petites "
                 + "installations (un pourcentage serait trop fin) ; le palier relatif evite qu'une grosse installation "
                 + "soit bridee par un palier absolu trop petit.</p>\n"
                 + "    <label>Changement minimal (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"control.min_change_w\" value=\"" + val(raw, "control.min_change_w", "5") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"control.min_change_w\" value=\"" + val(raw, "control.min_change_w", d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W)) + "\" required>\n"
                 + "    <p class=\"hint\">En dessous de cet ecart avec la derniere consigne envoyee, rien n'est renvoye a "
                 + "OpenDTU -- evite de solliciter la liaison RF/HTTP pour des variations negligeables.</p>\n"
                 + "    <label>Seuil mini onduleur (% de sa puissance nominale)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + val(raw, "control.min_inverter_pct", "5") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + val(raw, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT)) + "\" required>\n"
                 + "    <p class=\"hint\">Un onduleur qui produit n'est jamais commande sous ce seuil. Mettre 0 pour desactiver. "
                 + "Un arret complet (fail-safe, charge batterie) n'est jamais concerne.</p>\n"
                 + "  </fieldset>\n"
@@ -467,20 +490,20 @@ final class ConfigPageHandler implements HttpHandler {
                 + "periodiquement ce plafond a la hausse, pour verifier s'il peut de nouveau produire plus (le nuage est "
                 + "passe) -- sans ca, un onduleur resterait bride en permanence apres une seule ombre passagere.</p>\n"
                 + "    <label>Palier de sonde (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.step_w\" value=\"" + val(raw, "capacity_probe.step_w", "10") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.step_w\" value=\"" + val(raw, "capacity_probe.step_w", d(ConfigLoader.Defaults.CAPACITY_PROBE_STEP_W)) + "\" required>\n"
                 + "    <p class=\"hint\">De combien remonter le plafond estime a chaque sonde (jamais au-dela de la "
                 + "puissance nominale reelle de l'onduleur).</p>\n"
                 + "    <label>Intervalle de sonde (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.interval_s\" value=\"" + val(raw, "capacity_probe.interval_s", "30") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"capacity_probe.interval_s\" value=\"" + val(raw, "capacity_probe.interval_s", d(ConfigLoader.Defaults.CAPACITY_PROBE_INTERVAL_S)) + "\" required>\n"
                 + "    <p class=\"hint\">A quelle frequence relancer le plafond a la hausse.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"
                 + "    <legend>Statistiques long terme (stats)</legend>\n"
                 + "    <label>Intervalle d'ecriture (s)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + val(raw, "stats.interval_s", "300") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"1\" name=\"stats.interval_s\" value=\"" + val(raw, "stats.interval_s", d(ConfigLoader.Defaults.STATS_INTERVAL_S)) + "\" required>\n"
                 + "    <label>Retention (jours)</label>\n"
-                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + val(raw, "stats.retention_days", "730") + "\" required>\n"
+                + "    <input type=\"number\" step=\"1\" min=\"1\" name=\"stats.retention_days\" value=\"" + val(raw, "stats.retention_days", d(ConfigLoader.Defaults.STATS_RETENTION_DAYS)) + "\" required>\n"
                 + "    <p class=\"hint\">Courbes (reseau, SOC, batterie, par onduleur) et energie horaire persistees dans "
                 + "stats.db pour l'historique long terme, independamment du tableau de bord temps reel (~30min/48h en memoire). "
                 + "Ecrit a cet intervalle, plus immediatement a chaque \"Enregistrer et appliquer\". Les donnees plus "
@@ -496,16 +519,16 @@ final class ConfigPageHandler implements HttpHandler {
                 + "debrides (100%) pour la charger au maximum, meme si ca veut dire exporter brievement -- la regulation "
                 + "zero-export ne reprend qu'une fois la batterie consideree pleine (voir les deux seuils ci-dessous).</p>\n"
                 + "    <label>Seuil d'activation SOC (%)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"battery.activate_at_pct\" value=\"" + val(raw, "battery.activate_at_pct", "100") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"battery.activate_at_pct\" value=\"" + val(raw, "battery.activate_at_pct", d(ConfigLoader.Defaults.BATTERY_ACTIVATE_AT_PCT)) + "\" required>\n"
                 + "    <label>Seuil de desactivation SOC (%)</label>\n"
-                + "    <input type=\"number\" step=\"any\" name=\"battery.deactivate_below_pct\" value=\"" + val(raw, "battery.deactivate_below_pct", "98") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" name=\"battery.deactivate_below_pct\" value=\"" + val(raw, "battery.deactivate_below_pct", d(ConfigLoader.Defaults.BATTERY_DEACTIVATE_BELOW_PCT)) + "\" required>\n"
                 + "    <p class=\"hint\">Deux seuils distincts (avec une zone morte entre les deux) pour eviter que le "
                 + "systeme bascule sans arret entre les deux modes quand le SOC oscille autour d'une seule valeur. "
                 + "\"Activation\" = SOC a partir duquel la batterie est consideree pleine et la regulation zero-export "
                 + "reprend (onduleurs de nouveau brides). \"Desactivation\" = SOC en dessous duquel on repasse en charge "
                 + "prioritaire (onduleurs debrides). Toujours activation &gt;= desactivation.</p>\n"
                 + "    <label>Export confirmant la batterie pleine (W)</label>\n"
-                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_w\" value=\"" + val(raw, "battery.export_confirms_full_w", "50") + "\" required>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"battery.export_confirms_full_w\" value=\"" + val(raw, "battery.export_confirms_full_w", d(ConfigLoader.Defaults.BATTERY_EXPORT_CONFIRMS_FULL_W)) + "\" required>\n"
                 + "    <p class=\"hint\">Passe en regulation ON des qu'un export reseau reel d'au moins cette puissance "
                 + "est observe alors que le SOC est deja au-dessus du seuil de desactivation -- l'estimation du SOC peut "
                 + "avoir du retard sur la realite (frequent en fin de charge sur certaines chimies de batterie type LFP), "
@@ -535,7 +558,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  <fieldset>\n"
                 + "    <legend>Page de configuration (web)</legend>\n"
                 + "    <label>Port</label>\n"
-                + "    <input type=\"number\" name=\"web.port\" value=\"" + val(raw, "web.port", "8080") + "\" required>\n"
+                + "    <input type=\"number\" name=\"web.port\" value=\"" + val(raw, "web.port", d(ConfigLoader.Defaults.WEB_PORT)) + "\" required>\n"
                 + "    <p class=\"hint\">Necessite un redemarrage du service pour prendre effet.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"

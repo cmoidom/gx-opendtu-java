@@ -68,6 +68,35 @@ public final class ControlLoop {
     record FloorWarning(boolean warning, Double recommendedPct) {}
 
     /**
+     * Assembles one inverter's dashboard payload entry -- the 7-key map
+     * shape that {@code decisionCycle}, {@code offStateInvertersPayload} and
+     * {@code manualOverridePayload} each used to build by hand, independently,
+     * once per mode (normal/OFF/manual-override). Each caller still computes
+     * its own allocated_w/limitRelativePct/maxPowerW/acknowledged the way it
+     * always did (their fallback values and source maps genuinely differ per
+     * mode) -- only the "put these into a map with these keys" part, which
+     * was pure duplication, is shared here.
+     */
+    private static Map<String, Object> inverterPayloadEntry(
+            String serial,
+            String name,
+            Object allocatedW,
+            double actualW,
+            Object limitRelativePct,
+            double maxPowerW,
+            Object acknowledged) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("serial", serial);
+        entry.put("name", name);
+        entry.put("allocated_w", allocatedW);
+        entry.put("actual_w", actualW);
+        entry.put("limit_relative_pct", limitRelativePct);
+        entry.put("max_power_w", maxPowerW);
+        entry.put("acknowledged", acknowledged);
+        return entry;
+    }
+
+    /**
      * Detects the min_inverter_pct floor pushing the total allocation above
      * what the controller actually wanted while the grid is exporting -- a
      * sign the configured floor is higher than this install's real demand
@@ -163,15 +192,14 @@ public final class ControlLoop {
             List<Map<String, Object>> invertersPayload = new ArrayList<>();
             for (String serial : serials) {
                 LimitStatus status = limitStatus.get(serial);
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("serial", serial);
-                entry.put("name", names.get(serial));
-                entry.put("allocated_w", roundedAllocation.getOrDefault(serial, 0L));
-                entry.put("actual_w", livePowerW.getOrDefault(serial, 0.0));
-                entry.put("limit_relative_pct", status != null ? status.limitRelative() : null);
-                entry.put("max_power_w", capacity.ceilingsW().getOrDefault(serial, 0.0));
-                entry.put("acknowledged", status != null ? status.acknowledged() : null);
-                invertersPayload.add(entry);
+                invertersPayload.add(inverterPayloadEntry(
+                        serial,
+                        names.get(serial),
+                        roundedAllocation.getOrDefault(serial, 0L),
+                        livePowerW.getOrDefault(serial, 0.0),
+                        status != null ? status.limitRelative() : null,
+                        capacity.ceilingsW().getOrDefault(serial, 0.0),
+                        status != null ? status.acknowledged() : null));
             }
             liveState.updateDecision(
                     socPct,
@@ -235,15 +263,14 @@ public final class ControlLoop {
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("serial", serial);
-            entry.put("name", names.get(serial));
-            entry.put("allocated_w", null);
-            entry.put("actual_w", livePowerW.getOrDefault(serial, 0.0));
-            entry.put("limit_relative_pct", 100);
-            entry.put("max_power_w", nominalPowerW.getOrDefault(serial, 0.0));
-            entry.put("acknowledged", null);
-            result.add(entry);
+            result.add(inverterPayloadEntry(
+                    serial,
+                    names.get(serial),
+                    null,
+                    livePowerW.getOrDefault(serial, 0.0),
+                    100,
+                    nominalPowerW.getOrDefault(serial, 0.0),
+                    null));
         }
         return result;
     }
@@ -291,15 +318,14 @@ public final class ControlLoop {
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
             LimitStatus status = limitStatus.get(serial);
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("serial", serial);
-            entry.put("name", names.get(serial));
-            entry.put("allocated_w", Math.round(pct / 100.0 * nominalPowerW.getOrDefault(serial, 0.0)));
-            entry.put("actual_w", livePowerW.getOrDefault(serial, 0.0));
-            entry.put("limit_relative_pct", status != null ? status.limitRelative() : pct);
-            entry.put("max_power_w", nominalPowerW.getOrDefault(serial, 0.0));
-            entry.put("acknowledged", status != null ? status.acknowledged() : null);
-            result.add(entry);
+            result.add(inverterPayloadEntry(
+                    serial,
+                    names.get(serial),
+                    Math.round(pct / 100.0 * nominalPowerW.getOrDefault(serial, 0.0)),
+                    livePowerW.getOrDefault(serial, 0.0),
+                    status != null ? status.limitRelative() : pct,
+                    nominalPowerW.getOrDefault(serial, 0.0),
+                    status != null ? status.acknowledged() : null));
         }
         return result;
     }
