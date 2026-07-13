@@ -641,9 +641,18 @@ function drawChart(canvas, seriesList, opts) {
     if (!s.hasData) return;
     const xText = w - padding.right + i * RIGHT_AXIS_WIDTH + 4;
     ctx.fillStyle = axis.color || cssVar('--muted');
-    const te = s.step * 1e-6;
-    for (let v = s.yMin; v <= s.yMax + te; v += s.step) {
-      ctx.fillText(axis.format ? axis.format(v) : Math.round(v).toString(), xText, s.pix(v) + 3);
+    // Label each right axis AT the primary axis' own gridline heights
+    // (drawn above), not at this axis' own independently-computed "nice"
+    // step -- two axes with unrelated scales/steps otherwise place their
+    // ticks at different heights, so the secondary axis' numbers end up
+    // floating between gridlines instead of sitting on one. The value
+    // shown is whatever this axis' own scale maps to at that height, so
+    // it's no longer necessarily a round number, but it's always aligned.
+    for (let v = primaryScale.yMin; v <= primaryScale.yMax + tickEpsilon; v += primaryScale.step) {
+      const y = primaryScale.pix(v);
+      const frac = (y - padding.top) / plotH;
+      const axisValue = s.yMax - frac * (s.yMax - s.yMin);
+      ctx.fillText(axis.format ? axis.format(axisValue) : Math.round(axisValue).toString(), xText, y + 3);
     }
   });
 
