@@ -30,6 +30,11 @@ public record AppConfig(
 
     public record GridConfig(double exportSetpointW, double readIntervalS, double emaAlpha, ModbusGridConfig modbus) {}
 
+    /**
+     * minBatteryDischargeW: below this magnitude, battery discharge is
+     * treated as harmless float/self-consumption noise rather than a real
+     * shortfall solar should cover -- see SoftTargetController.computeTarget.
+     */
     public record ControlConfig(
             double kp,
             double ki,
@@ -37,7 +42,8 @@ public record AppConfig(
             double stepAbsoluteW,
             double stepRelativePct,
             double minChangeW,
-            double minInverterPct) {}
+            double minInverterPct,
+            double minBatteryDischargeW) {}
 
     public record CapacityProbeConfig(double stepW, double intervalS) {}
 

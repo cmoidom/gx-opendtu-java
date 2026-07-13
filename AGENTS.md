@@ -67,6 +67,15 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   avaient la capacité de couvrir -- le plancher sur `rawTarget` (jamais dans
   l'intégrale du PI, pour ne pas risquer de *windup*) est la seule
   implémentation acceptée. Ne pas déplacer cette logique dans l'intégrale.
+- **Ce plancher a un seuil minimal** (`config.control.min_battery_discharge_w`,
+  défaut 150W, 2026-07-13) : sans lui, une décharge batterie minime et
+  normale à SOC ~100% (auto-consommation/flottaison, ~80-100W observés en
+  production) relance indéfiniment la consigne vers le haut et neutralise
+  toute correction PI à la baisse -- incident réel observé en production
+  ("j'exporte trop"), reproductible même après un restart du service (donc
+  pas un bug d'état figé, une propriété du calcul). Le plancher ne s'applique
+  désormais que si `batteryPowerW < -minBatteryDischargeW`. Ne pas repasser à
+  un seuil de 0 par défaut.
 - **Water-filling par % de puissance nominale, pas en Watts égaux** :
   `WaterFillAllocator.waterFillAllocate` équilibre chaque onduleur vers le
   même pourcentage de sa propre puissance nominale (`nominalPowerW` est un

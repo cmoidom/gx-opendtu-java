@@ -139,6 +139,42 @@ class ControllerTest {
     }
 
     @Test
+    void smallBatteryDischargeBelowThresholdIsIgnored() {
+        // A battery at/near 100% SOC still shows a small self-consumption
+        // discharge (observed ~80-100W in production) -- below the
+        // configured threshold, it must NOT float the target back up.
+        SoftTargetController controller =
+                new SoftTargetController(30, 1.0, 0.0, 100, 0, 5, null, 150.0);
+        ControlDecision decision = controller.computeTarget(30, 200, 1000, -100.0);
+        assertThat(decision.targetW()).isEqualTo(200.0); // no boost, discharge is below the 150W threshold
+    }
+
+    @Test
+    void batteryDischargeAtExactlyTheThresholdIsIgnored() {
+        // Strictly-greater comparison: exactly at the threshold does not engage the floor.
+        SoftTargetController controller =
+                new SoftTargetController(30, 1.0, 0.0, 100, 0, 5, null, 150.0);
+        ControlDecision decision = controller.computeTarget(30, 200, 1000, -150.0);
+        assertThat(decision.targetW()).isEqualTo(200.0);
+    }
+
+    @Test
+    void batteryDischargeAboveThresholdStillBoostsTarget() {
+        SoftTargetController controller =
+                new SoftTargetController(30, 1.0, 0.0, 100, 0, 5, null, 150.0);
+        ControlDecision decision = controller.computeTarget(30, 200, 1000, -300.0);
+        assertThat(decision.targetW()).isEqualTo(500.0); // 200 + 300 discharge, above the 150W threshold
+    }
+
+    @Test
+    void zeroThresholdPreservesOldBehaviorOfBoostingOnAnyDischarge() {
+        SoftTargetController controller =
+                new SoftTargetController(30, 1.0, 0.0, 100, 0, 5, null, 0.0);
+        ControlDecision decision = controller.computeTarget(30, 200, 1000, -100.0);
+        assertThat(decision.targetW()).isEqualTo(300.0);
+    }
+
+    @Test
     void effectiveStepUsesLargerOfAbsoluteAndRelative() {
         SoftTargetController controller = new SoftTargetController(0, 1.0, 0.0, 100, 10, 5);
         assertThat(controller.effectiveStepW(3000)).isEqualTo(300.0); // 10% of 3000W > 100W floor

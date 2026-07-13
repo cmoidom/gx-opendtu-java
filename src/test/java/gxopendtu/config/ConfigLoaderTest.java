@@ -47,6 +47,7 @@ class ConfigLoaderTest {
         assertThat(config.opendtu().username()).isNull();
         assertThat(config.grid().modbus().host()).isEqualTo("192.168.1.10");
         assertThat(config.control().minInverterPct()).isEqualTo(5.0); // default, absent from FULL_CONFIG
+        assertThat(config.control().minBatteryDischargeW()).isEqualTo(150.0); // default, absent from FULL_CONFIG
         assertThat(config.web().port()).isEqualTo(8080);
         assertThat(config.web().chartHeightPx()).isEqualTo(200); // default
         assertThat(config.logging().verboseTraces()).isTrue();
@@ -103,6 +104,20 @@ class ConfigLoaderTest {
                 """;
         AppConfig config = ConfigLoader.parseConfig(json(raw));
         assertThat(config.battery().exportConfirmsFullDurationS()).isEqualTo(15.0);
+    }
+
+    @Test
+    void minBatteryDischargeWCanBeOverridden() {
+        String raw = """
+                {
+                  "opendtu": { "base_url": "http://x" },
+                  "grid": { "modbus": { "host": "10.0.0.1" } },
+                  "control": { "min_battery_discharge_w": 200 },
+                  "inverters": [{ "serial": "a", "nominal_power_w": 100 }]
+                }
+                """;
+        AppConfig config = ConfigLoader.parseConfig(json(raw));
+        assertThat(config.control().minBatteryDischargeW()).isEqualTo(200.0);
     }
 
     @Test

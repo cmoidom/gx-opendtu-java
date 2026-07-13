@@ -56,6 +56,7 @@ public final class ConfigLoader {
         public static final double CONTROL_STEP_RELATIVE_PCT = 10.0;
         public static final double CONTROL_MIN_CHANGE_W = 5.0;
         public static final double CONTROL_MIN_INVERTER_PCT = 5.0;
+        public static final double CONTROL_MIN_BATTERY_DISCHARGE_W = 150.0;
 
         public static final double CAPACITY_PROBE_STEP_W = 10.0;
         public static final double CAPACITY_PROBE_INTERVAL_S = 30.0;
@@ -159,7 +160,8 @@ public final class ConfigLoader {
                         controlRaw.path("step_absolute_w").asDouble(Defaults.CONTROL_STEP_ABSOLUTE_W),
                         controlRaw.path("step_relative_pct").asDouble(Defaults.CONTROL_STEP_RELATIVE_PCT),
                         controlRaw.path("min_change_w").asDouble(Defaults.CONTROL_MIN_CHANGE_W),
-                        controlRaw.path("min_inverter_pct").asDouble(Defaults.CONTROL_MIN_INVERTER_PCT)),
+                        controlRaw.path("min_inverter_pct").asDouble(Defaults.CONTROL_MIN_INVERTER_PCT),
+                        controlRaw.path("min_battery_discharge_w").asDouble(Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W)),
                 new CapacityProbeConfig(
                         probeRaw.path("step_w").asDouble(Defaults.CAPACITY_PROBE_STEP_W),
                         probeRaw.path("interval_s").asDouble(Defaults.CAPACITY_PROBE_INTERVAL_S)),

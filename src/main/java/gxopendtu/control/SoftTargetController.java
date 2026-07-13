@@ -22,6 +22,7 @@ public final class SoftTargetController {
     private final double stepAbsoluteW;
     private final double stepRelativePct;
     private final double minChangeW;
+    private final double minBatteryDischargeW;
     private Double lastSentTotalW;
 
     public SoftTargetController(
@@ -31,17 +32,30 @@ public final class SoftTargetController {
             double stepAbsoluteW,
             double stepRelativePct,
             double minChangeW,
-            Double integralLimit) {
+            Double integralLimit,
+            double minBatteryDischargeW) {
         this.exportSetpointW = exportSetpointW;
         this.pi = new PIController(kp, ki, integralLimit);
         this.stepAbsoluteW = stepAbsoluteW;
         this.stepRelativePct = stepRelativePct;
         this.minChangeW = minChangeW;
+        this.minBatteryDischargeW = minBatteryDischargeW;
+    }
+
+    public SoftTargetController(
+            double exportSetpointW,
+            double kp,
+            double ki,
+            double stepAbsoluteW,
+            double stepRelativePct,
+            double minChangeW,
+            Double integralLimit) {
+        this(exportSetpointW, kp, ki, stepAbsoluteW, stepRelativePct, minChangeW, integralLimit, 0.0);
     }
 
     public SoftTargetController(
             double exportSetpointW, double kp, double ki, double stepAbsoluteW, double stepRelativePct, double minChangeW) {
-        this(exportSetpointW, kp, ki, stepAbsoluteW, stepRelativePct, minChangeW, null);
+        this(exportSetpointW, kp, ki, stepAbsoluteW, stepRelativePct, minChangeW, null, 0.0);
     }
 
     /** Exposed for tests verifying the battery-discharge floor never pollutes the PI's own integral. */
@@ -68,14 +82,20 @@ public final class SoftTargetController {
         // the grid-power PI above is blind to the battery entirely, so it can
         // be "satisfied" (grid near exportSetpointW) while the battery
         // quietly covers a gap solar has headroom for. If discharging
-        // (negative), floor the target at whatever would fully replace that
-        // discharge with production -- clamped to totalCapacityW, so once
-        // every inverter is already maxed out (no more sun) the floor simply
-        // can't push higher and the remaining discharge is accepted, exactly
-        // as it should be. Applied to rawTarget only, never to the PI's own
-        // integral, so it can't wind up while saturated at full capacity
-        // (e.g. overnight) and overshoot once the sun returns.
-        if (batteryPowerW != null && batteryPowerW < 0) {
+        // (negative) by more than minBatteryDischargeW, floor the target at
+        // whatever would fully replace that discharge with production --
+        // clamped to totalCapacityW, so once every inverter is already maxed
+        // out (no more sun) the floor simply can't push higher and the
+        // remaining discharge is accepted, exactly as it should be. Applied
+        // to rawTarget only, never to the PI's own integral, so it can't
+        // wind up while saturated at full capacity (e.g. overnight) and
+        // overshoot once the sun returns. The threshold exists because a
+        // battery at/near 100% SOC still shows a small, harmless discharge
+        // (its own float/self-consumption draw, observed ~80-100W on this
+        // install) -- without a threshold that noise kept flooring the
+        // target back up and fighting the PI's own correct downward
+        // correction indefinitely (2026-07-13 production incident).
+        if (batteryPowerW != null && batteryPowerW < -minBatteryDischargeW) {
             double batteryDischargeW = -batteryPowerW;
             rawTarget = ControlMath.clamp(
                     Math.max(rawTarget, currentTotalActualW + batteryDischargeW), 0.0, totalCapacityW);

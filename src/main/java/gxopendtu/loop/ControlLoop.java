@@ -408,7 +408,9 @@ public final class ControlLoop {
                 config.control().ki(),
                 config.control().stepAbsoluteW(),
                 config.control().stepRelativePct(),
-                config.control().minChangeW());
+                config.control().minChangeW(),
+                null,
+                config.control().minBatteryDischargeW());
 
         Map<String, Double> nominalPowerW =
                 config.inverters().stream().collect(Collectors.toMap(InverterConfig::serial, InverterConfig::nominalPowerW));

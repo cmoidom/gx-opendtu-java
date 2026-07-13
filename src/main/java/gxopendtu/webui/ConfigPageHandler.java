@@ -290,6 +290,9 @@ final class ConfigPageHandler implements HttpHandler {
                 Double.parseDouble(first(form, "control.min_change_w", d(ConfigLoader.Defaults.CONTROL_MIN_CHANGE_W))));
         control.put("min_inverter_pct",
                 Double.parseDouble(first(form, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT))));
+        control.put("min_battery_discharge_w",
+                Double.parseDouble(first(
+                        form, "control.min_battery_discharge_w", d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W))));
         raw.set("control", control);
 
         ObjectNode probe = MAPPER.createObjectNode();
@@ -544,6 +547,12 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + val(raw, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT)) + "\" required>\n"
                 + "    <p class=\"hint\">Un onduleur qui produit n'est jamais commande sous ce seuil. Mettre 0 pour desactiver. "
                 + "Un arret complet (fail-safe, charge batterie) n'est jamais concerne.</p>\n"
+                + "    <label>Decharge batterie ignoree en dessous de (W)</label>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"control.min_battery_discharge_w\" value=\"" + val(raw, "control.min_battery_discharge_w", d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W)) + "\" required>\n"
+                + "    <p class=\"hint\">En dessous de cette puissance, une decharge batterie est consideree comme du bruit "
+                + "normal (auto-consommation/flottaison a batterie pleine) et n'oblige pas la consigne a remonter. Au-dessus, "
+                + "la consigne est relevee pour que le solaire couvre la decharge plutot que la batterie. Mettre 0 pour "
+                + "revenir a l'ancien comportement (toute decharge, meme infime, relance la consigne).</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

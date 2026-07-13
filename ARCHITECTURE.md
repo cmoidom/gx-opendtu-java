@@ -494,6 +494,18 @@ totalCapacityW)` implémente naturellement l'exception : une fois tous les
 onduleurs déjà à leur plafond, le plancher ne peut plus rien élever davantage,
 et le reste de la décharge batterie est accepté sans logique séparée.
 
+Ce plancher ne se déclenche que si `batteryPowerW < -min_battery_discharge_w`
+(`config.control.min_battery_discharge_w`, défaut 150W). Sans ce seuil, une
+décharge minime et normale à SOC ~100% (auto-consommation/flottaison de la
+batterie, ~80-100W observés en production) déclenchait le plancher à tort en
+continu : la consigne était sans arrêt remontée près de la production actuelle
+(déjà trop haute), ce qui neutralisait complètement la correction à la baisse
+du PI -- incident réel ("j'exporte trop", 2026-07-13), reproductible même
+après un restart complet du service puisque ce n'est pas un bug d'état figé
+mais une propriété du calcul lui-même. Le seuil filtre ce bruit tout en
+laissant intacte la protection pour une vraie décharge (charge imprévue que le
+solaire pourrait couvrir).
+
 ## Répartition multi-onduleurs (water-filling)
 
 `WaterFillAllocator.waterFillAllocate(totalTargetW, serials, capacityEstimates,
