@@ -114,19 +114,21 @@
 
 <div class="tiles" id="tiles"></div>
 
-<div class="control-row">
-  <span class="control-label">Periode :</span>
-  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(1800)">30 min</button>
-  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(3600)">1 h</button>
-  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(6*3600)">6 h</button>
-  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(12*3600)">12 h</button>
-  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(86400)">1 j</button>
-  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(7*86400)">1 semaine</button>
-  <button type="button" id="reset-zoom" class="mode-btn" onclick="resetZoom()">Reinitialiser le zoom</button>
+<div class="chart-box">
+  <div class="control-row" id="zoom-range-controls">
+    <span class="control-label">Periode :</span>
+    <button type="button" class="mode-btn" data-range="1800" onclick="setZoomRangeSeconds(1800)">30 min</button>
+    <button type="button" class="mode-btn" data-range="3600" onclick="setZoomRangeSeconds(3600)">1 h</button>
+    <button type="button" class="mode-btn" data-range="21600" onclick="setZoomRangeSeconds(6*3600)">6 h</button>
+    <button type="button" class="mode-btn" data-range="43200" onclick="setZoomRangeSeconds(12*3600)">12 h</button>
+    <button type="button" class="mode-btn" data-range="86400" onclick="setZoomRangeSeconds(86400)">1 j</button>
+    <button type="button" class="mode-btn" data-range="604800" onclick="setZoomRangeSeconds(7*86400)">1 semaine</button>
+    <button type="button" id="reset-zoom" class="mode-btn" data-range="reset" onclick="resetZoom()">Reinitialiser le zoom</button>
+  </div>
+  <p class="hint">Molette pour zoomer, glisser pour deplacer, double-clic pour reinitialiser --
+  synchronise sur les trois graphiques temporels. Glisser au-dela des ~30 dernieres minutes
+  charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 </div>
-<p class="hint">Molette pour zoomer, glisser pour deplacer, double-clic pour reinitialiser --
-synchronise sur les trois graphiques temporels. Glisser au-dela des ~30 dernieres minutes
-charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 
 <h2>Batterie</h2>
 <div class="chart-box">
@@ -442,7 +444,12 @@ let historyFetchInFlight = false;
 // across a long stretch of old history, not a correctness issue.
 const HISTORY_FETCH_MAX_SPAN_S = 6 * 3600;
 
-function resetZoom() { viewTMin = null; viewTMax = null; renderCharts(); }
+// Which preset range button (if any) matches the current view exactly --
+// null once a manual wheel/drag moves the view away from a clean preset.
+// "reset" itself counts as a distinct state (full view, no window at all).
+let activeZoomRangeSeconds = null;
+
+function resetZoom() { viewTMin = null; viewTMax = null; activeZoomRangeSeconds = null; renderCharts(); }
 
 // Preset range buttons (30m/1h/6h/12h/1j/1 semaine): anchored to the latest
 // loaded sample, not wall-clock "now" -- avoids any client/server clock
@@ -457,8 +464,19 @@ function setZoomRangeSeconds(seconds) {
   const requestedTMin = fMax - seconds;
   viewTMin = requestedTMin;
   viewTMax = fMax;
+  activeZoomRangeSeconds = seconds;
   maybeLoadOlderHistory(requestedTMin);
   renderCharts();
+}
+
+function updateZoomRangeButtons() {
+  document.querySelectorAll('#zoom-range-controls .mode-btn').forEach(btn => {
+    const r = btn.dataset.range;
+    const isActive = r === 'reset'
+        ? (viewTMin === null && viewTMax === null)
+        : (activeZoomRangeSeconds !== null && Number(r) === activeZoomRangeSeconds);
+    btn.classList.toggle('active', isActive);
+  });
 }
 
 // Pages in older samples from stats.db when the user pans/zooms earlier
@@ -1004,6 +1022,7 @@ function attachZoomPan(canvas) {
     const requestedTMin = cursorT - ratio * newSpan;
     const [newTMin, newTMax] = clampView(requestedTMin, requestedTMin + newSpan);
     viewTMin = newTMin; viewTMax = newTMax;
+    activeZoomRangeSeconds = null; // manual zoom -- no longer a clean preset match
     maybeLoadOlderHistory(requestedTMin);
     renderCharts();
   }, { passive: false });
@@ -1028,6 +1047,7 @@ document.addEventListener('mousemove', (ev) => {
   const requestedTMin = dragStartTMin + dt;
   const [newTMin, newTMax] = clampView(requestedTMin, dragStartTMax + dt);
   viewTMin = newTMin; viewTMax = newTMax;
+  activeZoomRangeSeconds = null; // manual pan -- no longer a clean preset match
   maybeLoadOlderHistory(requestedTMin);
   renderCharts();
 });
@@ -1132,6 +1152,7 @@ function renderInverterTable(latest) {
 
 function renderCharts() {
   const viewOpts = { viewTMin: viewTMin, viewTMax: viewTMax };
+  updateZoomRangeButtons();
 
   const socPoints = history.filter(s => s.soc_pct !== null).map(s => ({ t: s.t, v: s.soc_pct, backfilled: !!s.backfilled }));
   const voltagePoints = history.filter(s => s.battery_voltage_v !== null && s.battery_voltage_v !== undefined)
