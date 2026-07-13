@@ -83,12 +83,7 @@
 <body>
 <nav><a href="/dashboard" class="active">Tableau de bord</a><a href="/config">Configuration</a><a href="/internal">Etat interne</a></nav>
 <p class="eyebrow">GX-DTU Injection Controller__BUILD_TAG__</p>
-<p class="hint"><span id="conn-status">Connexion...</span>
-  <button type="button" id="reset-zoom" onclick="resetZoom()" style="display:none">Reinitialiser le zoom</button>
-</p>
-<p class="hint">Molette pour zoomer, glisser pour deplacer, double-clic pour reinitialiser --
-synchronise sur les trois graphiques temporels. Glisser au-dela des ~30 dernieres minutes
-charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
+<p class="hint"><span id="conn-status">Connexion...</span></p>
 
 <div id="floor-warning" class="banner warning" style="display:none"></div>
 
@@ -118,6 +113,20 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 </div>
 
 <div class="tiles" id="tiles"></div>
+
+<div class="control-row">
+  <span class="control-label">Periode :</span>
+  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(1800)">30 min</button>
+  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(3600)">1 h</button>
+  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(6*3600)">6 h</button>
+  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(12*3600)">12 h</button>
+  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(86400)">1 j</button>
+  <button type="button" class="mode-btn" onclick="setZoomRangeSeconds(7*86400)">1 semaine</button>
+  <button type="button" id="reset-zoom" class="mode-btn" onclick="resetZoom()">Reinitialiser le zoom</button>
+</div>
+<p class="hint">Molette pour zoomer, glisser pour deplacer, double-clic pour reinitialiser --
+synchronise sur les trois graphiques temporels. Glisser au-dela des ~30 dernieres minutes
+charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 
 <h2>Batterie</h2>
 <div class="chart-box">
@@ -434,6 +443,23 @@ let historyFetchInFlight = false;
 const HISTORY_FETCH_MAX_SPAN_S = 6 * 3600;
 
 function resetZoom() { viewTMin = null; viewTMax = null; renderCharts(); }
+
+// Preset range buttons (30m/1h/6h/12h/1j/1 semaine): anchored to the latest
+// loaded sample, not wall-clock "now" -- avoids any client/server clock
+// skew and matches how the wheel/drag handlers already anchor zooming.
+// Pages in older history same as an interactive zoom/pan would (unlike
+// clampView's per-step cap, this jumps straight to the full requested span
+// so the button visibly "does what it says" even before that fetch
+// resolves -- renderCharts() below just draws whatever's in `history` for
+// now, and the fetch's own renderCharts() call fills the rest in shortly after).
+function setZoomRangeSeconds(seconds) {
+  const [, fMax] = fullHistoryRange();
+  const requestedTMin = fMax - seconds;
+  viewTMin = requestedTMin;
+  viewTMax = fMax;
+  maybeLoadOlderHistory(requestedTMin);
+  renderCharts();
+}
 
 // Pages in older samples from stats.db when the user pans/zooms earlier
 // than what's already loaded -- LiveState's live buffer only ever holds
@@ -1106,8 +1132,6 @@ function renderInverterTable(latest) {
 
 function renderCharts() {
   const viewOpts = { viewTMin: viewTMin, viewTMax: viewTMax };
-  const resetBtn = document.getElementById('reset-zoom');
-  resetBtn.style.display = (viewTMin !== null || viewTMax !== null) ? '' : 'none';
 
   const socPoints = history.filter(s => s.soc_pct !== null).map(s => ({ t: s.t, v: s.soc_pct, backfilled: !!s.backfilled }));
   const voltagePoints = history.filter(s => s.battery_voltage_v !== null && s.battery_voltage_v !== undefined)
@@ -1197,7 +1221,7 @@ function poll() {
   fetch('/status.json?since=' + lastT)
     .then(r => r.json())
     .then(data => {
-      document.getElementById('conn-status').textContent = 'Connecte -- mise a jour toutes les 2s';
+      document.getElementById('conn-status').textContent = 'Connecte';
       if (data.history.length) {
         if (loadedTMin === null && history.length === 0) loadedTMin = data.history[0].t;
         history.push.apply(history, data.history);
