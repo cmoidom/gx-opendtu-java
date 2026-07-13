@@ -142,7 +142,7 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 
 <h2>Detail par onduleur</h2>
 <table id="inverters-table">
-  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Limite</th><th class="num">Nominale</th><th class="center">Etat</th></tr></thead>
+  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="center">Etat</th></tr></thead>
   <tbody></tbody>
 </table>
 <p class="hint">Pendant la charge batterie prioritaire (regulation OFF), "Limite" affiche
@@ -1087,14 +1087,15 @@ function renderTiles(latest) {
 function renderInverterTable(latest) {
   const tbody = document.querySelector('#inverters-table tbody');
   const inverters = (latest && latest.inverters) || [];
-  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="5" class="hint">aucune donnee</td></tr>'; return; }
+  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="6" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
     const age = inv.data_age_s;
     const ageStale = age != null && age > STALE_DATA_AGE_S;
-    const ageSpan = age != null ? ' <span class="hint' + (ageStale ? ' stale-age' : '') + '">(' + Math.round(age) + 's)</span>' : '';
+    const ageCell = age != null ? '<span class="' + (ageStale ? 'stale-age' : '') + '">' + Math.round(age) + '</span>' : '<span class="hint">--</span>';
     return '<tr><td>' + (inv.name ? inv.name + ' <span class="hint">(' + inv.serial + ')</span>' : inv.serial) + '</td>' +
-    '<td class="num">' + fmtW(inv.actual_w) + ageSpan + '</td>' +
+    '<td class="num">' + fmtW(inv.actual_w) + '</td>' +
+    '<td class="num">' + ageCell + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
     '<td class="center">' + (inv.acknowledged === false ? 'en attente (RF)' :
