@@ -73,6 +73,17 @@
     </resources>
     <plugins>
       <plugin>
+        <!-- Pinned (unlike the rest of this project's plugins, this one
+             wasn't before): older default versions bound by older Maven
+             core releases are known to mishandle ${maven.build.timestamp}
+             substitution in filtered resources (see version.properties);
+             pinning makes filtering behave the same regardless of which
+             Maven core version actually runs the build. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+      </plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
