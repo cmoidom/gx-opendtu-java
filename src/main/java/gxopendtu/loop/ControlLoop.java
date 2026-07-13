@@ -287,7 +287,10 @@ public final class ControlLoop {
      * OFF (charge batterie prioritaire): inverters are uncapped, so there is
      * no allocated/limit-status data to report, but the actual measured
      * power is still meaningful and otherwise leaves the dashboard looking
-     * empty/broken during the whole charge-priority window.
+     * empty/broken during the whole charge-priority window. data_age is
+     * still fetched here (unlike before, 2026-07-13): a stale RF reading is
+     * exactly as worth flagging while OFF as while ON, and this used to
+     * blank out to "--" on the dashboard the moment injection turned OFF.
      */
     static List<Map<String, Object>> offStateInvertersPayload(
             OpenDTUApi client, List<String> serials, Map<String, Double> nominalPowerW, Map<String, String> nameBySerial) {
@@ -297,6 +300,12 @@ public final class ControlLoop {
             livePowerW = client.getLivePowerW(serials);
         } catch (OpenDTUException e) {
             return List.of();
+        }
+        Map<String, Double> dataAgeS;
+        try {
+            dataAgeS = client.getDataAgeS(serials);
+        } catch (OpenDTUException e) {
+            dataAgeS = Map.of(); // dashboard display only, not safety-critical
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
@@ -308,7 +317,7 @@ public final class ControlLoop {
                     100,
                     nominalPowerW.getOrDefault(serial, 0.0),
                     null,
-                    null));
+                    dataAgeS.get(serial)));
         }
         return result;
     }
@@ -353,6 +362,12 @@ public final class ControlLoop {
         } catch (OpenDTUException e) {
             limitStatus = Map.of();
         }
+        Map<String, Double> dataAgeS;
+        try {
+            dataAgeS = client.getDataAgeS(serials);
+        } catch (OpenDTUException e) {
+            dataAgeS = Map.of(); // dashboard display only, not safety-critical
+        }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
             LimitStatus status = limitStatus.get(serial);
@@ -364,7 +379,7 @@ public final class ControlLoop {
                     status != null ? status.limitRelative() : pct,
                     nominalPowerW.getOrDefault(serial, 0.0),
                     status != null ? status.acknowledged() : null,
-                    null));
+                    dataAgeS.get(serial)));
         }
         return result;
     }

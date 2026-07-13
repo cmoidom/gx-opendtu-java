@@ -107,7 +107,8 @@ class ControlLoopDryRunTest {
 
     @Test
     void offStateInvertersPayloadReportsActualPowerUncapped() {
-        FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of("a", 210.0, "b", 95.0), Map.of());
+        FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of("a", 210.0, "b", 95.0), Map.of())
+                .withDataAgeS(Map.of("a", 12.0, "b", 90.0));
         List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
                 client, List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), Map.of("a", "Toit Sud"));
 
@@ -120,12 +121,15 @@ class ControlLoopDryRunTest {
         assertThat(a.get("limit_relative_pct")).isEqualTo(100);
         assertThat(a.get("max_power_w")).isEqualTo(600.0);
         assertThat(a.get("acknowledged")).isNull();
+        assertThat(a.get("data_age_s")).isEqualTo(12.0);
 
         Map<String, Object> b = payload.get(1);
         assertThat(b.get("serial")).isEqualTo("b");
         assertThat(b.get("name")).isNull();
         assertThat(b.get("actual_w")).isEqualTo(95.0);
         assertThat(b.get("max_power_w")).isEqualTo(400.0);
+        assertThat(b.get("data_age_s")).isEqualTo(90.0); // reported here too, even while OFF -- a stale
+        // RF reading is worth flagging regardless of the current injection-control mode.
     }
 
     @Test
@@ -220,7 +224,8 @@ class ControlLoopDryRunTest {
                 Map.of("a", 300.0, "b", 190.0),
                 Map.of(
                         "a", new LimitStatus(50, 600, "Ok"),
-                        "b", new LimitStatus(50, 380, "Pending")));
+                        "b", new LimitStatus(50, 380, "Pending")))
+                .withDataAgeS(Map.of("a", 4.0, "b", 8.0));
         List<Map<String, Object>> payload =
                 ControlLoop.manualOverridePayload(client, List.of("a", "b"), 50.0, Map.of("a", 600.0, "b", 380.0), Map.of("a", "Toit Sud"));
 
@@ -231,11 +236,13 @@ class ControlLoopDryRunTest {
         assertThat(a.get("actual_w")).isEqualTo(300.0);
         assertThat(a.get("limit_relative_pct")).isEqualTo(50.0);
         assertThat(a.get("acknowledged")).isEqualTo(true);
+        assertThat(a.get("data_age_s")).isEqualTo(4.0);
 
         Map<String, Object> b = payload.get(1);
         assertThat(b.get("name")).isNull();
         assertThat(b.get("allocated_w")).isEqualTo(190L);
         assertThat(b.get("actual_w")).isEqualTo(190.0);
         assertThat(b.get("acknowledged")).isEqualTo(false);
+        assertThat(b.get("data_age_s")).isEqualTo(8.0);
     }
 }
