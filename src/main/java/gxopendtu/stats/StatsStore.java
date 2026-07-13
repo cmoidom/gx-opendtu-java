@@ -353,6 +353,40 @@ public final class StatsStore implements AutoCloseable {
     }
 
     /**
+     * Hourly energy buckets strictly within {@code [sinceEpochSeconds,
+     * untilEpochSeconds)} (chronological order) -- used by
+     * {@code webui.HourlyEnergyJsonHandler} so the dashboard's per-chart day
+     * picker can look at a single arbitrary past day instead of only ever
+     * the live {@link #loadHourlyEnergy} feed. {@code until} is exclusive so
+     * passing a day's start/next-day's-start as since/until cleanly excludes
+     * the following day's first bucket.
+     */
+    public List<Map<String, Object>> loadHourlyEnergyBetween(double sinceEpochSeconds, double untilEpochSeconds) {
+        lock.lock();
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT hour, from_kwh, to_kwh FROM hourly_energy WHERE hour >= ? AND hour < ? ORDER BY hour")) {
+            stmt.setLong(1, Math.round(sinceEpochSeconds));
+            stmt.setLong(2, Math.round(untilEpochSeconds));
+            List<Map<String, Object>> rows = new ArrayList<>();
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> bucket = new LinkedHashMap<>();
+                    bucket.put("hour", (double) rs.getLong("hour"));
+                    bucket.put("from_kwh", rs.getDouble("from_kwh"));
+                    bucket.put("to_kwh", rs.getDouble("to_kwh"));
+                    rows.add(bucket);
+                }
+            }
+            return rows;
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to load hourly energy range for the dashboard day picker", e);
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * Hourly per-inverter energy yield (Wh) since {@code sinceEpochSeconds}
      * (chronological order), in the same flat map shape
      * {@link InverterEnergyHistory#snapshot()} produces ({@code hour} plus
@@ -376,6 +410,35 @@ public final class StatsStore implements AutoCloseable {
             return new ArrayList<>(bucketsByHour.values());
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "failed to load inverter hourly energy for dashboard backfill", e);
+            return List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Hourly per-inverter energy yield (Wh) strictly within
+     * {@code [sinceEpochSeconds, untilEpochSeconds)} -- the per-inverter
+     * counterpart of {@link #loadHourlyEnergyBetween}, same day-picker use.
+     */
+    public List<Map<String, Object>> loadInverterHourlyEnergyBetween(double sinceEpochSeconds, double untilEpochSeconds) {
+        lock.lock();
+        try (PreparedStatement stmt = connection.prepareStatement(
+                "SELECT hour, serial, wh FROM inverter_hourly_energy WHERE hour >= ? AND hour < ? ORDER BY hour")) {
+            stmt.setLong(1, Math.round(sinceEpochSeconds));
+            stmt.setLong(2, Math.round(untilEpochSeconds));
+            Map<Long, Map<String, Object>> bucketsByHour = new LinkedHashMap<>();
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    long hour = rs.getLong("hour");
+                    Map<String, Object> bucket =
+                            bucketsByHour.computeIfAbsent(hour, h -> new LinkedHashMap<>(Map.of("hour", (double) h)));
+                    bucket.put(rs.getString("serial"), rs.getDouble("wh"));
+                }
+            }
+            return new ArrayList<>(bucketsByHour.values());
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "failed to load inverter hourly energy range for the dashboard day picker", e);
             return List.of();
         } finally {
             lock.unlock();

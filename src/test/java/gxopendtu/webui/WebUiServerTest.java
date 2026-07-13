@@ -19,6 +19,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -150,6 +152,26 @@ class WebUiServerTest {
         HttpResponse<String> response = get("/history.json");
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).isEqualTo("{\"history\":[]}");
+    }
+
+    @Test
+    void hourlyEnergyJsonServesStatsDbRangeForBothCharts() throws Exception {
+        statsStore.upsertHourlyEnergy(List.of(Map.of("hour", 3600.0, "from_kwh", 1.0, "to_kwh", 0.5)));
+        statsStore.upsertInverterHourlyEnergy(List.of(Map.of("hour", 3600.0, "111", 250.0)));
+
+        HttpResponse<String> response = get("/hourly-energy.json?since=0&until=7200");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body())
+                .contains("\"hourly_energy\"").contains("\"from_kwh\":1.0")
+                .contains("\"hourly_inverter_energy\"").contains("\"111\":250.0");
+    }
+
+    @Test
+    void hourlyEnergyJsonMissingParamsReturnsEmptyLists() throws Exception {
+        HttpResponse<String> response = get("/hourly-energy.json");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEqualTo("{\"hourly_energy\":[],\"hourly_inverter_energy\":[]}");
     }
 
     @Test

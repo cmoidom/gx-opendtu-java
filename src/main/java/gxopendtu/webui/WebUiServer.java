@@ -56,6 +56,7 @@ public final class WebUiServer {
                     new StatusJsonHandler(
                             liveState, energyHistory, inverterEnergyHistory, manualOverride, injectionMode));
             server.createContext("/history.json", new HistoryJsonHandler(statsStore));
+            server.createContext("/hourly-energy.json", new HourlyEnergyJsonHandler(statsStore));
             server.createContext("/fetch-inverters", new FetchInvertersHandler());
 
             OverrideHandlers overrideHandlers = new OverrideHandlers(manualOverride, injectionMode, configPath);

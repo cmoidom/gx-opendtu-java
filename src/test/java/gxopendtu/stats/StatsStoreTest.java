@@ -225,6 +225,24 @@ class StatsStoreTest {
     }
 
     @Test
+    void loadHourlyEnergyBetweenExcludesTheUntilBucketAndOutOfRangeBuckets(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.upsertHourlyEnergy(List.of(
+                    Map.of("hour", 0.0, "from_kwh", 1.0, "to_kwh", 0.1), // before the range
+                    Map.of("hour", 3600.0, "from_kwh", 2.0, "to_kwh", 0.2), // in range
+                    Map.of("hour", 7200.0, "from_kwh", 3.0, "to_kwh", 0.3), // in range
+                    Map.of("hour", 10800.0, "from_kwh", 4.0, "to_kwh", 0.4))); // == until, excluded
+
+            List<Map<String, Object>> rows = store.loadHourlyEnergyBetween(3600.0, 10800.0);
+
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).get("hour")).isEqualTo(3600.0);
+            assertThat(rows.get(1).get("hour")).isEqualTo(7200.0);
+        }
+    }
+
+    @Test
     void upsertInverterHourlyEnergyIsIdempotentPerHourAndSerial(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         try (StatsStore store = new StatsStore(dbPath)) {
@@ -262,6 +280,26 @@ class StatsStoreTest {
             assertThat(rows.get(1).get("hour")).isEqualTo(7200.0);
             assertThat(rows.get(1).get("a")).isEqualTo(2.0);
             assertThat(rows.get(1).get("b")).isEqualTo(0.5);
+        }
+    }
+
+    @Test
+    void loadInverterHourlyEnergyBetweenExcludesTheUntilBucketAndOutOfRangeBuckets(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.upsertInverterHourlyEnergy(List.of(
+                    Map.of("hour", 0.0, "a", 1.0), // before the range
+                    Map.of("hour", 3600.0, "a", 2.0), // in range
+                    Map.of("hour", 7200.0, "a", 3.0), // in range
+                    Map.of("hour", 10800.0, "a", 4.0))); // == until, excluded
+
+            List<Map<String, Object>> rows = store.loadInverterHourlyEnergyBetween(3600.0, 10800.0);
+
+            assertThat(rows).hasSize(2);
+            assertThat(rows.get(0).get("hour")).isEqualTo(3600.0);
+            assertThat(rows.get(0).get("a")).isEqualTo(2.0);
+            assertThat(rows.get(1).get("hour")).isEqualTo(7200.0);
+            assertThat(rows.get(1).get("a")).isEqualTo(3.0);
         }
     }
 

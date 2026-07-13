@@ -145,18 +145,34 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 
 <h2>Energie reseau (par heure)</h2>
 <div class="chart-box">
+  <div class="control-row">
+    <span class="control-label">Jour :</span>
+    <button type="button" class="mode-btn" onclick="shiftEnergyDay('energy', -1)">&lt;</button>
+    <input type="date" class="mode-btn" id="energy-day-input" onchange="setEnergyDay('energy', this.value)">
+    <button type="button" class="mode-btn" onclick="shiftEnergyDay('energy', 1)">&gt;</button>
+    <button type="button" class="mode-btn" id="energy-day-live-btn" onclick="setEnergyDay('energy', null)">Aujourd'hui (direct)</button>
+  </div>
   <canvas id="chart-energy"></canvas>
   <div class="legend" id="energy-legend"></div>
-  <p class="hint">Compteurs cumulatifs du compteur reseau (pas de la boucle de pilotage) --
-  l'heure en cours est partielle. Pas de zoom/deplacement sur ce graphique (deja agrege a l'heure).</p>
+  <p class="hint">Compteurs cumulatifs du compteur reseau (pas de la boucle de pilotage). En mode direct,
+  l'heure en cours est partielle. Naviguer vers un autre jour fige ce graphique sur ce jour-la (aucun
+  zoom/deplacement, deja agrege a l'heure) -- "Aujourd'hui (direct)" revient au direct.</p>
 </div>
 
 <h2>Energie par onduleur (par heure)</h2>
 <div class="chart-box">
+  <div class="control-row">
+    <span class="control-label">Jour :</span>
+    <button type="button" class="mode-btn" onclick="shiftEnergyDay('inverter-energy', -1)">&lt;</button>
+    <input type="date" class="mode-btn" id="inverter-energy-day-input" onchange="setEnergyDay('inverter-energy', this.value)">
+    <button type="button" class="mode-btn" onclick="shiftEnergyDay('inverter-energy', 1)">&gt;</button>
+    <button type="button" class="mode-btn" id="inverter-energy-day-live-btn" onclick="setEnergyDay('inverter-energy', null)">Aujourd'hui (direct)</button>
+  </div>
   <canvas id="chart-inverter-energy"></canvas>
   <div class="legend" id="inverter-energy-legend"></div>
   <p class="hint">Production cumulee de chaque onduleur (compteur YieldDay d'OpenDTU, pas la boucle de
-  pilotage) -- l'heure en cours est partielle. Pas de zoom/deplacement sur ce graphique (deja agrege a l'heure).</p>
+  pilotage). En mode direct, l'heure en cours est partielle. Naviguer vers un autre jour fige ce graphique
+  sur ce jour-la (aucun zoom/deplacement, deja agrege a l'heure) -- "Aujourd'hui (direct)" revient au direct.</p>
 </div>
 
 <div id="tooltip"></div>
@@ -220,6 +236,80 @@ function visibleBarSeries(chartId, keys, colors, labels) {
   const idx = [];
   keys.forEach((k, i) => { if (!isSeriesHidden(chartId, k)) idx.push(i); });
   return { keys: idx.map(i => keys[i]), colors: idx.map(i => colors[i]), labels: idx.map(i => labels[i]) };
+}
+
+// Inverters produce nothing at night -- rather than a wall of empty bars at
+// both ends of the day, trim the leading/trailing run of hours where every
+// known inverter reads 0 (or has no entry at all, e.g. the first-ever
+// reading for a serial -- see InverterEnergyHistory's javadoc). A zero hour
+// strictly BETWEEN two hours with real production (a genuine gap, e.g. an
+// outage or heavy cloud) is left alone -- only the not-yet-risen/already-set
+// edges are dropped, based on ALL known inverters regardless of the current
+// legend show/hide state (so toggling a curve doesn't shift the trimmed
+// window).
+function trimNightBuckets(buckets, keys) {
+  const isZero = (b) => keys.every(k => !b[k]);
+  let start = 0, end = buckets.length - 1;
+  while (start <= end && isZero(buckets[start])) start++;
+  while (end >= start && isZero(buckets[end])) end--;
+  return buckets.slice(start, end + 1);
+}
+
+// Per-chart day picker for the two hourly bar charts -- independent per
+// chart (each has its own 'energy'/'inverter-energy' entry), so picking a
+// past day on one doesn't affect the other. date === null means "live": the
+// chart follows /status.json's rolling ~48h window, same as before this
+// feature existed. Any other value is a 'YYYY-MM-DD' string (local time,
+// matching <input type=date>) and freezes that chart on the matching
+// calendar day fetched from stats.db's multi-year retention instead.
+const dayViews = { energy: { date: null }, 'inverter-energy': { date: null } };
+
+function toDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function todayDateStr() { return toDateStr(new Date()); }
+
+/** [since, until) epoch-seconds bounds for a local calendar day, matching loadHourlyEnergyBetween's exclusive-until semantics. */
+function dayBounds(dateStr) {
+  const start = new Date(dateStr + 'T00:00:00');
+  const since = start.getTime() / 1000;
+  return { since: since, until: since + 86400 };
+}
+
+function updateDayControls(chartId) {
+  const date = dayViews[chartId].date;
+  document.getElementById(chartId + '-day-input').value = date || todayDateStr();
+  document.getElementById(chartId + '-day-live-btn').classList.toggle('active', date === null);
+}
+
+function fetchDayEnergy(chartId, dateStr) {
+  const { since, until } = dayBounds(dateStr);
+  fetch('/hourly-energy.json?since=' + since.toFixed(0) + '&until=' + until.toFixed(0))
+    .then(r => r.json())
+    .then(data => {
+      if (dayViews[chartId].date !== dateStr) return; // user picked another day while this was in flight
+      if (chartId === 'energy') hourlyEnergy = data.hourly_energy || [];
+      else hourlyInverterEnergy = data.hourly_inverter_energy || [];
+      renderCharts();
+    })
+    .catch(() => {});
+}
+
+function setEnergyDay(chartId, dateStr) {
+  dayViews[chartId].date = dateStr || null;
+  updateDayControls(chartId);
+  if (dayViews[chartId].date === null) {
+    poll(); // immediately refresh from the live feed instead of waiting up to 2s
+  } else {
+    fetchDayEnergy(chartId, dayViews[chartId].date);
+  }
+}
+
+function shiftEnergyDay(chartId, deltaDays) {
+  const current = dayViews[chartId].date || todayDateStr();
+  const d = new Date(current + 'T00:00:00');
+  d.setDate(d.getDate() + deltaDays);
+  setEnergyDay(chartId, toDateStr(d));
 }
 
 // Shared zoom/pan window, synchronized across all time-series charts. null
@@ -914,8 +1004,8 @@ function renderCharts() {
   const inverterEnergyBars = visibleBarSeries(
       'inverter-energy', inverterOrder, inverterOrder.map(inverterColor), inverterOrder.map(inverterLabel));
   drawBarChart(
-      chartInverterEnergy, hourlyInverterEnergy, inverterEnergyBars.keys, inverterEnergyBars.colors,
-      inverterEnergyBars.labels, { yFormat: fmtWh });
+      chartInverterEnergy, trimNightBuckets(hourlyInverterEnergy, inverterOrder), inverterEnergyBars.keys,
+      inverterEnergyBars.colors, inverterEnergyBars.labels, { yFormat: fmtWh });
   renderLegend('inverter-energy-legend', 'inverter-energy', inverterOrder.map(serial => ({
     key: serial, label: inverterLabel(serial), color: inverterColor(serial),
   })));
@@ -939,8 +1029,13 @@ function poll() {
         }
         lastT = data.history[data.history.length - 1].t;
       }
-      if (data.hourly_energy) hourlyEnergy = data.hourly_energy;
-      if (data.hourly_inverter_energy) hourlyInverterEnergy = data.hourly_inverter_energy;
+      // Only apply the live feed while that chart is in "live" mode (date
+      // === null) -- otherwise this periodic poll would keep overwriting
+      // whatever past day the user picked via the day controls.
+      if (data.hourly_energy && dayViews.energy.date === null) hourlyEnergy = data.hourly_energy;
+      if (data.hourly_inverter_energy && dayViews['inverter-energy'].date === null) {
+        hourlyInverterEnergy = data.hourly_inverter_energy;
+      }
       renderTiles(data.latest);
       renderInverterTable(data.latest);
       renderCharts();
@@ -949,6 +1044,8 @@ function poll() {
     .catch(() => { document.getElementById('conn-status').textContent = 'Connexion perdue, nouvel essai...'; });
 }
 
+updateDayControls('energy');
+updateDayControls('inverter-energy');
 window.addEventListener('resize', renderCharts);
 poll();
 setInterval(poll, 2000);
