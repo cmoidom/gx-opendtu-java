@@ -656,13 +656,13 @@ function drawChart(canvas, seriesList, opts) {
     const timeLabel = new Date(t * 1000).toLocaleTimeString([], xTickFormat);
     const timeWidth = ctx.measureText(timeLabel).width;
     const lx = Math.max(padding.left, Math.min(w - padding.right - timeWidth, x - timeWidth / 2));
-    ctx.fillText(timeLabel, lx, h - 5);
+    ctx.fillText(timeLabel, lx, h - 16);
 
     const dateLabel = fmtDay(t);
     if (dateLabel !== lastTickDateLabel) {
       const dateWidth = ctx.measureText(dateLabel).width;
       const dx = Math.max(padding.left, Math.min(w - padding.right - dateWidth, x - dateWidth / 2));
-      ctx.fillText(dateLabel, dx, h - 16);
+      ctx.fillText(dateLabel, dx, h - 5);
       lastTickDateLabel = dateLabel;
     }
   }
