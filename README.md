@@ -112,20 +112,29 @@ horaire) sont aussi persistées dans un fichier SQLite (`stats.db`, à côté de
 `config.json`), indépendamment de la vue temps réel (~30min/48h en mémoire,
 perdue à chaque redémarrage). Voir `ARCHITECTURE.md` pour le détail.
 
-Réglages dans `config.json` (section `stats`, éditables aussi depuis la page
-de config) :
+Deux résolutions pour limiter la taille du fichier : chaque échantillon est
+écrit tel quel (même cadence que le direct, ~2s) pendant
+`high_res_retention_days`, puis les points plus vieux sont regroupés à
+l'intervalle `interval_s` (un seul point conservé par intervalle). Réglages
+dans `config.json` (section `stats`, éditables aussi depuis la page de
+config) :
 ```json
-"stats": { "interval_s": 300, "retention_days": 730 }
+"stats": { "interval_s": 300, "retention_days": 730, "high_res_retention_days": 30 }
 ```
-- `interval_s` (défaut 300 = 5 min) : cadence d'écriture -- volontairement
-  bien plus lente que la boucle de contrôle, une résolution fine n'apporte
-  rien sur des courbes qui couvrent des mois/années.
+- `high_res_retention_days` (défaut 30) : pendant ces N derniers jours, le
+  tableau de bord peut zoomer sur n'importe quel instant précis.
+- `interval_s` (défaut 300 = 5 min) : largeur du regroupement une fois la
+  fenêtre haute résolution dépassée -- ne pilote plus la fréquence
+  d'écriture (voir ci-dessous), juste la résolution du passé lointain.
 - `retention_days` (défaut 730 ≈ 2 ans) : purge automatique au-delà,
-  quotidiennement.
+  quotidiennement. Doit être `>= high_res_retention_days`.
 
-Une écriture immédiate a lieu aussi à chaque "Enregistrer et appliquer" (le
-dernier état connu est persisté juste avant le redémarrage), donc un
-redémarrage ne perd jamais plus d'un intervalle complet d'historique.
+Les échantillons haute résolution sont accumulés en mémoire et vidés en une
+seule transaction toutes les 60 secondes (pas un `INSERT` par échantillon) --
+une coupure brutale (crash, coupure secteur) peut donc perdre jusqu'à 1 min
+de données très récentes, mais un redémarrage propre ("Enregistrer et
+appliquer", `systemctl restart`, `update.sh`) vide explicitement ce tampon
+avant de couper, donc ne perd rien.
 
 ## Compilation et déploiement
 
@@ -202,7 +211,7 @@ et le client HTTP OpenDTU sont testés contre un serveur factice en boucle
 locale (vrai socket, faux Cerbo GX/OpenDTU) -- voir `AGENTS.md` pour le
 détail de la frontière testable/non testable.
 
-> `mvn test` passe (125 tests, 0 échec) et le jar produit par `mvn package`
+> `mvn test` passe intégralement (0 échec) et le jar produit par `mvn package`
 > a été fumé-testé en `--dry-run` (serveur web + boucle de contrôle,
 > fail-safe déclenché face à un Modbus/OpenDTU factice injoignable). Reste
 > à valider contre du vrai matériel Victron/OpenDTU avant tout déploiement.

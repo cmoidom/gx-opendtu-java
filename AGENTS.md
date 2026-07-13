@@ -178,7 +178,7 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
 
 ## État de vérification
 
-`mvn test` passe intégralement (125 tests). `mvn package` produit un jar
+`mvn test` passe intégralement. `mvn package` produit un jar
 exécutable fonctionnel (`java -jar target/gx-opendtu-java.jar --help`,
 `--dry-run` avec le serveur web démarré et `/dashboard`, `/`, `/status.json`
 répondant correctement). Non encore validé : contre du vrai matériel
