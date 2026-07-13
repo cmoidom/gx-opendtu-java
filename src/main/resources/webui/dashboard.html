@@ -33,8 +33,8 @@
   nav a:hover { background: var(--border); }
   nav a.active { background: var(--series-1); color: white; border-color: var(--series-1); }
   .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-             color: var(--muted); margin: 0 0 0.15rem; }
-  h1 { font-size: 1.3rem; margin: 0 0 0.5rem; }
+             color: var(--muted); margin: 0 0 1rem; }
+  .eyebrow .build-tag { font-weight: 400; text-transform: none; letter-spacing: normal; }
   h2 { font-size: 1rem; margin: 1.6rem 0 0.5rem; }
   .tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-bottom: 0.5rem; }
   .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
@@ -81,8 +81,7 @@
 </head>
 <body>
 <nav><a href="/">Configuration</a><a href="/dashboard" class="active">Tableau de bord</a></nav>
-<p class="eyebrow">GX-DTU Injection Controller</p>
-<h1>Tableau de bord</h1>
+<p class="eyebrow">GX-DTU Injection Controller__BUILD_TAG__</p>
 <p class="hint"><span id="conn-status">Connexion...</span>
   <button type="button" id="reset-zoom" onclick="resetZoom()" style="display:none">Reinitialiser le zoom</button>
 </p>

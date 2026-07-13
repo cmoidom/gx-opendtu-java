@@ -407,9 +407,8 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  nav a:hover { background: var(--border); }\n"
                 + "  nav a.active { background: var(--series-1); color: white; border-color: var(--series-1); }\n"
                 + "  .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;\n"
-                + "             color: var(--muted); margin: 0 0 0.15rem; }\n"
-                + "  h1 { font-size: 1.5rem; margin: 0 0 1rem; }\n"
-                + "  h1 .build-tag { font-size: 0.65rem; font-weight: 400; color: var(--muted); vertical-align: middle; }\n"
+                + "             color: var(--muted); margin: 0 0 1rem; }\n"
+                + "  .eyebrow .build-tag { font-weight: 400; text-transform: none; letter-spacing: normal; }\n"
                 + "  fieldset { margin-bottom: 1.2rem; border: 1px solid var(--border); border-radius: 8px;\n"
                 + "             padding: 0.9rem 1rem 1.1rem; background: var(--surface-1);\n"
                 + "             display: grid; grid-template-columns: minmax(200px, 260px) 1fr;\n"
@@ -452,12 +451,11 @@ final class ConfigPageHandler implements HttpHandler {
                 + "</head>\n"
                 + "<body>\n"
                 + "<nav><a href=\"/\" class=\"active\">Configuration</a><a href=\"/dashboard\">Tableau de bord</a></nav>\n"
-                + "<p class=\"eyebrow\">GX-DTU Injection Controller</p>\n"
-                + "<h1>Configuration"
+                + "<p class=\"eyebrow\">GX-DTU Injection Controller"
                 + (BuildInfo.timestamp() != null
                         ? " <span class=\"build-tag\">(build " + escape(BuildInfo.timestamp()) + ")</span>"
                         : "")
-                + "</h1>\n"
+                + "</p>\n"
                 + banner
                 + "<form method=\"post\" action=\"/save\">\n"
                 + "\n"
