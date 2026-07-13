@@ -386,7 +386,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "<meta charset=\"utf-8\">\n"
                 + "<title>gx-opendtu-java - configuration</title>\n"
                 + "<style>\n"
-                + "  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }\n"
+                + "  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #222; }\n"
                 + "  .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;\n"
                 + "             color: #888; margin: 0 0 0.15rem; }\n"
                 + "  h1 { font-size: 1.5rem; margin: 0 0 1rem; }\n"
