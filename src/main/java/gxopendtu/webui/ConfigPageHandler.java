@@ -407,7 +407,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  nav a:hover { background: var(--border); }\n"
                 + "  nav a.active { background: var(--series-1); color: white; border-color: var(--series-1); }\n"
                 + "  .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;\n"
-                + "             color: var(--muted); margin: 0 0 1rem; }\n"
+                + "             color: var(--muted); margin: 0 0 1rem; text-align: center; }\n"
                 + "  .eyebrow .build-tag { font-weight: 400; text-transform: none; letter-spacing: normal; }\n"
                 + "  fieldset { margin-bottom: 1.2rem; border: 1px solid var(--border); border-radius: 8px;\n"
                 + "             padding: 0.9rem 1rem 1.1rem; background: var(--surface-1);\n"
