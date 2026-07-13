@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>gx-opendtu-java - tableau de bord</title>
+<title>GX-DTU Injection Controller - tableau de bord</title>
 <style>
   :root {
     --surface-1: #fcfcfb; --page: #f9f9f7; --text-primary: #0b0b0b; --text-secondary: #52514e;
@@ -27,10 +27,14 @@
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 1400px; margin: 2rem auto;
          padding: 0 1rem; color: var(--text-primary); background: var(--page); }
-  nav { margin-bottom: 1rem; font-size: 0.9rem; }
-  nav a { color: var(--series-1); text-decoration: none; }
-  nav a:hover { text-decoration: underline; }
-  h1 { font-size: 1.3rem; }
+  nav { margin-bottom: 1.2rem; display: flex; gap: 0.4rem; }
+  nav a { padding: 0.4rem 0.9rem; border-radius: 6px; font-size: 0.85rem; text-decoration: none;
+          color: var(--text-secondary); border: 1px solid var(--border); background: var(--surface-1); }
+  nav a:hover { background: var(--border); }
+  nav a.active { background: var(--series-1); color: white; border-color: var(--series-1); }
+  .eyebrow { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+             color: var(--muted); margin: 0 0 0.15rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 0.5rem; }
   h2 { font-size: 1rem; margin: 1.6rem 0 0.5rem; }
   .tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-bottom: 0.5rem; }
   .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
@@ -76,8 +80,9 @@
 </style>
 </head>
 <body>
-<nav><a href="/">Configuration</a> &middot; <a href="/dashboard">Tableau de bord</a></nav>
-<h1>gx-opendtu-java - tableau de bord</h1>
+<nav><a href="/">Configuration</a><a href="/dashboard" class="active">Tableau de bord</a></nav>
+<p class="eyebrow">GX-DTU Injection Controller</p>
+<h1>Tableau de bord</h1>
 <p class="hint"><span id="conn-status">Connexion...</span>
   <button type="button" id="reset-zoom" onclick="resetZoom()" style="display:none">Reinitialiser le zoom</button>
 </p>

@@ -82,7 +82,7 @@ class WebUiServerTest {
     void configPageServesForm() throws Exception {
         HttpResponse<String> response = get("/");
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("gx-opendtu-java - configuration");
+        assertThat(response.body()).contains("GX-DTU Injection Controller - configuration");
         assertThat(response.body()).contains("192.168.1.50");
         assertThat(response.body()).contains("name=\"stats.high_res_retention_days\" value=\"30\"");
     }
@@ -120,7 +120,7 @@ class WebUiServerTest {
     void dashboardServesStaticPage() throws Exception {
         HttpResponse<String> response = get("/dashboard");
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("tableau de bord");
+        assertThat(response.body()).contains("Tableau de bord");
     }
 
     @Test
