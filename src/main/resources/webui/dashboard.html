@@ -954,14 +954,44 @@ attachZoomPan(chartSoc);
 attachZoomPan(chartGrid);
 attachZoomPan(chartInverters);
 
+// Linear extrapolation of the recent SOC trend to estimate a clock time for
+// "full" (100%) or "empty" (0%) -- entirely client-side, from the same
+// `history` buffer already used to draw the SOC chart, no new data source.
+// Deliberately naive (no Peukert/capacity model, unlike Victron's own BMV
+// "time to go") -- but it's recomputed on every poll (2s), so it corrects
+// itself continuously as the real charge/discharge rate changes.
+const BATTERY_TREND_WINDOW_S = 15 * 60; // how far back to look for the trend
+const BATTERY_TREND_MIN_SPAN_S = 5 * 60; // require at least this much real span before trusting a rate
+const BATTERY_TREND_MIN_DELTA_PCT = 0.5; // ignore a trend that hasn't moved the SOC at least this much (avoids wild ETAs while essentially flat)
+
+function fmtClockTime(t) { return new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+
+function estimateBatteryEndTime() {
+  const points = history.filter(s => s.soc_pct !== null && s.soc_pct !== undefined);
+  if (!points.length) return null;
+  const last = points[points.length - 1];
+  const cutoff = last.t - BATTERY_TREND_WINDOW_S;
+  let ref = points[0]; // fallback: oldest available point, if history is younger than the window
+  for (const p of points) { if (p.t >= cutoff) { ref = p; break; } }
+  const dt = last.t - ref.t;
+  const dSoc = last.soc_pct - ref.soc_pct;
+  if (dt < BATTERY_TREND_MIN_SPAN_S || Math.abs(dSoc) < BATTERY_TREND_MIN_DELTA_PCT) return null;
+  const rate = dSoc / dt; // %/second
+  const target = rate > 0 ? 100 : 0;
+  const etaT = last.t + (target - last.soc_pct) / rate;
+  return { label: rate > 0 ? 'Batterie pleine vers' : 'Batterie vide vers', clockStr: fmtClockTime(etaT) };
+}
+
 function renderTiles(latest) {
   const tiles = document.getElementById('tiles');
   if (!latest) { tiles.innerHTML = ''; return; }
   const on = latest.injection_control === 'ON';
+  const batteryEta = (latest.soc_pct !== null) ? estimateBatteryEndTime() : null;
   tiles.innerHTML =
     '<div class="tile"><div class="label">Reseau (brut)</div><div class="value">' + fmtW(latest.grid_raw_w) + '</div></div>' +
     '<div class="tile"><div class="label">Reseau (EMA)</div><div class="value">' + fmtW(latest.grid_ema_w) + '</div></div>' +
     (latest.soc_pct !== null ? '<div class="tile"><div class="label">SOC batterie</div><div class="value">' + fmtPct(latest.soc_pct) + '</div></div>' : '') +
+    (batteryEta ? '<div class="tile"><div class="label">' + batteryEta.label + '</div><div class="value">' + batteryEta.clockStr + '</div></div>' : '') +
     (latest.battery_power_w !== null && latest.battery_power_w !== undefined ? '<div class="tile"><div class="label">Puissance batterie</div><div class="value">' + fmtW(latest.battery_power_w) + '</div></div>' : '') +
     ((latest.inverters && latest.inverters.length) ? '<div class="tile"><div class="label">Puissance solaire</div><div class="value">' + fmtW(latest.inverters.reduce((sum, inv) => sum + (inv.actual_w || 0), 0)) + '</div></div>' : '') +
     '<div class="tile"><div class="label">Regulation</div><div class="value ' + (on ? 'on' : 'off') + '">' + (latest.injection_control || '-') + '</div></div>' +
