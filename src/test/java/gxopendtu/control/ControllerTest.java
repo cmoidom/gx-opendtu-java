@@ -200,21 +200,37 @@ class ControllerTest {
     }
 
     @Test
-    void capacityEstimatorLowersCeilingWhenInverterCannotKeepUp() {
+    void capacityEstimatorLowersCeilingAfterPersistentShortfall() {
         CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
 
-        // Allocated 550W (near the 600W ceiling -- we were actually testing the
-        // limit), but only 250W actually produced, and OpenDTU confirms the
-        // limit itself isn't what's holding it back (limit_acknowledged=true at
-        // a higher value) -> assume irradiance-limited, cap drops to actual output.
+        // Allocated 550W but only 250W actually produced (45% of allocation,
+        // well under the 70% shortfall threshold) -- needs 3 consecutive
+        // cycles before it's trusted as a genuine capacity limit, not noise.
         estimator.observe("a", 550, 250, true);
-        assertThat(estimator.ceilingsW().get("a")).isEqualTo(250.0);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0); // 1st cycle -- not enough yet
+        estimator.observe("a", 550, 250, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0); // 2nd cycle -- still not enough
+        estimator.observe("a", 550, 250, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(250.0); // 3rd cycle -- sustained, ceiling drops
 
         estimator.probeTick();
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(260.0);
         estimator.probeTick();
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(270.0);
+    }
+
+    @Test
+    void capacityEstimatorDetectsShortfallFarBelowCeiling() {
+        // The case the old "must be near the ceiling" guard missed entirely:
+        // asked for only 50% of an 800W inverter (nowhere near its ceiling),
+        // but it genuinely can't even deliver that (shading, orientation).
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 800.0), 10);
+        estimator.observe("a", 400, 200, true);
+        estimator.observe("a", 400, 200, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(800.0); // only 2 cycles so far
+        estimator.observe("a", 400, 200, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(200.0); // 3rd cycle -- ceiling drops
     }
 
     @Test
@@ -225,25 +241,59 @@ class ControllerTest {
     }
 
     @Test
-    void capacityEstimatorIgnoresShortfallWhenTargetWasNotNearCeiling() {
-        // The zero-export target is often well below any inverter's real max on
-        // purpose -- a small shortfall against a modest allocated share (here
-        // 400W out of a 600W ceiling, 67%) is ordinary noise, not proof the
-        // inverter can't do more. Must NOT collapse the ceiling.
+    void capacityEstimatorIgnoresShortfallWhenWithinTheRatioThreshold() {
+        // A small shortfall (380 out of 400 allocated, 95%) is ordinary noise,
+        // not proof of a genuine capacity limit -- well above the 70% threshold.
         CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
         estimator.observe("a", 400, 380, true);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
     }
 
     @Test
-    void capacityEstimatorNearCeilingThresholdIs90Percent() {
+    void capacityEstimatorShortfallRatioThresholdIs70Percent() {
         CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
-        // 89% of the 600W ceiling: just under the threshold -> ignored.
-        estimator.observe("a", 534, 500, true);
+        // Exactly 70% of allocation, 3 cycles -- at the threshold, not below it -> never counts.
+        estimator.observe("a", 100, 70, true);
+        estimator.observe("a", 100, 70, true);
+        estimator.observe("a", 100, 70, true);
         assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
 
-        // 90% of the current (still 600W) ceiling: at the threshold -> counts.
-        estimator.observe("a", 540, 500, true);
-        assertThat(estimator.ceilingsW().get("a")).isEqualTo(500.0);
+        // Just under 70%, 3 cycles -> triggers.
+        estimator.observe("a", 100, 69, true);
+        estimator.observe("a", 100, 69, true);
+        estimator.observe("a", 100, 69, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(69.0);
+    }
+
+    @Test
+    void capacityEstimatorSingleShortfallDoesNotLowerCeiling() {
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
+        estimator.observe("a", 550, 250, true); // streak=1
+        estimator.observe("a", 550, 250, true); // streak=2
+        estimator.observe("a", 550, 550, true); // recovers -- resets the streak
+        estimator.observe("a", 550, 250, true); // streak=1 again, not 3
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
+    }
+
+    @Test
+    void capacityEstimatorIgnoresStaleReadingsWithoutAdvancingOrResettingStreak() {
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
+        estimator.observe("a", 550, 250, true, 0.0); // streak=1
+        estimator.observe("a", 550, 250, true, 0.0); // streak=2
+        estimator.observe("a", 550, 999, true, 90.0); // stale (90s > 60s threshold) -- ignored
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
+        estimator.observe("a", 550, 250, true, 0.0); // streak=3 -- the stale cycle didn't reset progress
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(250.0);
+    }
+
+    @Test
+    void capacityEstimatorIgnoresUnacknowledgedLimitWithoutAdvancingOrResettingStreak() {
+        CapacityEstimator estimator = new CapacityEstimator(Map.of("a", 600.0), 10);
+        estimator.observe("a", 550, 250, true);
+        estimator.observe("a", 550, 250, true);
+        estimator.observe("a", 550, 999, false); // limit not yet acknowledged -- ignored
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(600.0);
+        estimator.observe("a", 550, 250, true);
+        assertThat(estimator.ceilingsW().get("a")).isEqualTo(250.0);
     }
 }

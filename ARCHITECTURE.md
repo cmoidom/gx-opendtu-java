@@ -157,7 +157,8 @@ principe que `LiveState` (tampon circulaire + verrou, ~360 échantillons soit
 ~30 min au `control.decision_interval_s` par défaut de 5s), mais pour des
 données qui n'apparaissaient nulle part -- `error`/`pi_integral` du PI,
 `rawTarget` avant/après le plancher batterie, `battery_discharge_w`,
-les plafonds `CapacityEstimator.ceilingsW()` par onduleur, l'état de
+les plafonds `CapacityEstimator.ceilingsW()` par onduleur (avec `data_age_s`,
+l'âge de la dernière lecture RF OpenDTU pour cet onduleur), l'état de
 l'hystérésis batterie (`active`, streak d'export soutenu en secondes),
 le mode d'injection choisi et l'override manuel. Alimenté par deux méthodes
 distinctes : `updateControl(...)` (uniquement quand le PI tourne vraiment,
@@ -563,15 +564,29 @@ bride), on suppose qu'il est limité par l'irradiance réelle et son plafond est
 abaissé à sa production mesurée. Une sonde périodique (`capacity_probe.step_w`
 / `interval_s`) relève ce plafond par petits pas vers le nominal.
 
-Ce jugement "limité par l'irradiance" n'est appliqué que si la part allouée
-était déjà **proche du plafond actuel** (`>= NEAR_CEILING_RATIO`, 90%, de
-`ceilingsW.get(serial)`) : la consigne zero-export vise rarement le maximum
-physique (juste assez pour couvrir la charge sans exporter), donc la part
-allouée à un onduleur est souvent bien inférieure à son plafond ; sans ce
-garde-fou, un simple bruit de mesure (production réelle légèrement sous une
-part déjà modeste) faisait dégringoler le plafond en plein soleil, et la
-remontée lente (`probeTick`) ne compensait jamais assez vite -- la batterie
-comblait l'écart à la place du solaire.
+**(2026-07-13)** Ce jugement "limité par l'irradiance" reposait à l'origine
+sur un garde-fou "part allouée proche du plafond actuel" (`>= 90%` de
+`ceilingsW.get(serial)`) -- remplacé par un critère **écart significatif +
+persistant**, qui couvre un cas réel que l'ancien garde-fou manquait
+totalement : un onduleur qui ne peut pas suivre une consigne pourtant bien
+inférieure à son plafond (ex. 50% demandé sur un 800W, seulement 200W
+mesurés à cause d'un ombrage) n'est jamais "proche du plafond", donc jamais
+détecté par l'ancien critère. Désormais, `observe` baisse le plafond quand
+`actualW < SHORTFALL_RATIO * allocatedW` (70%) sur `PERSISTENCE_CYCLES` (3)
+cycles **consécutifs et genuinement évalués** -- une seule lecture, même très
+en dessous de l'allocation, ne suffit jamais (mesure bruitée, nuage
+passager, onduleur encore en train de rejoindre une limite qui vient de
+changer). Une lecture est ignorée (compteur ni avancé ni réinitialisé) si
+`limitAcknowledged=false` (la limite elle-même n'a pas encore été appliquée)
+ou si `dataAgeS > STALE_DATA_AGE_S` (60s) : OpenDTU interroge ses onduleurs
+un par un sur un seul module RF (champ `data_age` de
+`/api/livedata/status?inv=<serial>`, confirmé sur une install réelle), donc
+avec plusieurs onduleurs configurés, la même mesure RF peut être relue
+plusieurs cycles de décision de suite -- la compter plusieurs fois viderait
+le sens du critère de persistance. `data_age_s` est aussi exposé sur le
+tableau de bord (à côté de la puissance mesurée, coloré si trop vieux) et
+sur `/internal`, comme indicateur d'un souci de communication RF avec cet
+onduleur précis.
 
 `min_inverter_pct` (`config.control.minInverterPct`, défaut **5%**,
 **par onduleur** -- pas à confondre avec `control.stepRelativePct`, qui lui

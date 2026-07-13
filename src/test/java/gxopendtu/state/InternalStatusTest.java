@@ -10,14 +10,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class InternalStatusTest {
 
     private static void updateControl(InternalStatus status, double error, double piIntegral) {
-        status.updateControl(error, piIntegral, 200.0, 200.0, false, 0.0, 100.0, 200.0, true, 200.0, Map.of(), Map.of(), false, null);
+        status.updateControl(
+                error, piIntegral, 200.0, 200.0, false, 0.0, 100.0, 200.0, true, 200.0, Map.of(), Map.of(), Map.of(), false, null);
     }
 
     @Test
     void updateControlPopulatesLatestAndAppendsHistory() {
         InternalStatus status = new InternalStatus(10);
         status.updateControl(20.0, 10.0, 230.0, 300.0, true, 100.0, 100.0, 300.0, true, 300.0,
-                Map.of("a", 600.0), Map.of("a", 600.0), true, 42.0);
+                Map.of("a", 600.0), Map.of("a", 600.0), Map.of("a", 5.0), true, 42.0);
 
         InternalStatus.Snapshot snap = status.snapshotSince(0.0);
         assertThat(snap.latest().get("error")).isEqualTo(20.0);
@@ -27,6 +28,7 @@ class InternalStatusTest {
         assertThat(snap.latest().get("battery_floor_engaged")).isEqualTo(true);
         assertThat(snap.latest().get("battery_discharge_w")).isEqualTo(100.0);
         assertThat(snap.latest().get("ceilings_w")).isEqualTo(Map.of("a", 600.0));
+        assertThat(snap.latest().get("data_age_s")).isEqualTo(Map.of("a", 5.0));
         assertThat(snap.latest().get("min_inverter_floor_warning")).isEqualTo(true);
         assertThat(snap.latest().get("recommended_min_inverter_pct")).isEqualTo(42.0);
 

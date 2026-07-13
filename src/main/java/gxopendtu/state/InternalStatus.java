@@ -63,6 +63,7 @@ public final class InternalStatus {
             double targetW,
             Map<String, Double> ceilingsW,
             Map<String, Double> nominalPowerW,
+            Map<String, Double> dataAgeS,
             boolean minInverterFloorWarning,
             Double recommendedMinInverterPct) {
         lock.lock();
@@ -79,6 +80,7 @@ public final class InternalStatus {
             latest.put("target_w", targetW);
             latest.put("ceilings_w", ceilingsW == null ? Map.of() : Map.copyOf(ceilingsW));
             latest.put("nominal_power_w", nominalPowerW == null ? Map.of() : Map.copyOf(nominalPowerW));
+            latest.put("data_age_s", dataAgeS == null ? Map.of() : Map.copyOf(dataAgeS));
             latest.put("min_inverter_floor_warning", minInverterFloorWarning);
             latest.put("recommended_min_inverter_pct", recommendedMinInverterPct);
 

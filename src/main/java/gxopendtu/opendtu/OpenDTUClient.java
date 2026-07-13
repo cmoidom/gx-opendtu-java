@@ -177,6 +177,27 @@ public final class OpenDTUClient implements OpenDTUApi {
     }
 
     /**
+     * Returns {serial: data_age} (seconds since OpenDTU's own last successful
+     * RF read of that inverter) -- confirmed against a live install: it's a
+     * bare number at the inverter's top level (not the {"v":...} wrapper the
+     * AC/DC telemetry fields use), same endpoint as getLivePowerW/getYieldDayWh.
+     */
+    @Override
+    public Map<String, Double> getDataAgeS(Collection<String> serials) {
+        Map<String, Double> result = new HashMap<>();
+        for (String serial : serials) {
+            JsonNode data = get("/api/livedata/status?inv=" + URLEncoder.encode(serial, StandardCharsets.UTF_8));
+            for (JsonNode inv : data.path("inverters")) {
+                if (!serial.equals(inv.path("serial").asText())) {
+                    continue;
+                }
+                result.put(serial, JsonValues.extractValue(inv.path("data_age")));
+            }
+        }
+        return result;
+    }
+
+    /**
      * All inverters OpenDTU currently knows about, with their rated power --
      * used by the config web UI to let a user pick which ones to manage
      * instead of typing serial/power by hand.

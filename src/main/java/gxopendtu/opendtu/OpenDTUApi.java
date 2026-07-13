@@ -16,6 +16,16 @@ public interface OpenDTUApi {
     /** {serial: today's cumulative AC yield, in Wh} -- resets to 0 at local midnight on the inverter itself. */
     Map<String, Double> getYieldDayWh(Collection<String> serials);
 
+    /**
+     * {serial: seconds since OpenDTU's own last successful RF read of that
+     * inverter} -- OpenDTU polls inverters one at a time over a single RF
+     * module, so with several inverters configured, any given one's cached
+     * telemetry can be tens of seconds old regardless of how often we poll
+     * OpenDTU's HTTP API. Used to avoid treating a stale reading as fresh
+     * evidence of a capacity limit (see control.CapacityEstimator).
+     */
+    Map<String, Double> getDataAgeS(Collection<String> serials);
+
     Map<String, LimitStatus> getLimitStatus();
 
     void setAbsoluteLimitW(String serial, double watts);

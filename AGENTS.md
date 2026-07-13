@@ -84,12 +84,24 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   exigence explicite de l'utilisateur pour qu'un gros onduleur ne soit
   jamais laissé à produire plus de Watts absolus qu'un petit juste parce que
   le partage ignorait leur puissance nominale respective.
-- **`CapacityEstimator` : garde-fou "proche du plafond" avant de conclure à
-  une limitation d'irradiance** : `observe` ne doit baisser le plafond que
-  si la part allouée était déjà `>= 90%` du plafond courant
-  (`NEAR_CEILING_RATIO`). Sans ce garde-fou, une consigne zero-export
-  modeste (fréquente, puisqu'elle ne vise rarement le maximum physique) fait
-  dégringoler le plafond sur du simple bruit de mesure, en plein soleil.
+- **`CapacityEstimator` : shortfall significatif + persistant avant de
+  conclure à une limitation d'irradiance (2026-07-13, remplace l'ancien
+  garde-fou "proche du plafond >= 90%")** : `observe` ne baisse le plafond
+  que si `actualW < 70% * allocatedW` (`SHORTFALL_RATIO`) sur
+  **3 cycles consécutifs genuinement évalués** (`PERSISTENCE_CYCLES`) --
+  jamais sur une seule lecture. L'ancien garde-fou "proche du plafond"
+  ratait le cas d'un onduleur qui ne peut pas suivre une consigne pourtant
+  bien inférieure à son plafond (ex. 50% demandé sur un 800W, seulement 200W
+  réels à cause d'ombrage) : 50% n'étant jamais "proche du plafond", ce cas
+  n'était jamais détecté. Une lecture dont `dataAgeS > 60s`
+  (`STALE_DATA_AGE_S`) ou dont la limite n'est pas encore acquittée
+  (`limitAcknowledged=false`) est ignorée sans faire avancer NI réinitialiser
+  le compteur -- "pas d'info ce cycle" n'est ni une preuve de limite ni une
+  preuve du contraire. Voir `data_age` : OpenDTU interroge ses onduleurs un
+  par un sur un seul module RF, donc avec plusieurs onduleurs configurés, la
+  même mesure RF peut être relue plusieurs cycles de décision de suite --
+  compter cette même mesure plusieurs fois viderait le sens du critère de
+  persistance.
 - **Fail-safe** : toute perte de communication (Modbus ou OpenDTU) doit
   ramener les onduleurs à une limite basse et sûre plutôt que de laisser le
   service "en roue libre" (`ControlLoop.applyFailsafe`).

@@ -104,6 +104,26 @@ class OpenDTUClientTest {
     }
 
     @Test
+    void getDataAgeSReadsBareNumberField() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(
+                exchange, "{\"inverters\": [{\"serial\": \"111\", \"data_age\": 16}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getDataAgeS(List.of("111"));
+
+        assertThat(requestedPaths).containsExactly("/api/livedata/status?inv=111");
+        assertThat(result).containsEntry("111", 16.0);
+    }
+
+    @Test
+    void getDataAgeSDefaultsToZeroWhenMissing() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{\"inverters\": [{\"serial\": \"111\"}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getDataAgeS(List.of("111"));
+
+        assertThat(result).containsEntry("111", 0.0);
+    }
+
+    @Test
     void getLimitStatusParsesAcknowledgedFromLimitSetStatus() throws IOException {
         String baseUrl = startServer((exchange) -> respondJson(
                 exchange,

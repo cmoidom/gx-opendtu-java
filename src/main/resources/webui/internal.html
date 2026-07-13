@@ -45,6 +45,7 @@
   td.num { font-variant-numeric: tabular-nums; }
   .flag-yes { color: var(--warning); font-weight: 600; }
   .flag-no { color: var(--muted); }
+  .stale-age { color: var(--critical); font-weight: 600; }
   #conn-status.stale { color: var(--critical); }
 </style>
 </head>
@@ -96,7 +97,7 @@ allocation, hysteresis, overrides) qui n'apparaissent nulle part ailleurs. Rafra
 <div class="section">
   <h2>Allocation / capacite par onduleur</h2>
   <table>
-    <thead><tr><th>Onduleur</th><th class="num">Plafond (ceiling_w)</th><th class="num">Nominal (W)</th><th class="num">Plafond abaisse ?</th></tr></thead>
+    <thead><tr><th>Onduleur</th><th class="num">Plafond (ceiling_w)</th><th class="num">Nominal (W)</th><th class="num">Plafond abaisse ?</th><th class="num">Age donnee (s)</th></tr></thead>
     <tbody id="inverter-rows"></tbody>
   </table>
   <p class="hint" id="floor-warning-line"></p>
@@ -112,6 +113,8 @@ allocation, hysteresis, overrides) qui n'apparaissent nulle part ailleurs. Rafra
 
 <script>
 let history = [];
+// Mirrors control.CapacityEstimator.STALE_DATA_AGE_S.
+const STALE_DATA_AGE_S = 60;
 
 function fmt(v, digits) {
   if (v === null || v === undefined) return '--';
@@ -179,14 +182,18 @@ function render(payload) {
 
   const ceilings = latest.ceilings_w || {};
   const nominals = latest.nominal_power_w || {};
+  const dataAges = latest.data_age_s || {};
   const rows = Object.keys(nominals).sort().map(serial => {
     const ceiling = ceilings[serial];
     const nominal = nominals[serial];
     const lowered = ceiling != null && nominal != null && ceiling < nominal - 1e-6;
+    const age = dataAges[serial];
+    const ageStale = age != null && age > STALE_DATA_AGE_S;
+    const ageCell = age != null ? '<span class="' + (ageStale ? 'stale-age' : '') + '">' + fmt(age, 0) + '</span>' : '--';
     return '<tr><td>' + serial + '</td><td class="num">' + fmt(ceiling, 0) + '</td><td class="num">' + fmt(nominal, 0)
-        + '</td><td class="num">' + boolCell(lowered) + '</td></tr>';
+        + '</td><td class="num">' + boolCell(lowered) + '</td><td class="num">' + ageCell + '</td></tr>';
   });
-  document.getElementById('inverter-rows').innerHTML = rows.join('') || '<tr><td colspan="4" class="hint">aucun onduleur</td></tr>';
+  document.getElementById('inverter-rows').innerHTML = rows.join('') || '<tr><td colspan="5" class="hint">aucun onduleur</td></tr>';
 
   document.getElementById('floor-warning-line').textContent = latest.min_inverter_floor_warning
       ? 'min_inverter_pct force la consigne au-dessus de la cible ce cycle (recommande: ' + fmt(latest.recommended_min_inverter_pct, 1) + '%)'

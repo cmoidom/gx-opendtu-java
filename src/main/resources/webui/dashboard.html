@@ -71,6 +71,7 @@
   th.num, td.num, th.center, td.center { text-align: center; }
   td.num { font-variant-numeric: tabular-nums; }
   .hint { color: var(--muted); font-size: 0.82rem; }
+  .stale-age { color: var(--critical); font-weight: 600; }
   #tooltip { position: fixed; display: none; background: var(--text-primary); color: var(--surface-1);
              font-size: 0.78rem; padding: 0.35rem 0.55rem; border-radius: 6px; pointer-events: none;
              z-index: 10; white-space: nowrap; }
@@ -213,6 +214,11 @@ let history = [];
 const MAX_POINTS = 900;
 let inverterOrder = [];  // stable color assignment, first-seen order
 let inverterNames = {};  // serial -> name, from config
+// Mirrors control.CapacityEstimator.STALE_DATA_AGE_S -- OpenDTU polls its
+// inverters one at a time over a single RF module, so data_age this high
+// usually means a real communication problem with that specific inverter,
+// not just normal round-robin latency.
+const STALE_DATA_AGE_S = 60;
 let hourlyEnergy = [];
 let hourlyInverterEnergy = [];
 
@@ -1084,8 +1090,11 @@ function renderInverterTable(latest) {
   if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="5" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
+    const age = inv.data_age_s;
+    const ageStale = age != null && age > STALE_DATA_AGE_S;
+    const ageSpan = age != null ? ' <span class="hint' + (ageStale ? ' stale-age' : '') + '">(' + Math.round(age) + 's)</span>' : '';
     return '<tr><td>' + (inv.name ? inv.name + ' <span class="hint">(' + inv.serial + ')</span>' : inv.serial) + '</td>' +
-    '<td class="num">' + fmtW(inv.actual_w) + '</td>' +
+    '<td class="num">' + fmtW(inv.actual_w) + ageSpan + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
     '<td class="center">' + (inv.acknowledged === false ? 'en attente (RF)' :

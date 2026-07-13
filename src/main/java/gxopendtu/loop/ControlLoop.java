@@ -77,14 +77,17 @@ public final class ControlLoop {
     record FloorWarning(boolean warning, Double recommendedPct) {}
 
     /**
-     * Assembles one inverter's dashboard payload entry -- the 7-key map
+     * Assembles one inverter's dashboard payload entry -- the 8-key map
      * shape that {@code decisionCycle}, {@code offStateInvertersPayload} and
      * {@code manualOverridePayload} each used to build by hand, independently,
      * once per mode (normal/OFF/manual-override). Each caller still computes
      * its own allocated_w/limitRelativePct/maxPowerW/acknowledged the way it
      * always did (their fallback values and source maps genuinely differ per
      * mode) -- only the "put these into a map with these keys" part, which
-     * was pure duplication, is shared here.
+     * was pure duplication, is shared here. {@code dataAgeS} is null outside
+     * {@code decisionCycle} (the OFF/manual-override paths don't fetch it --
+     * it only matters for the capacity/shortfall reasoning that's specific
+     * to the normal ON path).
      */
     private static Map<String, Object> inverterPayloadEntry(
             String serial,
@@ -93,7 +96,8 @@ public final class ControlLoop {
             double actualW,
             Object limitRelativePct,
             double maxPowerW,
-            Object acknowledged) {
+            Object acknowledged,
+            Double dataAgeS) {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("serial", serial);
         entry.put("name", name);
@@ -102,6 +106,7 @@ public final class ControlLoop {
         entry.put("limit_relative_pct", limitRelativePct);
         entry.put("max_power_w", maxPowerW);
         entry.put("acknowledged", acknowledged);
+        entry.put("data_age_s", dataAgeS);
         return entry;
     }
 
@@ -161,6 +166,7 @@ public final class ControlLoop {
         Map<String, String> names = nameBySerial != null ? nameBySerial : Map.of();
         Map<String, Double> livePowerW = client.getLivePowerW(serials);
         Map<String, LimitStatus> limitStatus = client.getLimitStatus();
+        Map<String, Double> dataAgeS = client.getDataAgeS(serials);
 
         double currentTotalActualW = serials.stream().mapToDouble(s -> livePowerW.getOrDefault(s, 0.0)).sum();
         double totalCapacityW = serials.stream().mapToDouble(s -> capacity.ceilingsW().getOrDefault(s, 0.0)).sum();
@@ -209,7 +215,8 @@ public final class ControlLoop {
                         livePowerW.getOrDefault(serial, 0.0),
                         status != null ? status.limitRelative() : null,
                         capacity.ceilingsW().getOrDefault(serial, 0.0),
-                        status != null ? status.acknowledged() : null));
+                        status != null ? status.acknowledged() : null,
+                        dataAgeS.get(serial)));
             }
             liveState.updateDecision(
                     socPct,
@@ -237,6 +244,7 @@ public final class ControlLoop {
                     decision.targetW(),
                     capacity.ceilingsW(),
                     capacity.nominalPowerW(),
+                    dataAgeS,
                     floorWarning.warning(),
                     floorWarning.recommendedPct());
         }
@@ -269,7 +277,8 @@ public final class ControlLoop {
                     serial,
                     allocation.getOrDefault(serial, 0.0),
                     livePowerW.getOrDefault(serial, 0.0),
-                    status != null ? status.acknowledged() : true);
+                    status != null ? status.acknowledged() : true,
+                    dataAgeS.getOrDefault(serial, 0.0));
         }
     }
 
@@ -298,6 +307,7 @@ public final class ControlLoop {
                     livePowerW.getOrDefault(serial, 0.0),
                     100,
                     nominalPowerW.getOrDefault(serial, 0.0),
+                    null,
                     null));
         }
         return result;
@@ -353,7 +363,8 @@ public final class ControlLoop {
                     livePowerW.getOrDefault(serial, 0.0),
                     status != null ? status.limitRelative() : pct,
                     nominalPowerW.getOrDefault(serial, 0.0),
-                    status != null ? status.acknowledged() : null));
+                    status != null ? status.acknowledged() : null,
+                    null));
         }
         return result;
     }
