@@ -177,10 +177,18 @@ charge l'historique long terme (stats.db, jusqu'a la retention configuree).</p>
 
 <h2>Energie par onduleur (7 derniers jours)</h2>
 <div class="chart-box">
+  <div class="control-row">
+    <span class="control-label">Semaine se terminant le :</span>
+    <button type="button" class="mode-btn" onclick="shiftInverterWeek(-1)">&lt;</button>
+    <input type="date" class="mode-btn" id="inverter-week-end-input" onchange="setInverterWeekEnd(this.value)">
+    <button type="button" class="mode-btn" onclick="shiftInverterWeek(1)">&gt;</button>
+    <button type="button" class="mode-btn" id="inverter-week-live-btn" onclick="setInverterWeekEnd(null)">Cette semaine (direct)</button>
+  </div>
   <canvas id="chart-inverter-week"></canvas>
   <div class="legend" id="inverter-week-legend"></div>
   <p class="hint">Somme quotidienne des memes donnees que le graphique precedent (pas de nouvelle mesure) --
-  aujourd'hui est partiel.</p>
+  aujourd'hui est partiel en mode direct. Naviguer vers une autre semaine avec les boutons/date ci-dessus --
+  "Cette semaine (direct)" revient aux 7 derniers jours en continu.</p>
 </div>
 
 <div id="tooltip"></div>
@@ -347,8 +355,23 @@ function aggregateToDayBuckets(hourlyBuckets) {
   return Array.from(byDay.values()).sort((a, b) => a.day - b.day);
 }
 
+// Navigation for the 7-day window: endDate === null means "live" (rolling,
+// ending today, refreshed on its own 5-min timer below); otherwise a
+// 'YYYY-MM-DD' string is the last day of a fixed, no-longer-rolling 7-day
+// window the user picked via the week controls. Reuses the same
+// /hourly-energy.json?since=&until= route as the day picker above -- just a
+// different range (a whole week instead of a single day) -- no backend change.
+const weekView = { endDate: null };
+
+function updateWeekControls() {
+  document.getElementById('inverter-week-end-input').value = weekView.endDate || todayDateStr();
+  document.getElementById('inverter-week-live-btn').classList.toggle('active', weekView.endDate === null);
+}
+
 function fetchWeeklyInverterEnergy() {
-  const untilDay = localDayStart(Date.now() / 1000) + 86400; // tomorrow's local midnight
+  const untilDay = weekView.endDate
+    ? localDayStart(new Date(weekView.endDate + 'T00:00:00').getTime() / 1000) + 86400
+    : localDayStart(Date.now() / 1000) + 86400; // tomorrow's local midnight
   const sinceDay = untilDay - 7 * 86400;
   fetch('/hourly-energy.json?since=' + sinceDay.toFixed(0) + '&until=' + untilDay.toFixed(0))
     .then(r => r.json())
@@ -357,6 +380,19 @@ function fetchWeeklyInverterEnergy() {
       renderCharts();
     })
     .catch(() => {});
+}
+
+function setInverterWeekEnd(dateStr) {
+  weekView.endDate = dateStr || null;
+  updateWeekControls();
+  fetchWeeklyInverterEnergy();
+}
+
+function shiftInverterWeek(deltaWeeks) {
+  const current = weekView.endDate || todayDateStr();
+  const d = new Date(current + 'T00:00:00');
+  d.setDate(d.getDate() + deltaWeeks * 7);
+  setInverterWeekEnd(toDateStr(d));
 }
 
 // Shared zoom/pan window, synchronized across all time-series charts. null
@@ -1158,6 +1194,7 @@ function poll() {
 
 updateDayControls('energy');
 updateDayControls('inverter-energy');
+updateWeekControls();
 window.addEventListener('resize', renderCharts);
 poll();
 setInterval(poll, 2000);
