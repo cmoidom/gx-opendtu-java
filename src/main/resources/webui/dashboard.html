@@ -454,18 +454,22 @@ function resetZoom() { viewTMin = null; viewTMax = null; activeZoomRangeSeconds 
 // Preset range buttons (30m/1h/6h/12h/1j/1 semaine): anchored to the latest
 // loaded sample, not wall-clock "now" -- avoids any client/server clock
 // skew and matches how the wheel/drag handlers already anchor zooming.
-// Pages in older history same as an interactive zoom/pan would (unlike
-// clampView's per-step cap, this jumps straight to the full requested span
-// so the button visibly "does what it says" even before that fetch
-// resolves -- renderCharts() below just draws whatever's in `history` for
-// now, and the fetch's own renderCharts() call fills the rest in shortly after).
+// Jumps straight to the full requested span so the button visibly "does
+// what it says" even before history finishes loading -- renderCharts()
+// below just draws whatever's in `history` for now, and loadFullRange's own
+// chained renders fill the rest in as each chunk arrives. Uses
+// loadFullRange (chains chunks until the whole span is covered), not
+// maybeLoadOlderHistory (a single bounded chunk) -- a preset only fires
+// once, unlike wheel/drag which pages in more on every further tick, so a
+// single chunk left "1 jour"/"1 semaine" mostly empty beyond the first
+// ~6h (HISTORY_FETCH_MAX_SPAN_S).
 function setZoomRangeSeconds(seconds) {
   const [, fMax] = fullHistoryRange();
   const requestedTMin = fMax - seconds;
   viewTMin = requestedTMin;
   viewTMax = fMax;
   activeZoomRangeSeconds = seconds;
-  maybeLoadOlderHistory(requestedTMin);
+  loadFullRange(requestedTMin);
   renderCharts();
 }
 
@@ -483,25 +487,58 @@ function updateZoomRangeButtons() {
 // than what's already loaded -- LiveState's live buffer only ever holds
 // ~30 min, but stats.db keeps config.stats.retention_days (2 years by
 // default), so "go back further" just means asking for it. Merges the
-// result into `history` (which drawChart/renderCharts already read from) and
-// re-renders; a chunk with no data still advances loadedTMin so we don't
-// ask again for the same empty range on the very next pan/zoom tick.
-function maybeLoadOlderHistory(requestedTMin) {
-  if (historyFetchInFlight || loadedTMin === null || requestedTMin >= loadedTMin) return;
-  historyFetchInFlight = true;
+// result into `history` (which drawChart/renderCharts already read from);
+// a chunk with no data still advances loadedTMin so we don't ask again for
+// the same empty range on the very next pan/zoom tick. One HTTP round trip,
+// capped at HISTORY_FETCH_MAX_SPAN_S -- callers that need a bigger span than
+// that (see loadFullRange below) chain multiple calls instead of raising
+// this cap, so a single request can never balloon to years of high-res rows.
+// Resolves to true if a fetch actually happened (there might be more to
+// page in beyond it), false if there was nothing to do.
+function fetchOlderChunk(requestedTMin) {
+  if (loadedTMin === null || requestedTMin >= loadedTMin) return Promise.resolve(false);
   const until = loadedTMin;
   const span = Math.min(HISTORY_FETCH_MAX_SPAN_S, Math.max(3600, (until - requestedTMin) * 2));
   const since = until - span;
-  fetch('/history.json?since=' + since.toFixed(3) + '&until=' + until.toFixed(3))
+  return fetch('/history.json?since=' + since.toFixed(3) + '&until=' + until.toFixed(3))
     .then(r => r.json())
     .then(data => {
       const older = (data.history || []).filter(s => s.t < until);
       if (older.length) history = older.concat(history);
       loadedTMin = since; // checked this far back regardless of what we found
-      renderCharts();
+      return true;
     })
-    .catch(() => {})
+    .catch(() => false);
+}
+
+// Single bounded fetch for interactive wheel/drag -- each tick of the
+// interaction pages in one more chunk, which is enough since the user keeps
+// interacting (and re-triggering this) as long as they keep zooming/panning.
+function maybeLoadOlderHistory(requestedTMin) {
+  if (historyFetchInFlight) return;
+  historyFetchInFlight = true;
+  fetchOlderChunk(requestedTMin)
+    .then(() => renderCharts())
     .finally(() => { historyFetchInFlight = false; });
+}
+
+// Chains as many chunks as needed to cover the full requested span in one
+// go -- used by the preset range buttons (setZoomRangeSeconds), which fire
+// only once and so can't rely on repeated interaction to page in the rest
+// (unlike wheel/drag). Without this, "1 jour"/"1 semaine" only ever loaded
+// a single HISTORY_FETCH_MAX_SPAN_S-wide chunk (6h) and left the rest of
+// the requested window empty. Renders after every chunk so the chart fills
+// in progressively instead of staying blank for the whole chain.
+function loadFullRange(requestedTMin) {
+  if (historyFetchInFlight) return;
+  historyFetchInFlight = true;
+  function step() {
+    return fetchOlderChunk(requestedTMin).then(fetchedMore => {
+      renderCharts();
+      if (fetchedMore && loadedTMin !== null && requestedTMin < loadedTMin) return step();
+    });
+  }
+  step().finally(() => { historyFetchInFlight = false; });
 }
 
 function setInjectionMode(mode) {
