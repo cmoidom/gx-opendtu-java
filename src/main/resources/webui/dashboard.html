@@ -1231,7 +1231,7 @@ function renderCharts() {
                                 .map(s => ({ t: s.t, v: s.battery_power_w, backfilled: !!s.backfilled }));
   const gridSeries = [
     { key: 'grid_raw_w', label: 'Reseau (brut)', color: cssVar('--series-1'), points: history.map(s => ({ t: s.t, v: s.grid_raw_w, backfilled: !!s.backfilled })) },
-    { key: 'grid_ema_w', label: 'Reseau (EMA, utilisee par le regulateur)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w, backfilled: !!s.backfilled })) },
+    { key: 'grid_ema_w', label: 'Reseau (EMA)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w, backfilled: !!s.backfilled })) },
     { key: 'battery_power_w', label: 'Batterie', color: cssVar('--series-3'), points: batteryPoints },
   ];
   drawChart(chartGrid, visibleSeries('grid', gridSeries), Object.assign({ yFormat: fmtW, includeZero: true }, viewOpts));
