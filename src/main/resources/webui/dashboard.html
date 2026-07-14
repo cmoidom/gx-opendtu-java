@@ -618,6 +618,23 @@ function fmtDay(t) { return new Date(t * 1000).toLocaleDateString([], { day: '2-
 function fmtVolt(v) { return (v === null || v === undefined) ? '-' : v.toFixed(2) + ' V'; }
 function fmtAmp(v) { return (v === null || v === undefined) ? '-' : v.toFixed(1) + ' A'; }
 
+// Plain-loop min/max -- NOT Math.min.apply(null, arr)/Math.max.apply(null, arr)
+// or Math.min(...arr): both spread every element as an individual function
+// argument, which throws "RangeError: Maximum call stack size exceeded" once
+// arr is large (confirmed at ~100k+ elements) -- exactly what a "1 jour"/
+// "1 semaine" zoom preset loads at stats.db's ~2s high-res sampling. A loop
+// has no such limit regardless of array size.
+function arrMin(arr) {
+  let m = Infinity;
+  for (let i = 0; i < arr.length; i++) { if (arr[i] < m) m = arr[i]; }
+  return m;
+}
+function arrMax(arr) {
+  let m = -Infinity;
+  for (let i = 0; i < arr.length; i++) { if (arr[i] > m) m = arr[i]; }
+  return m;
+}
+
 // "Nice numbers" axis rounding (Heckbert's algorithm): picks bounds/step
 // that are always a round 1/2/5 x 10^n, so gridlines land on 50/100/200/500
 // rather than whatever the raw data range happens to divide into (49, 189).
@@ -689,8 +706,8 @@ function drawChart(canvas, seriesList, opts) {
     return;
   }
 
-  const dataTMin = Math.min.apply(null, allPoints.map(p => p.t));
-  const dataTMax = Math.max.apply(null, allPoints.map(p => p.t));
+  const dataTMin = arrMin(allPoints.map(p => p.t));
+  const dataTMax = arrMax(allPoints.map(p => p.t));
   const tMin = (opts.viewTMin !== null && opts.viewTMin !== undefined) ? opts.viewTMin : dataTMin;
   const tMax = (opts.viewTMax !== null && opts.viewTMax !== undefined) ? opts.viewTMax : dataTMax;
 
@@ -708,8 +725,8 @@ function drawChart(canvas, seriesList, opts) {
     const axisPoints = seriesList.filter(s => s.axis === axis.id).flatMap(s => s.points);
     const visible = axisPoints.filter(p => p.t >= tMin && p.t <= tMax);
     const pointsForRange = visible.length ? visible : axisPoints;
-    let dataMin = axis.min !== undefined ? axis.min : (pointsForRange.length ? Math.min.apply(null, pointsForRange.map(p => p.v)) : 0);
-    let dataMax = axis.max !== undefined ? axis.max : (pointsForRange.length ? Math.max.apply(null, pointsForRange.map(p => p.v)) : 1);
+    let dataMin = axis.min !== undefined ? axis.min : (pointsForRange.length ? arrMin(pointsForRange.map(p => p.v)) : 0);
+    let dataMax = axis.max !== undefined ? axis.max : (pointsForRange.length ? arrMax(pointsForRange.map(p => p.v)) : 1);
     if (axis.includeZero) { dataMin = Math.min(dataMin, 0); dataMax = Math.max(dataMax, 0); }
     const scale = niceScale(dataMin, dataMax, 5, axis.minStep);
     const yMin = scale.min, yMax = scale.max;
@@ -932,7 +949,7 @@ function drawBarChart(canvas, buckets, seriesKeys, colors, labels, opts) {
   }
 
   const allValues = buckets.flatMap(b => seriesKeys.map(k => b[k]));
-  const scale = niceScale(0, Math.max.apply(null, allValues.concat([0.01])), 5);
+  const scale = niceScale(0, arrMax(allValues.concat([0.01])), 5);
   const yMin = 0, yMax = scale.max;
   function yPix(v) { return padding.top + (1 - (v - yMin) / ((yMax - yMin) || 1)) * plotH; }
 
