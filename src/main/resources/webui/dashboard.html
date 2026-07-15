@@ -153,7 +153,7 @@
 
 <h2>Detail par onduleur</h2>
 <table id="inverters-table">
-  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="center">Etat</th></tr></thead>
+  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="center">A fond ?</th><th class="center">Etat</th></tr></thead>
   <tbody></tbody>
 </table>
 <p class="hint">Pendant la charge batterie prioritaire (regulation OFF), "Limite" affiche
@@ -1184,20 +1184,34 @@ function renderTiles(latest) {
   }
 }
 
+// Within this fraction of its currently commanded limit, an inverter counts as "producing flat out".
+const FULL_POWER_RATIO = 0.9;
+
+/** Absolute commanded limit in watts for this inverter's current mode -- allocated_w when the control loop
+ * set one this cycle, otherwise the inverter is running unrestricted (release-for-charging, non-pilote, or
+ * an override that doesn't apply to it) and its own nominal power is the effective ceiling. */
+function effectiveLimitW(inv) {
+  return inv.allocated_w != null ? inv.allocated_w : inv.max_power_w;
+}
+
 function renderInverterTable(latest) {
   const tbody = document.querySelector('#inverters-table tbody');
   const inverters = (latest && latest.inverters) || [];
-  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="6" class="hint">aucune donnee</td></tr>'; return; }
+  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="7" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
     const age = inv.data_age_s;
     const ageStale = age != null && age > STALE_DATA_AGE_S;
     const ageCell = age != null ? '<span class="' + (ageStale ? 'stale-age' : '') + '">' + Math.round(age) + '</span>' : '<span class="hint">--</span>';
+    const limitW = effectiveLimitW(inv);
+    const fullPowerCell = (inv.actual_w == null || !limitW || ageStale) ? '<span class="hint">--</span>'
+      : (inv.actual_w >= FULL_POWER_RATIO * limitW ? 'oui' : 'non');
     return '<tr><td>' + (inv.name ? inv.name + ' <span class="hint">(' + inv.serial + ')</span>' : inv.serial) + '</td>' +
     '<td class="num">' + fmtW(inv.actual_w) + '</td>' +
     '<td class="num">' + ageCell + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
+    '<td class="center">' + fullPowerCell + '</td>' +
     '<td class="center">' + (inv.controllable === false ? 'non pilote' :
                inv.acknowledged === false ? 'en attente (RF)' :
                inv.acknowledged === null ? 'debride (charge batterie)' : 'ok') + '</td></tr>';
