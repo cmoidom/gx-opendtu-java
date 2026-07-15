@@ -72,6 +72,7 @@
   td.num { font-variant-numeric: tabular-nums; }
   .hint { color: var(--muted); font-size: 0.82rem; }
   .stale-age { color: var(--critical); font-weight: 600; }
+  .full-power { color: var(--good); font-weight: 600; }
   #tooltip { position: fixed; display: none; background: var(--text-primary); color: var(--surface-1);
              font-size: 0.78rem; padding: 0.35rem 0.55rem; border-radius: 6px; pointer-events: none;
              z-index: 10; white-space: nowrap; }
@@ -153,7 +154,7 @@
 
 <h2>Detail par onduleur</h2>
 <table id="inverters-table">
-  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="center">A fond ?</th><th class="center">Etat</th></tr></thead>
+  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Etat</th></tr></thead>
   <tbody></tbody>
 </table>
 <p class="hint">Pendant la charge batterie prioritaire (regulation OFF), "Limite" affiche
@@ -1204,14 +1205,15 @@ function renderInverterTable(latest) {
     const ageStale = age != null && age > STALE_DATA_AGE_S;
     const ageCell = age != null ? '<span class="' + (ageStale ? 'stale-age' : '') + '">' + Math.round(age) + '</span>' : '<span class="hint">--</span>';
     const limitW = effectiveLimitW(inv);
-    const fullPowerCell = (inv.actual_w == null || !limitW || ageStale) ? '<span class="hint">--</span>'
-      : (inv.actual_w >= FULL_POWER_RATIO * limitW ? 'oui' : 'non');
+    const fullPowerRatio = (inv.actual_w != null && limitW) ? inv.actual_w / limitW * 100 : null;
+    const fullPowerCell = (fullPowerRatio == null || ageStale) ? '<span class="hint">--</span>'
+      : '<span class="' + (fullPowerRatio >= FULL_POWER_RATIO * 100 ? 'full-power' : '') + '">' + fmtPct(fullPowerRatio) + '</span>';
     return '<tr><td>' + (inv.name ? inv.name + ' <span class="hint">(' + inv.serial + ')</span>' : inv.serial) + '</td>' +
     '<td class="num">' + fmtW(inv.actual_w) + '</td>' +
     '<td class="num">' + ageCell + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
-    '<td class="center">' + fullPowerCell + '</td>' +
+    '<td class="num">' + fullPowerCell + '</td>' +
     '<td class="center">' + (inv.controllable === false ? 'non pilote' :
                inv.acknowledged === false ? 'en attente (RF)' :
                inv.acknowledged === null ? 'debride (charge batterie)' : 'ok') + '</td></tr>';
