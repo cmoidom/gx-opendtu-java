@@ -1312,10 +1312,18 @@ function poll() {
       }
       // Only apply the live feed while that chart is in "live" mode (date
       // === null) -- otherwise this periodic poll would keep overwriting
-      // whatever past day the user picked via the day controls.
-      if (data.hourly_energy && dayViews.energy.date === null) hourlyEnergy = data.hourly_energy;
+      // whatever past day the user picked via the day controls. status.json's
+      // hourly_energy/hourly_inverter_energy are raw ring-buffer snapshots
+      // (up to HourlyEnergyHistory.DEFAULT_RETAIN_HOURS=48h of buckets), so
+      // "direct" mode must filter down to just today's buckets itself --
+      // otherwise it silently shows the last ~2 days instead of just today.
+      const todayBounds = dayBounds(todayDateStr());
+      if (data.hourly_energy && dayViews.energy.date === null) {
+        hourlyEnergy = data.hourly_energy.filter(b => b.hour >= todayBounds.since && b.hour < todayBounds.until);
+      }
       if (data.hourly_inverter_energy && dayViews['inverter-energy'].date === null) {
-        hourlyInverterEnergy = data.hourly_inverter_energy;
+        hourlyInverterEnergy = data.hourly_inverter_energy.filter(
+          b => b.hour >= todayBounds.since && b.hour < todayBounds.until);
       }
       renderTiles(data.latest);
       renderInverterTable(data.latest);
