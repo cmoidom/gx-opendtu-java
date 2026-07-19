@@ -13,6 +13,7 @@ import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.state.StateStore;
 import gxopendtu.stats.StatsStore;
+import gxopendtu.sunspec.SunSpecForwarder;
 import gxopendtu.sunspec.SunSpecPoller;
 import gxopendtu.sunspec.SunSpecProxyState;
 import gxopendtu.sunspec.SunSpecRegisterMap;
@@ -21,6 +22,7 @@ import gxopendtu.webui.WebUiServer;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -105,8 +107,10 @@ public final class Main {
         // TCP server running alongside the existing control loop, so Venus
         // OS can be tested for whether it discovers this device at all --
         // read side wired to real OpenDTU production, write side (Venus OS's
-        // WMaxLimPct/Conn) only observed on /internal, never forwarded. Zero
-        // effect on ControlLoop.run below either way -- see gxopendtu.sunspec.
+        // WMaxLimPct/Conn) always observed on /internal; additionally acted
+        // on for real only when forwardToOpendtu() is true (see
+        // effectiveDryRun below, which then suppresses ControlLoop's own
+        // OpenDTU writes so the two never both command the same inverters).
         // Deliberately never allowed to crash the process: a bind failure
         // (e.g. the default port 502 without CAP_NET_BIND_SERVICE, see
         // deploy/systemd/gx-opendtu-zero-export.service) must not take down
@@ -140,12 +144,36 @@ public final class Main {
                                 config.sunspecProxy().pollIntervalS())
                         .start();
                 new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
+
+                if (config.sunspecProxy().forwardToOpendtu()) {
+                    Map<String, Double> nominalPowerW = config.inverters().stream()
+                            .collect(Collectors.toMap(AppConfig.InverterConfig::serial, AppConfig.InverterConfig::nominalPowerW));
+                    List<String> controllableSerials = config.inverters().stream()
+                            .filter(AppConfig.InverterConfig::controllable)
+                            .map(AppConfig.InverterConfig::serial)
+                            .toList();
+                    new SunSpecForwarder(
+                                    sunSpecOpenDtuClient,
+                                    registerMap,
+                                    allSerials,
+                                    controllableSerials,
+                                    nominalPowerW,
+                                    config.capacityProbe().stepW(),
+                                    config.control().minInverterPct(),
+                                    config.control().decisionIntervalS(),
+                                    config.capacityProbe().intervalS())
+                            .start();
+                }
             } catch (RuntimeException e) {
                 LOG.severe("[spike SunSpec] demarrage echoue, spike desactive pour cette execution "
                         + "(la regulation zero-export n'est pas affectee): " + e.getMessage());
                 sunSpecProxyState = null;
             }
         }
+        // Suppresses ControlLoop's own real OpenDTU writes for exactly as long
+        // as the SunSpec forwarder is actively commanding the same inverters --
+        // it still computes/displays everything normally, same as --dry-run.
+        boolean effectiveDryRun = dryRun || (config.sunspecProxy().enabled() && config.sunspecProxy().forwardToOpendtu());
 
         WebUiServer.start(
                 configPath, config.web().port(), liveState, internalStatus, energyHistory, inverterEnergyHistory,
@@ -155,7 +183,7 @@ public final class Main {
                 + "etat interne sur http://0.0.0.0:" + config.web().port() + "/internal)");
 
         ControlLoop.run(
-                config, dryRun, liveState, internalStatus, energyHistory, inverterEnergyHistory, configPath,
+                config, effectiveDryRun, liveState, internalStatus, energyHistory, inverterEnergyHistory, configPath,
                 manualOverride, injectionMode, statsStore);
     }
 

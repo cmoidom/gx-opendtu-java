@@ -386,6 +386,7 @@ final class ConfigPageHandler implements HttpHandler {
         sunspecProxy.put("model", first(form, "sunspec_proxy.model", ConfigLoader.Defaults.SUNSPEC_PROXY_MODEL).trim());
         sunspecProxy.put("serial_number",
                 first(form, "sunspec_proxy.serial_number", ConfigLoader.Defaults.SUNSPEC_PROXY_SERIAL_NUMBER).trim());
+        sunspecProxy.put("forward_to_opendtu", form.containsKey("sunspec_proxy.forward_to_opendtu"));
         raw.set("sunspec_proxy", sunspecProxy);
 
         raw.set("inverters", inverters);
@@ -450,6 +451,8 @@ final class ConfigPageHandler implements HttpHandler {
         boolean verboseTraces = dig(raw, "logging.verbose_traces").asBoolean(ConfigLoader.Defaults.LOGGING_VERBOSE_TRACES);
         boolean sunspecProxyEnabled =
                 dig(raw, "sunspec_proxy.enabled").asBoolean(ConfigLoader.Defaults.SUNSPEC_PROXY_ENABLED);
+        boolean sunspecProxyForwardToOpendtu = dig(raw, "sunspec_proxy.forward_to_opendtu")
+                .asBoolean(ConfigLoader.Defaults.SUNSPEC_PROXY_FORWARD_TO_OPENDTU);
 
         return "<!doctype html>\n"
                 + "<html lang=\"fr\">\n"
@@ -748,6 +751,13 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <input type=\"text\" name=\"sunspec_proxy.model\" value=\"" + val(raw, "sunspec_proxy.model", ConfigLoader.Defaults.SUNSPEC_PROXY_MODEL) + "\">\n"
                 + "    <label>Numero de serie declare</label>\n"
                 + "    <input type=\"text\" name=\"sunspec_proxy.serial_number\" value=\"" + val(raw, "sunspec_proxy.serial_number", ConfigLoader.Defaults.SUNSPEC_PROXY_SERIAL_NUMBER) + "\">\n"
+                + "    <label><input type=\"checkbox\" name=\"sunspec_proxy.forward_to_opendtu\"" + (sunspecProxyForwardToOpendtu ? " checked" : "") + "> Transmettre les ecritures de Victron a OpenDTU (pilotage reel)</label>\n"
+                + "    <p class=\"hint\"><strong>Change le comportement reel des onduleurs.</strong> Desactive (par defaut) : "
+                + "les ecritures de Victron (WMaxLimPct/Conn) restent juste affichees sur /internal, la regulation "
+                + "zero-export habituelle continue de piloter normalement. Active : la regulation zero-export habituelle "
+                + "n'envoie plus rien a OpenDTU (calculs et tableau de bord continuent de tourner pour l'observation), "
+                + "et c'est ce proxy qui pilote reellement les onduleurs a partir de la limite demandee par Victron -- "
+                + "les deux ne pilotent jamais en meme temps.</p>\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"

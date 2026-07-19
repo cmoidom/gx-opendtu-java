@@ -50,7 +50,8 @@
     "poll_interval_s": 2,
     "manufacturer": "Fronius",
     "model": "gx-opendtu-java",
-    "serial_number": "GXOPENDTU-SPIKE-001"
+    "serial_number": "GXOPENDTU-SPIKE-001",
+    "forward_to_opendtu": false
   },
   "inverters": [
     { "serial": "114181801234", "nominal_power_w": 600 },

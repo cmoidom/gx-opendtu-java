@@ -101,9 +101,10 @@ public record AppConfig(
      * Modbus TCP server (models 1/101/120/123) alongside the existing
      * control loop, backed by real OpenDTU production data on the read side.
      * Writes (Venus OS's WMaxLimPct/Conn/WMaxLim_Ena) are stored and shown on
-     * /internal but never forwarded to OpenDTU -- see the gxopendtu.sunspec
-     * package javadoc. Purely additive: has no effect whatsoever on the
-     * existing control loop even when enabled.
+     * /internal always; whether they're additionally forwarded to real
+     * OpenDTU commands depends on {@code forwardToOpendtu} (see its own
+     * javadoc) -- with it left at the default {@code false}, this stays
+     * purely additive with no effect whatsoever on the existing control loop.
      */
     public record SunSpecProxyConfig(
             boolean enabled,
@@ -111,5 +112,6 @@ public record AppConfig(
             double pollIntervalS,
             String manufacturer,
             String model,
-            String serialNumber) {}
+            String serialNumber,
+            boolean forwardToOpendtu) {}
 }

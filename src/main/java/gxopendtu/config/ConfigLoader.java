@@ -99,6 +99,12 @@ public final class ConfigLoader {
         public static final String SUNSPEC_PROXY_MANUFACTURER = "Fronius";
         public static final String SUNSPEC_PROXY_MODEL = "gx-opendtu-java";
         public static final String SUNSPEC_PROXY_SERIAL_NUMBER = "GXOPENDTU-SPIKE-001";
+        // false: read-only observation (Venus OS's WMaxLimPct writes shown on
+        // /internal, never acted on) until explicitly opted into -- see
+        // Main's effectiveDryRun wiring, which suppresses ControlLoop's own
+        // OpenDTU writes whenever this is true, so the two never both
+        // command the same inverters at once.
+        public static final boolean SUNSPEC_PROXY_FORWARD_TO_OPENDTU = false;
     }
 
     public static AppConfig loadConfig(Path path) {
@@ -208,7 +214,8 @@ public final class ConfigLoader {
                         sunspecProxyRaw.path("poll_interval_s").asDouble(Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S),
                         sunspecProxyRaw.path("manufacturer").asText(Defaults.SUNSPEC_PROXY_MANUFACTURER),
                         sunspecProxyRaw.path("model").asText(Defaults.SUNSPEC_PROXY_MODEL),
-                        sunspecProxyRaw.path("serial_number").asText(Defaults.SUNSPEC_PROXY_SERIAL_NUMBER)),
+                        sunspecProxyRaw.path("serial_number").asText(Defaults.SUNSPEC_PROXY_SERIAL_NUMBER),
+                        sunspecProxyRaw.path("forward_to_opendtu").asBoolean(Defaults.SUNSPEC_PROXY_FORWARD_TO_OPENDTU)),
                 inverters);
     }
 
