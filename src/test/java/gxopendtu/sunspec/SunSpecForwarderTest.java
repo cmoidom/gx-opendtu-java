@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -109,11 +111,20 @@ class SunSpecForwarderTest {
         FakeOpenDTUApi fake = new FakeOpenDTUApi().failing(true);
         SunSpecForwarder forwarder = forwarder(fake, map);
 
-        forwarder.decisionTick();
-        forwarder.decisionTick();
-        assertThat(fake.relativeCalls).isEmpty(); // not yet at the failure threshold
+        // decisionTick logs each simulated failure at WARNING with the exception attached (useful in
+        // real operation, but just noise for this deliberately-triggered test) -- muted for the duration.
+        Logger logger = Logger.getLogger(SunSpecForwarder.class.getName());
+        Level previousLevel = logger.getLevel();
+        logger.setLevel(Level.OFF);
+        try {
+            forwarder.decisionTick();
+            forwarder.decisionTick();
+            assertThat(fake.relativeCalls).isEmpty(); // not yet at the failure threshold
 
-        forwarder.decisionTick();
-        assertThat(fake.relativeCalls).containsExactlyInAnyOrder(Map.entry("a", 0.0), Map.entry("b", 0.0));
+            forwarder.decisionTick();
+            assertThat(fake.relativeCalls).containsExactlyInAnyOrder(Map.entry("a", 0.0), Map.entry("b", 0.0));
+        } finally {
+            logger.setLevel(previousLevel);
+        }
     }
 }
