@@ -6,6 +6,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=gx-opendtu
+# Lets the non-root process bind privileged ports (<1024) without running as
+# root -- needed only for the optional sunspec_proxy spike (default port 502,
+# see gxopendtu.config.ConfigLoader.Defaults.SUNSPEC_PROXY_TCP_PORT): Venus
+# OS's Modbus scan only checks the standard port, not a custom one.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 WorkingDirectory=/opt/gx-opendtu
 ExecStart=/usr/bin/java -jar /opt/gx-opendtu/gx-opendtu-java.jar --config /etc/gx-opendtu/config.json
 Restart=on-failure
