@@ -67,12 +67,12 @@ class SunSpecRegisterMapTest {
 
     @Test
     void setAcMeasurementsWritesRealCurrentAndVoltage() {
-        // 8.35A (A_SF=-1 -> raw 84 rounds from 83.5... use a value that rounds cleanly) and 237V (V_SF=0).
-        map.setAcMeasurements(8.4, 237.0);
+        // 8.4A (A_SF=-1 -> raw 84) and 237.1V (V_SF=-1 -> raw 2371).
+        map.setAcMeasurements(8.4, 237.1);
         int[] m101 = map.readRegisters(70, 52);
         assertThat(m101[2]).isEqualTo(84); // A
         assertThat(m101[3]).isEqualTo(84); // AphA
-        assertThat(m101[10]).isEqualTo(237); // PhVphA
+        assertThat(m101[10]).isEqualTo(2371); // PhVphA
     }
 
     @Test

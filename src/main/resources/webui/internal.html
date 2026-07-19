@@ -233,7 +233,7 @@ function render(payload) {
     document.getElementById('v-ss-power').textContent = fmt(ss.live_power_w, 0) + ' W';
     document.getElementById('v-ss-energy').textContent = ss.lifetime_energy_wh != null ? fmt(ss.lifetime_energy_wh / 1000, 3) + ' kWh' : '--';
     document.getElementById('v-ss-current').textContent = ss.current_a != null ? fmt(ss.current_a, 1) + ' A' : '--';
-    document.getElementById('v-ss-voltage').textContent = ss.voltage_v != null ? fmt(ss.voltage_v, 0) + ' V' : '--';
+    document.getElementById('v-ss-voltage').textContent = ss.voltage_v != null ? fmt(ss.voltage_v, 1) + ' V' : '--';
     document.getElementById('v-ss-power-age').textContent = ss.live_power_updated_at ? fmt(now - ss.live_power_updated_at, 0) + ' s' : '--';
     document.getElementById('v-ss-conn-count').textContent = ss.tcp_connection_count != null ? ss.tcp_connection_count : '--';
     document.getElementById('v-ss-wmaxlimpct').textContent = ss.last_write_wmaxlimpct != null ? fmt(ss.last_write_wmaxlimpct, 1) + ' %' : 'aucune ecriture recue';

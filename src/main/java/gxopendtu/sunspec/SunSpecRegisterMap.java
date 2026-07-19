@@ -104,8 +104,8 @@ public final class SunSpecRegisterMap {
         registers[o] = 101; // ID
         registers[o + 1] = 50; // L
         registers[o + 6] = toUnsigned16(-1); // A_SF (0.1A resolution)
-        registers[o + 10] = 230; // PhVphA -- placeholder until the first real setAcMeasurements() call
-        registers[o + 13] = 0; // V_SF
+        registers[o + 10] = 2300; // PhVphA = 230.0V (V_SF=-1) -- placeholder until the first real setAcMeasurements() call
+        registers[o + 13] = toUnsigned16(-1); // V_SF (0.1V resolution)
         // W (offset 14) and W_SF (offset 15) set below, dynamic.
         registers[o + 15] = 0; // W_SF
         registers[o + 16] = 5000; // Hz -- fixed placeholder, 50.00 Hz
@@ -161,7 +161,7 @@ public final class SunSpecRegisterMap {
      */
     public void setAcMeasurements(double currentA, double voltageV) {
         int currentRaw = toUnsigned16((int) Math.round(currentA * 10)); // A_SF=-1
-        int voltageRaw = toUnsigned16((int) Math.round(voltageV)); // V_SF=0
+        int voltageRaw = toUnsigned16((int) Math.round(voltageV * 10)); // V_SF=-1 (0.1V resolution)
         lock.lock();
         try {
             registers[M101_A] = currentRaw;
