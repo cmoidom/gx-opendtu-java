@@ -78,6 +78,49 @@ class StatsStoreTest {
     }
 
     @Test
+    void persistSnapshotWritesSunSpecTargetAndItRoundTripsThroughLoadMethods(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        LiveState liveState = new LiveState();
+        liveState.updateSunSpecTarget(777.0);
+        liveState.recordGrid(10.0, 9.0);
+        HourlyEnergyHistory energyHistory = new HourlyEnergyHistory();
+        InverterEnergyHistory inverterEnergyHistory = new InverterEnergyHistory();
+
+        double t;
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.persistSnapshot(liveState, energyHistory, inverterEnergyHistory);
+            t = (Double) liveState.snapshotSince(0.0).latest().get("t");
+
+            List<Map<String, Object>> recent = store.loadRecentSamples(10);
+            assertThat(recent).hasSize(1);
+            assertThat(recent.get(0).get("sunspec_target_w")).isEqualTo(777.0);
+
+            List<Map<String, Object>> between = store.loadSamplesBetween(t - 1, t + 1);
+            assertThat(between).hasSize(1);
+            assertThat(between.get(0).get("sunspec_target_w")).isEqualTo(777.0);
+        }
+
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT sunspec_target_w FROM samples")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getDouble("sunspec_target_w")).isEqualTo(777.0);
+        }
+    }
+
+    @Test
+    void persistSnapshotWithoutSunSpecTargetPersistsNull(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        LiveState liveState = new LiveState();
+        liveState.recordGrid(10.0, 9.0); // no updateSunSpecTarget call at all
+
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
+            assertThat(store.loadRecentSamples(10).get(0).get("sunspec_target_w")).isNull();
+        }
+    }
+
+    @Test
     void persistSnapshotOfEmptyLiveStateDoesNothing(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         LiveState liveState = new LiveState();

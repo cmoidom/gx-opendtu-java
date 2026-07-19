@@ -2,6 +2,7 @@ package gxopendtu.sunspec;
 
 import gxopendtu.opendtu.OpenDTUApi;
 import gxopendtu.opendtu.OpenDTUException;
+import gxopendtu.state.LiveState;
 
 import java.util.Collection;
 import java.util.Map;
@@ -27,6 +28,8 @@ public final class SunSpecPoller {
     private final Collection<String> serials;
     private final SunSpecRegisterMap registerMap;
     private final SunSpecProxyState state;
+    private final LiveState liveState;
+    private final double totalNominalPowerW;
     private final long intervalMs;
     private volatile boolean running;
 
@@ -35,12 +38,16 @@ public final class SunSpecPoller {
             Collection<String> serials,
             SunSpecRegisterMap registerMap,
             SunSpecProxyState state,
-            double intervalS) {
+            double intervalS,
+            LiveState liveState,
+            double totalNominalPowerW) {
         this.client = client;
         this.serials = serials;
         this.registerMap = registerMap;
         this.state = state;
         this.intervalMs = Math.round(intervalS * 1000);
+        this.liveState = liveState;
+        this.totalNominalPowerW = totalNominalPowerW;
     }
 
     public void start() {
@@ -66,7 +73,17 @@ public final class SunSpecPoller {
         }
     }
 
-    private void pollOnce() {
+    /** Package-private: callable directly in tests without waiting on the real sleep loop. */
+    void pollOnce() {
+        // No I/O, can't throw -- always recorded regardless of the OpenDTU
+        // reads below, so LiveState/stats.db's "Consigne Victron" curve
+        // reflects the raw WMaxLimPct register even if OpenDTU is briefly
+        // unreachable. Raw ask (% of the whole installation's nameplate),
+        // not the post-water-fill/non-controllable-subtracted value
+        // SunSpecForwarder actually sends -- see its own javadoc for that
+        // distinction.
+        liveState.updateSunSpecTarget(registerMap.wMaxLimPctPercent() / 100.0 * totalNominalPowerW);
+
         try {
             double aggregateW = client.getLivePowerW(serials).values().stream().mapToDouble(Double::doubleValue).sum();
             registerMap.setLivePowerW(aggregateW);

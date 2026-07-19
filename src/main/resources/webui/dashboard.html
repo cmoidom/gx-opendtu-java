@@ -146,6 +146,14 @@
   <p class="hint">Batterie : positif = charge, negatif = decharge.</p>
 </div>
 
+<h2>Consigne Victron (SunSpec)</h2>
+<div class="chart-box">
+  <canvas id="chart-sunspec"></canvas>
+  <div class="legend" id="sunspec-legend"></div>
+  <p class="hint">Puissance demandee par Victron (WMaxLimPct converti en W, avant repartition par onduleur) --
+  visible uniquement si le proxy SunSpec a deja recu une ecriture de Victron.</p>
+</div>
+
 <h2>Puissance par onduleur</h2>
 <div class="chart-box">
   <canvas id="chart-inverters"></canvas>
@@ -1115,18 +1123,21 @@ document.addEventListener('mouseup', () => {
 
 const chartSoc = document.getElementById('chart-soc');
 const chartGrid = document.getElementById('chart-grid');
+const chartSunSpec = document.getElementById('chart-sunspec');
 const chartInverters = document.getElementById('chart-inverters');
 const chartEnergy = document.getElementById('chart-energy');
 const chartInverterEnergy = document.getElementById('chart-inverter-energy');
 const chartInverterWeek = document.getElementById('chart-inverter-week');
 attachHover(chartSoc, { yFormat: fmtPct });
 attachHover(chartGrid, { yFormat: fmtW });
+attachHover(chartSunSpec, { yFormat: fmtW });
 attachHover(chartInverters, { yFormat: fmtW });
 attachBarHover(chartEnergy);
 attachBarHover(chartInverterEnergy, { yFormat: fmtWh });
 attachBarHover(chartInverterWeek, { yFormat: fmtWh, xFormat: fmtDay, bucketSeconds: 86400 });
 attachZoomPan(chartSoc);
 attachZoomPan(chartGrid);
+attachZoomPan(chartSunSpec);
 attachZoomPan(chartInverters);
 
 // Linear extrapolation of the recent SOC trend to estimate a clock time for
@@ -1245,13 +1256,31 @@ function renderCharts() {
 
   const batteryPoints = history.filter(s => s.battery_power_w !== null && s.battery_power_w !== undefined)
                                 .map(s => ({ t: s.t, v: s.battery_power_w, backfilled: !!s.backfilled }));
+  // Sum of every inverter's real actual_w for that sample -- computed client-side from the same
+  // per-sample "inverters" array the tiles/table already use, no new backend field needed.
+  const totalProductionPoints = history
+      .filter(s => Array.isArray(s.inverters) && s.inverters.length > 0)
+      .map(s => ({
+        t: s.t,
+        v: s.inverters.reduce((sum, inv) => sum + (inv.actual_w || 0), 0),
+        backfilled: !!s.backfilled,
+      }));
   const gridSeries = [
     { key: 'grid_raw_w', label: 'Reseau (brut)', color: cssVar('--series-1'), points: history.map(s => ({ t: s.t, v: s.grid_raw_w, backfilled: !!s.backfilled })) },
     { key: 'grid_ema_w', label: 'Reseau (EMA)', color: cssVar('--series-2'), points: history.map(s => ({ t: s.t, v: s.grid_ema_w, backfilled: !!s.backfilled })) },
     { key: 'battery_power_w', label: 'Batterie', color: cssVar('--series-3'), points: batteryPoints },
+    { key: 'total_production_w', label: 'Solaire', color: cssVar('--series-4'), points: totalProductionPoints },
   ];
   drawChart(chartGrid, visibleSeries('grid', gridSeries), Object.assign({ yFormat: fmtW, includeZero: true }, viewOpts));
   renderLegend('grid-legend', 'grid', gridSeries);
+
+  const sunspecTargetPoints = history.filter(s => s.sunspec_target_w !== null && s.sunspec_target_w !== undefined)
+                                      .map(s => ({ t: s.t, v: s.sunspec_target_w, backfilled: !!s.backfilled }));
+  const sunspecSeries = [
+    { key: 'sunspec_target_w', label: 'Consigne Victron', color: cssVar('--series-1'), points: sunspecTargetPoints },
+  ];
+  drawChart(chartSunSpec, visibleSeries('sunspec', sunspecSeries), Object.assign({ yFormat: fmtW, includeZero: true }, viewOpts));
+  renderLegend('sunspec-legend', 'sunspec', sunspecSeries);
 
   history.forEach(s => (s.inverters || []).forEach(inv => {
     if (!inverterOrder.includes(inv.serial)) inverterOrder.push(inv.serial);
@@ -1278,7 +1307,7 @@ function renderCharts() {
   // Reapply the hover crosshair on top of this fresh render for any chart
   // currently being hovered -- otherwise a periodic poll() redraw (every 2s)
   // would erase it while the mouse sits still.
-  [chartSoc, chartGrid, chartInverters].forEach(c => {
+  [chartSoc, chartGrid, chartSunSpec, chartInverters].forEach(c => {
     if (c._hoverT !== null && c._hoverT !== undefined) redrawChart(c);
   });
 

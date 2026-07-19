@@ -138,7 +138,7 @@ public final class Main {
                     .collect(Collectors.toList());
             new SunSpecPoller(
                             sunSpecOpenDtuClient, allSerials, registerMap, sunSpecProxyState,
-                            config.sunspecProxy().pollIntervalS())
+                            config.sunspecProxy().pollIntervalS(), liveState, config.totalNominalPowerW())
                     .start();
             new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
 

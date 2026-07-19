@@ -26,6 +26,7 @@ class LiveStateTest {
         sample.put("inverters", List.of(Map.of("serial", "a", "actual_w", 100.0)));
         sample.put("min_inverter_floor_warning", false);
         sample.put("recommended_min_inverter_pct", null);
+        sample.put("sunspec_target_w", 500.0);
         sample.put("backfilled", true);
         return sample;
     }
@@ -120,6 +121,25 @@ class LiveStateTest {
         assertThat(latest.get("battery_voltage_v")).isEqualTo(51.2);
         assertThat(latest.get("battery_current_a")).isEqualTo(-1.0);
         assertThat(latest.get("inverters")).isEqualTo(List.of(Map.of("serial", "a", "actual_w", 100.0)));
+        assertThat(latest.get("sunspec_target_w")).isEqualTo(500.0);
+    }
+
+    @Test
+    void updateSunSpecTargetCarriesForwardIndependentlyOfUpdateDecision() {
+        LiveState state = new LiveState(10);
+        state.updateDecision(80.0, "ON", 300.0, List.of(Map.of("serial", "a")));
+        state.updateSunSpecTarget(650.0);
+        state.recordGrid(1.0, 1.0);
+
+        Map<String, Object> sample = state.snapshotSince(0.0).history().get(0);
+        assertThat(sample.get("sunspec_target_w")).isEqualTo(650.0);
+        assertThat(sample.get("consigne_w")).isEqualTo(300.0); // unaffected, independent sticky field
+
+        // A later updateDecision call (control loop's own cadence) must not reset it.
+        state.updateDecision(81.0, "ON", 400.0, List.of(Map.of("serial", "a")));
+        state.recordGrid(2.0, 2.0);
+        Map<String, Object> secondSample = state.snapshotSince(0.0).latest();
+        assertThat(secondSample.get("sunspec_target_w")).isEqualTo(650.0);
     }
 
     @Test

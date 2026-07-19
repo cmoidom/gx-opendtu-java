@@ -37,6 +37,7 @@ public final class LiveState {
     private List<Map<String, Object>> inverters = List.of();
     private boolean minInverterFloorWarning;
     private Double recommendedMinInverterPct;
+    private Double sunspecTargetW;
 
     public LiveState() {
         this(DEFAULT_MAX_SAMPLES);
@@ -78,6 +79,21 @@ public final class LiveState {
     }
 
     /**
+     * Called independently by {@code sunspec.SunSpecPoller} on its own cadence, decoupled from
+     * {@link #updateDecision} (the control loop's own decision cycle) exactly like every other sticky
+     * field here -- carried forward into every grid sample recorded until the next update. Null while
+     * Victron hasn't written a WMaxLimPct yet (or the SunSpec proxy never started).
+     */
+    public void updateSunSpecTarget(Double sunspecTargetW) {
+        lock.lock();
+        try {
+            this.sunspecTargetW = sunspecTargetW;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * Repopulates the history buffer from persisted long-term samples (see
      * {@code stats.StatsStore#loadRecentSamples}), called once at startup
      * before the control loop's first tick -- otherwise the dashboard shows
@@ -110,6 +126,7 @@ public final class LiveState {
             this.inverters = lastInverters instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
             this.minInverterFloorWarning = Boolean.TRUE.equals(last.get("min_inverter_floor_warning"));
             this.recommendedMinInverterPct = (Double) last.get("recommended_min_inverter_pct");
+            this.sunspecTargetW = (Double) last.get("sunspec_target_w");
         } finally {
             lock.unlock();
         }
@@ -132,6 +149,7 @@ public final class LiveState {
             sample.put("inverters", inverters);
             sample.put("min_inverter_floor_warning", minInverterFloorWarning);
             sample.put("recommended_min_inverter_pct", recommendedMinInverterPct);
+            sample.put("sunspec_target_w", sunspecTargetW);
             sample.put("backfilled", false); // see seedHistory/StatsStore#loadRecentSamples
 
             if (history.size() >= maxSamples) {
