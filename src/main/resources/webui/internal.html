@@ -123,6 +123,8 @@ allocation, hysteresis, overrides) qui n'apparaissent nulle part ailleurs. Rafra
   <table class="kv">
     <tr><th>Puissance agregee rapportee (W)</th><td class="num" id="v-ss-power">--</td></tr>
     <tr><th>Energie totale rapportee (kWh)</th><td class="num" id="v-ss-energy">--</td></tr>
+    <tr><th>Courant AC rapporte (somme reelle, A)</th><td class="num" id="v-ss-current">--</td></tr>
+    <tr><th>Tension AC rapportee (max reelle, V)</th><td class="num" id="v-ss-voltage">--</td></tr>
     <tr><th>Derniere lecture OpenDTU (il y a)</th><td class="num" id="v-ss-power-age">--</td></tr>
     <tr><th>Connexions TCP acceptees</th><td class="num" id="v-ss-conn-count">--</td></tr>
     <tr><th>Dernier WMaxLimPct recu de Victron</th><td class="num" id="v-ss-wmaxlimpct">--</td></tr>
@@ -230,6 +232,8 @@ function render(payload) {
     const now = Date.now() / 1000;
     document.getElementById('v-ss-power').textContent = fmt(ss.live_power_w, 0) + ' W';
     document.getElementById('v-ss-energy').textContent = ss.lifetime_energy_wh != null ? fmt(ss.lifetime_energy_wh / 1000, 3) + ' kWh' : '--';
+    document.getElementById('v-ss-current').textContent = ss.current_a != null ? fmt(ss.current_a, 1) + ' A' : '--';
+    document.getElementById('v-ss-voltage').textContent = ss.voltage_v != null ? fmt(ss.voltage_v, 0) + ' V' : '--';
     document.getElementById('v-ss-power-age').textContent = ss.live_power_updated_at ? fmt(now - ss.live_power_updated_at, 0) + ' s' : '--';
     document.getElementById('v-ss-conn-count').textContent = ss.tcp_connection_count != null ? ss.tcp_connection_count : '--';
     document.getElementById('v-ss-wmaxlimpct').textContent = ss.last_write_wmaxlimpct != null ? fmt(ss.last_write_wmaxlimpct, 1) + ' %' : 'aucune ecriture recue';

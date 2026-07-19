@@ -22,6 +22,8 @@ public final class SunSpecProxyState {
     private double lastLivePowerW;
     private double lastLivePowerUpdatedAtEpochS;
     private double lastLifetimeEnergyWh;
+    private double lastCurrentA;
+    private double lastVoltageV;
     private Double lastWriteWMaxLimPct;
     private Boolean lastWriteWMaxLimEnabled;
     private Boolean lastWriteConn;
@@ -43,6 +45,16 @@ public final class SunSpecProxyState {
         lock.lock();
         try {
             lastLifetimeEnergyWh = aggregateWh;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void recordAcMeasurements(double currentA, double voltageV) {
+        lock.lock();
+        try {
+            lastCurrentA = currentA;
+            lastVoltageV = voltageV;
         } finally {
             lock.unlock();
         }
@@ -79,6 +91,8 @@ public final class SunSpecProxyState {
             m.put("live_power_w", lastLivePowerW);
             m.put("live_power_updated_at", lastLivePowerUpdatedAtEpochS);
             m.put("lifetime_energy_wh", lastLifetimeEnergyWh);
+            m.put("current_a", lastCurrentA);
+            m.put("voltage_v", lastVoltageV);
             m.put("last_write_wmaxlimpct", lastWriteWMaxLimPct);
             m.put("last_write_wmaxlim_enabled", lastWriteWMaxLimEnabled);
             m.put("last_write_conn", lastWriteConn);

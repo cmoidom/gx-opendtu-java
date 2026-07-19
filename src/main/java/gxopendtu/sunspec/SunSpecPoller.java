@@ -4,6 +4,7 @@ import gxopendtu.opendtu.OpenDTUApi;
 import gxopendtu.opendtu.OpenDTUException;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -80,6 +81,23 @@ public final class SunSpecPoller {
             state.recordLifetimeEnergyWh(aggregateWh);
         } catch (OpenDTUException e) {
             LOG.log(Level.WARNING, "[spike SunSpec] lecture YieldTotal OpenDTU echouee", e);
+        }
+        try {
+            // Current: sum of every inverter's real reading -- all on the same
+            // single phase, so summing real amps is physically correct (unlike
+            // the earlier P/assumed-230V derivation this replaces). Voltage:
+            // the highest real reading, a representative value for the shared
+            // phase rather than an average that could land between two
+            // genuinely-measured values no inverter actually reported.
+            Map<String, Double> currentByInverter = client.getAcCurrentA(serials);
+            Map<String, Double> voltageByInverter = client.getAcVoltageV(serials);
+            double sumCurrentA = currentByInverter.values().stream().mapToDouble(Double::doubleValue).sum();
+            double maxVoltageV =
+                    voltageByInverter.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
+            registerMap.setAcMeasurements(sumCurrentA, maxVoltageV);
+            state.recordAcMeasurements(sumCurrentA, maxVoltageV);
+        } catch (OpenDTUException e) {
+            LOG.log(Level.WARNING, "[spike SunSpec] lecture tension/courant AC OpenDTU echouee", e);
         }
     }
 }

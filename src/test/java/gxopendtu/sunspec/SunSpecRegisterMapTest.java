@@ -66,12 +66,13 @@ class SunSpecRegisterMapTest {
     }
 
     @Test
-    void setLivePowerWAlsoDerivesNonZeroCurrentFromRealPower() {
-        // 2300W at the fixed 230V placeholder (PhVphA) -> 10.0A, A_SF=-1 so raw=100.
-        map.setLivePowerW(2300.0);
+    void setAcMeasurementsWritesRealCurrentAndVoltage() {
+        // 8.35A (A_SF=-1 -> raw 84 rounds from 83.5... use a value that rounds cleanly) and 237V (V_SF=0).
+        map.setAcMeasurements(8.4, 237.0);
         int[] m101 = map.readRegisters(70, 52);
-        assertThat(m101[2]).isEqualTo(100); // A
-        assertThat(m101[3]).isEqualTo(100); // AphA
+        assertThat(m101[2]).isEqualTo(84); // A
+        assertThat(m101[3]).isEqualTo(84); // AphA
+        assertThat(m101[10]).isEqualTo(237); // PhVphA
     }
 
     @Test

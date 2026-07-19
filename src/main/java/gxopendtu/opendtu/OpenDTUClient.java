@@ -200,6 +200,42 @@ public final class OpenDTUClient implements OpenDTUApi {
         return result;
     }
 
+    /** Returns {serial: measured AC output voltage in V} -- same endpoint/"AC" breakdown as {@link #getLivePowerW}. */
+    @Override
+    public Map<String, Double> getAcVoltageV(Collection<String> serials) {
+        Map<String, Double> result = new HashMap<>();
+        for (String serial : serials) {
+            JsonNode data = get("/api/livedata/status?inv=" + URLEncoder.encode(serial, StandardCharsets.UTF_8));
+            for (JsonNode inv : data.path("inverters")) {
+                if (!serial.equals(inv.path("serial").asText())) {
+                    continue;
+                }
+                JsonNode ac = inv.path("AC");
+                JsonNode channel0 = ac.has("0") ? ac.path("0") : ac;
+                result.put(serial, channel0.isObject() ? JsonValues.extractValue(channel0.path("Voltage")) : 0.0);
+            }
+        }
+        return result;
+    }
+
+    /** Returns {serial: measured AC output current in A} -- same endpoint/"AC" breakdown as {@link #getLivePowerW}. */
+    @Override
+    public Map<String, Double> getAcCurrentA(Collection<String> serials) {
+        Map<String, Double> result = new HashMap<>();
+        for (String serial : serials) {
+            JsonNode data = get("/api/livedata/status?inv=" + URLEncoder.encode(serial, StandardCharsets.UTF_8));
+            for (JsonNode inv : data.path("inverters")) {
+                if (!serial.equals(inv.path("serial").asText())) {
+                    continue;
+                }
+                JsonNode ac = inv.path("AC");
+                JsonNode channel0 = ac.has("0") ? ac.path("0") : ac;
+                result.put(serial, channel0.isObject() ? JsonValues.extractValue(channel0.path("Current")) : 0.0);
+            }
+        }
+        return result;
+    }
+
     /**
      * Returns {serial: data_age} (seconds since OpenDTU's own last successful
      * RF read of that inverter) -- confirmed against a live install: it's a

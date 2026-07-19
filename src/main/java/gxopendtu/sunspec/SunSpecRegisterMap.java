@@ -54,12 +54,10 @@ public final class SunSpecRegisterMap {
     // Model 101 sub-offsets actually written dynamically.
     private static final int M101_A = OFF_M101 + 2;
     private static final int M101_APHA = OFF_M101 + 3;
+    private static final int M101_PHVPHA = OFF_M101 + 10;
     private static final int M101_W = OFF_M101 + 14;
     private static final int M101_WH = OFF_M101 + 24; // acc32, big-endian (hi register first)
     private static final int M101_ST = OFF_M101 + 38;
-
-    /** Matches PhVphA's fixed 230V placeholder -- derives A/AphA from real W so current isn't stuck at 0. */
-    private static final double ASSUMED_VOLTAGE_V = 230.0;
 
     // Model 123 sub-offsets Venus OS is expected to read/write -- the only
     // writable points this spike handles (see SunSpecTcpServer).
@@ -106,7 +104,7 @@ public final class SunSpecRegisterMap {
         registers[o] = 101; // ID
         registers[o + 1] = 50; // L
         registers[o + 6] = toUnsigned16(-1); // A_SF (0.1A resolution)
-        registers[o + 10] = 230; // PhVphA -- fixed placeholder, single-phase 230V install
+        registers[o + 10] = 230; // PhVphA -- placeholder until the first real setAcMeasurements() call
         registers[o + 13] = 0; // V_SF
         // W (offset 14) and W_SF (offset 15) set below, dynamic.
         registers[o + 15] = 0; // W_SF
@@ -143,15 +141,32 @@ public final class SunSpecRegisterMap {
 
     /** Called periodically with the real aggregate live power across every configured inverter. */
     public void setLivePowerW(double aggregateW) {
-        // A_SF=-1 (0.1A resolution): P = V*I at near-unity PF, so I = P/V -- otherwise A/AphA
-        // stay at their zero default forever even while W correctly shows real production.
-        int currentRaw = toUnsigned16((int) Math.round(aggregateW / ASSUMED_VOLTAGE_V * 10));
+        lock.lock();
+        try {
+            registers[M101_W] = toUnsigned16((int) Math.round(aggregateW));
+            registers[M101_ST] = aggregateW > 0 ? 4 : 2; // 4=MPPT (producing), 2=SLEEPING
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Called periodically with real per-inverter AC measurements, already
+     * combined by the caller: current is the sum across every inverter (all
+     * on the same single phase, so summing real amps is physically correct
+     * -- see gxopendtu.sunspec.SunSpecPoller), voltage is the highest of the
+     * individual real readings (a representative value for the shared phase,
+     * rather than an arbitrary pick or an average that could land between
+     * two genuinely-measured values no single inverter reported).
+     */
+    public void setAcMeasurements(double currentA, double voltageV) {
+        int currentRaw = toUnsigned16((int) Math.round(currentA * 10)); // A_SF=-1
+        int voltageRaw = toUnsigned16((int) Math.round(voltageV)); // V_SF=0
         lock.lock();
         try {
             registers[M101_A] = currentRaw;
             registers[M101_APHA] = currentRaw;
-            registers[M101_W] = toUnsigned16((int) Math.round(aggregateW));
-            registers[M101_ST] = aggregateW > 0 ? 4 : 2; // 4=MPPT (producing), 2=SLEEPING
+            registers[M101_PHVPHA] = voltageRaw;
         } finally {
             lock.unlock();
         }

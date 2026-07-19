@@ -126,6 +126,27 @@ class OpenDTUClientTest {
     }
 
     @Test
+    void getAcVoltageVAndCurrentAReadRealAcMeasurements() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(
+                exchange,
+                "{\"inverters\": [{\"serial\": \"111\", \"AC\": {\"0\": {"
+                        + "\"Voltage\": {\"v\": 237.1, \"u\": \"V\"}, \"Current\": {\"v\": 1.72, \"u\": \"A\"}}}}]}"));
+
+        OpenDTUClient client = new OpenDTUClient(baseUrl);
+        assertThat(client.getAcVoltageV(List.of("111"))).containsEntry("111", 237.1);
+        assertThat(client.getAcCurrentA(List.of("111"))).containsEntry("111", 1.72);
+    }
+
+    @Test
+    void getAcVoltageVAndCurrentADefaultToZeroWhenAcMissing() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{\"inverters\": [{\"serial\": \"111\"}]}"));
+
+        OpenDTUClient client = new OpenDTUClient(baseUrl);
+        assertThat(client.getAcVoltageV(List.of("111"))).containsEntry("111", 0.0);
+        assertThat(client.getAcCurrentA(List.of("111"))).containsEntry("111", 0.0);
+    }
+
+    @Test
     void getDataAgeSReadsBareNumberField() throws IOException {
         String baseUrl = startServer((exchange) -> respondJson(
                 exchange, "{\"inverters\": [{\"serial\": \"111\", \"data_age\": 16}]}"));
