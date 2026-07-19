@@ -85,20 +85,19 @@ public final class ConfigLoader {
         public static final int STATS_RETENTION_DAYS = 730;
         public static final int STATS_HIGH_RES_RETENTION_DAYS = 30;
 
-        public static final boolean SUNSPEC_PROXY_ENABLED = false;
         // 502 (2026-07-19, was 1502): confirmed on a live Venus OS -- its Modbus
         // scan only checks the standard port, a custom port (1502) went
         // undetected. Binding <1024 needs root or CAP_NET_BIND_SERVICE on Linux
         // -- see deploy/systemd/gx-opendtu-zero-export.service.
         public static final int SUNSPEC_PROXY_TCP_PORT = 502;
         public static final double SUNSPEC_PROXY_POLL_INTERVAL_S = 2.0;
-        // "Fronius" (2026-07-19): the reference bridge this spike is modeled on
-        // (github.com/Geoffn-Hub/esphome-sunspec-proxy) found this manufacturer
-        // string gives the best Victron compatibility -- borrowed as-is, not
-        // independently verified against this project's own Venus OS yet.
+        // "Fronius" (2026-07-19): the reference bridge this integration is
+        // modeled on (github.com/Geoffn-Hub/esphome-sunspec-proxy) found this
+        // manufacturer string gives the best Victron compatibility -- borrowed
+        // as-is, confirmed working on this project's own Venus OS too.
         public static final String SUNSPEC_PROXY_MANUFACTURER = "Fronius";
         public static final String SUNSPEC_PROXY_MODEL = "gx-opendtu-java";
-        public static final String SUNSPEC_PROXY_SERIAL_NUMBER = "GXOPENDTU-SPIKE-001";
+        public static final String SUNSPEC_PROXY_SERIAL_NUMBER = "GXOPENDTU-001";
         // false: read-only observation (Venus OS's WMaxLimPct writes shown on
         // /internal, never acted on) until explicitly opted into -- see
         // Main's effectiveDryRun wiring, which suppresses ControlLoop's own
@@ -209,7 +208,6 @@ public final class ConfigLoader {
                         statsRetentionDays,
                         statsHighResRetentionDays),
                 new SunSpecProxyConfig(
-                        sunspecProxyRaw.path("enabled").asBoolean(Defaults.SUNSPEC_PROXY_ENABLED),
                         sunspecProxyRaw.path("tcp_port").asInt(Defaults.SUNSPEC_PROXY_TCP_PORT),
                         sunspecProxyRaw.path("poll_interval_s").asDouble(Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S),
                         sunspecProxyRaw.path("manufacturer").asText(Defaults.SUNSPEC_PROXY_MANUFACTURER),

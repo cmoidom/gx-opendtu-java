@@ -72,7 +72,7 @@ public final class SunSpecPoller {
             registerMap.setLivePowerW(aggregateW);
             state.recordLivePowerW(aggregateW, System.currentTimeMillis() / 1000.0);
         } catch (OpenDTUException e) {
-            LOG.log(Level.WARNING, "[spike SunSpec] lecture OpenDTU echouee (aucun effet sur la regulation reelle)", e);
+            LOG.log(Level.WARNING, "[SunSpec] lecture OpenDTU echouee (aucun effet sur la regulation reelle)", e);
         }
         try {
             double aggregateWh =
@@ -80,7 +80,7 @@ public final class SunSpecPoller {
             registerMap.setLifetimeEnergyWh(aggregateWh);
             state.recordLifetimeEnergyWh(aggregateWh);
         } catch (OpenDTUException e) {
-            LOG.log(Level.WARNING, "[spike SunSpec] lecture YieldTotal OpenDTU echouee", e);
+            LOG.log(Level.WARNING, "[SunSpec] lecture YieldTotal OpenDTU echouee", e);
         }
         try {
             // Current: sum of every inverter's real reading -- all on the same
@@ -97,7 +97,7 @@ public final class SunSpecPoller {
             registerMap.setAcMeasurements(sumCurrentA, maxVoltageV);
             state.recordAcMeasurements(sumCurrentA, maxVoltageV);
         } catch (OpenDTUException e) {
-            LOG.log(Level.WARNING, "[spike SunSpec] lecture tension/courant AC OpenDTU echouee", e);
+            LOG.log(Level.WARNING, "[SunSpec] lecture tension/courant AC OpenDTU echouee", e);
         }
     }
 }

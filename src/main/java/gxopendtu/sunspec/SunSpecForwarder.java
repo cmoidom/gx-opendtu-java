@@ -13,8 +13,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Detection-spike write path (2026-07-19), opt-in via
- * {@code sunspec_proxy.forward_to_opendtu}: translates Venus OS's
+ * Write path opt-in via {@code sunspec_proxy.forward_to_opendtu}: translates Venus OS's
  * WMaxLimPct/WMaxLim_Ena/Conn into real OpenDTU commands, distributed
  * across the real inverters via the same {@link WaterFillAllocator} +
  * {@link CapacityEstimator} pattern {@code loop.ControlLoop} uses for its
@@ -82,7 +81,7 @@ public final class SunSpecForwarder {
         Thread probeThread = new Thread(this::probeLoop, "sunspec-forwarder-probe");
         probeThread.setDaemon(true);
         probeThread.start();
-        LOG.warning("[spike SunSpec] forwarding vers OpenDTU ACTIF -- ce proxy pilote reellement les onduleurs "
+        LOG.warning("[SunSpec] forwarding vers OpenDTU ACTIF -- ce proxy pilote reellement les onduleurs "
                 + "d'apres la limite ecrite par Victron; la regulation zero-export habituelle n'envoie plus rien");
     }
 
@@ -153,7 +152,7 @@ public final class SunSpecForwarder {
                     client.setAbsoluteLimitW(serial, watts);
                     lastSentW.put(serial, watts);
                 } catch (OpenDTUException e) {
-                    LOG.severe("[spike SunSpec] envoi limite " + serial + " echoue: " + e.getMessage());
+                    LOG.severe("[SunSpec] envoi limite " + serial + " echoue: " + e.getMessage());
                 }
             });
 
@@ -170,7 +169,7 @@ public final class SunSpecForwarder {
             consecutiveFailures++;
             LOG.log(
                     Level.WARNING,
-                    "[spike SunSpec] lecture OpenDTU echouee (" + consecutiveFailures + " fois de suite)",
+                    "[SunSpec] lecture OpenDTU echouee (" + consecutiveFailures + " fois de suite)",
                     e);
             if (consecutiveFailures >= FAILSAFE_THRESHOLD) {
                 failsafe();
@@ -183,24 +182,24 @@ public final class SunSpecForwarder {
         if (released) {
             return;
         }
-        LOG.info("[spike SunSpec] WMaxLim_Ena=0/Conn=0: liberation des onduleurs pilotables a 100%");
+        LOG.info("[SunSpec] WMaxLim_Ena=0/Conn=0: liberation des onduleurs pilotables a 100%");
         for (String serial : controllableSerials) {
             try {
                 client.setRelativeLimitPct(serial, 100);
             } catch (OpenDTUException e) {
-                LOG.severe("[spike SunSpec] liberation a 100% de " + serial + " echouee: " + e.getMessage());
+                LOG.severe("[SunSpec] liberation a 100% de " + serial + " echouee: " + e.getMessage());
             }
         }
         released = true;
     }
 
     private void failsafe() {
-        LOG.warning("[spike SunSpec] fail-safe: mise a 0% de tous les onduleurs pilotables (pertes OpenDTU repetees)");
+        LOG.warning("[SunSpec] fail-safe: mise a 0% de tous les onduleurs pilotables (pertes OpenDTU repetees)");
         for (String serial : controllableSerials) {
             try {
                 client.setRelativeLimitPct(serial, 0);
             } catch (OpenDTUException e) {
-                LOG.severe("[spike SunSpec] fail-safe curtail de " + serial + " echoue: " + e.getMessage());
+                LOG.severe("[SunSpec] fail-safe curtail de " + serial + " echoue: " + e.getMessage());
             }
         }
     }

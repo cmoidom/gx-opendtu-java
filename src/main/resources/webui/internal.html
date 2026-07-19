@@ -116,10 +116,10 @@ allocation, hysteresis, overrides) qui n'apparaissent nulle part ailleurs. Rafra
 </div>
 
 <div class="section" id="sunspec-section" style="display:none;">
-  <h2>Proxy SunSpec (spike, desactive par defaut)</h2>
+  <h2>Proxy SunSpec (Venus OS)</h2>
   <p class="hint">Cote lecture : puissance reelle agregee des onduleurs (modele 101). Cote ecriture :
-  ce que Victron ecrit (WMaxLimPct/Conn/WMaxLim_Ena) est juste affiche ici -- rien n'est
-  transmis a OpenDTU ni aux onduleurs reels.</p>
+  ce que Victron ecrit (WMaxLimPct/Conn/WMaxLim_Ena) est toujours affiche ici, et transmis a OpenDTU
+  seulement si sunspec_proxy.forward_to_opendtu est active (config).</p>
   <table class="kv">
     <tr><th>Puissance agregee rapportee (W)</th><td class="num" id="v-ss-power">--</td></tr>
     <tr><th>Energie totale rapportee (kWh)</th><td class="num" id="v-ss-energy">--</td></tr>

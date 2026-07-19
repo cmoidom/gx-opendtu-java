@@ -4,13 +4,13 @@ import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Pure SunSpec Modbus register-block builder/codec for the detection spike --
- * models 1 (Common), 101 (single-phase Inverter, matching this project's
- * single-phase-only install), 120 (Nameplate) and 123 (Immediate Controls).
- * No I/O: builds/reads a plain {@code int[]} of raw unsigned 16-bit register
- * values, kept separate from {@link SunSpecTcpServer}'s socket handling so
- * the encoding is unit-testable without a socket -- same split as
- * {@code modbus.RegisterCodec}/{@code modbus.ModbusTcpClient}.
+ * Pure SunSpec Modbus register-block builder/codec -- models 1 (Common), 101
+ * (single-phase Inverter, matching this project's single-phase-only install),
+ * 120 (Nameplate) and 123 (Immediate Controls). No I/O: builds/reads a plain
+ * {@code int[]} of raw unsigned 16-bit register values, kept separate from
+ * {@link SunSpecTcpServer}'s socket handling so the encoding is unit-testable
+ * without a socket -- same split as {@code modbus.RegisterCodec}/
+ * {@code modbus.ModbusTcpClient}.
  *
  * <p>Register layout (offsets from {@link #SUNSPEC_BASE}), confirmed against
  * a working Hoymiles-to-Victron bridge
@@ -25,16 +25,17 @@ import java.util.concurrent.locks.ReentrantLock;
  *   176-177 End model (id=0xFFFF, length=0)
  * </pre>
  *
- * <p>Only {@code W} (Model 101) is wired to real telemetry
- * ({@link #setLivePowerW}) -- every other measurement point is a fixed,
- * clearly-placeholder value (single-phase 230V/50Hz assumption, 25 degC
- * cabinet temperature) or the formal SunSpec "not implemented" sentinel for
- * that type, since this spike only needs Venus OS to detect the device and
- * see a real production figure, not a fully-instrumented inverter. Model 123
- * (Immediate Controls) is genuinely read/write: Venus OS's writes to
- * {@code Conn}/{@code WMaxLimPct}/{@code WMaxLim_Ena} are stored here (so a
- * read-back sees them) but never forwarded anywhere -- {@link SunSpecTcpServer}
- * separately reports them to {@link SunSpecProxyState} for the /internal page.
+ * <p>Real telemetry: {@code W}/{@code A}/{@code AphA}/{@code PhVphA} ({@link #setAcMeasurements},
+ * {@link #setLivePowerW}), {@code WH} ({@link #setLifetimeEnergyWh}) and {@code Vr}
+ * ({@link #setFirmwareVersion}). Every other measurement point is a fixed
+ * placeholder value (50Hz assumption, 25 degC cabinet temperature) or the
+ * formal SunSpec "not implemented" sentinel for that type -- not needed for
+ * Venus OS to detect the device and see real production/energy figures.
+ * Model 123 (Immediate Controls) is genuinely read/write: Venus OS's writes
+ * to {@code Conn}/{@code WMaxLimPct}/{@code WMaxLim_Ena} are stored here (so
+ * a read-back sees them) and reported to {@link SunSpecProxyState} for the
+ * /internal page; {@code SunSpecForwarder} separately, and only when
+ * {@code sunspec_proxy.forward_to_opendtu} is enabled, acts on them for real.
  */
 public final class SunSpecRegisterMap {
 
@@ -63,7 +64,7 @@ public final class SunSpecRegisterMap {
     private static final int M101_ST = OFF_M101 + 38;
 
     // Model 123 sub-offsets Venus OS is expected to read/write -- the only
-    // writable points this spike handles (see SunSpecTcpServer).
+    // writable points this proxy handles (see SunSpecTcpServer).
     public static final int M123_CONN = OFF_M123 + 4;
     public static final int M123_WMAXLIMPCT = OFF_M123 + 5;
     public static final int M123_WMAXLIM_ENA = OFF_M123 + 9;
@@ -119,7 +120,7 @@ public final class SunSpecRegisterMap {
         // St (offset 38) set dynamically by setLivePowerW.
         registers[o + 39] = NOT_IMPL_UINT16; // StVnd
 
-        // Not-implemented measurement points this spike doesn't wire up.
+        // Not-implemented measurement points this proxy doesn't wire up.
         setNotImplUint16(o + 4); // AphB
         setNotImplUint16(o + 5); // AphC
         setNotImplUint16(o + 7); // PPVphAB

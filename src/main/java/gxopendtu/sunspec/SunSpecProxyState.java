@@ -5,16 +5,16 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Thread-safe, observation-only view of the SunSpec proxy spike, for the
- * /internal debug page -- mirrors the read-only-introspection role
+ * Thread-safe, observation-only view of the SunSpec proxy, for the /internal
+ * debug page -- mirrors the read-only-introspection role
  * {@code state.InternalStatus} plays for the main control loop, but kept
  * completely separate since this is an independent, opt-in subsystem with no
  * relationship to the decision cycle.
  *
- * Never read by anything that acts on it: {@link SunSpecTcpServer} stores
- * whatever Venus OS writes here purely for display, and never forwards it to
- * OpenDTU/the real inverters -- see the class javadoc on
- * {@code SunSpecRegisterMap} for why.
+ * Never itself acts on anything it holds: {@link SunSpecTcpServer} stores
+ * whatever Venus OS writes here purely for display -- see
+ * {@code SunSpecForwarder} for the separate, opt-in path that actually acts
+ * on those writes.
  */
 public final class SunSpecProxyState {
 

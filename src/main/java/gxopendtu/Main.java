@@ -103,78 +103,74 @@ public final class Main {
             statsStore.close();
         }, "stats-shutdown-flush"));
 
-        // Detection spike (2026-07-19, disabled by default): a SunSpec Modbus
-        // TCP server running alongside the existing control loop, so Venus
-        // OS can be tested for whether it discovers this device at all --
-        // read side wired to real OpenDTU production, write side (Venus OS's
-        // WMaxLimPct/Conn) always observed on /internal; additionally acted
-        // on for real only when forwardToOpendtu() is true (see
-        // effectiveDryRun below, which then suppresses ControlLoop's own
+        // SunSpec Modbus TCP proxy (2026-07-19), for Venus OS's zero-feed-in/
+        // dynamic ESS PV inverter integration: runs alongside the existing
+        // control loop -- read side wired to real OpenDTU production, write
+        // side (Venus OS's WMaxLimPct/Conn) always observed on /internal;
+        // additionally acted on for real only when forwardToOpendtu() is true
+        // (see effectiveDryRun below, which then suppresses ControlLoop's own
         // OpenDTU writes so the two never both command the same inverters).
         // Deliberately never allowed to crash the process: a bind failure
         // (e.g. the default port 502 without CAP_NET_BIND_SERVICE, see
         // deploy/systemd/gx-opendtu-zero-export.service) must not take down
-        // the real zero-export loop below, only disable this optional spike.
+        // the real zero-export loop below, only disable this proxy.
         SunSpecProxyState sunSpecProxyState = null;
-        if (config.sunspecProxy().enabled()) {
+        try {
+            sunSpecProxyState = new SunSpecProxyState();
+            SunSpecRegisterMap registerMap = new SunSpecRegisterMap(
+                    config.sunspecProxy().manufacturer(),
+                    config.sunspecProxy().model(),
+                    config.sunspecProxy().serialNumber(),
+                    config.totalNominalPowerW());
+            OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
+                    config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+            // Own try/catch, separate from the outer one: a failed fetch here
+            // (e.g. OpenDTU unreachable yet at boot) must not prevent the
+            // poller/TCP server below from starting -- Vr just stays at its
+            // "unknown" placeholder until a later restart succeeds.
             try {
-                sunSpecProxyState = new SunSpecProxyState();
-                SunSpecRegisterMap registerMap = new SunSpecRegisterMap(
-                        config.sunspecProxy().manufacturer(),
-                        config.sunspecProxy().model(),
-                        config.sunspecProxy().serialNumber(),
-                        config.totalNominalPowerW());
-                OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
-                        config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
-                // Own try/catch, separate from the outer one: a failed fetch here
-                // (e.g. OpenDTU unreachable yet at boot) must not prevent the
-                // poller/TCP server below from starting -- Vr just stays at its
-                // "unknown" placeholder until a later restart succeeds.
-                try {
-                    registerMap.setFirmwareVersion(sunSpecOpenDtuClient.getFirmwareVersion());
-                } catch (OpenDTUException e) {
-                    LOG.warning("[spike SunSpec] lecture version OpenDTU echouee, Vr reste \"unknown\": "
-                            + e.getMessage());
-                }
-                List<String> allSerials = config.inverters().stream()
-                        .map(AppConfig.InverterConfig::serial)
-                        .collect(Collectors.toList());
-                new SunSpecPoller(
-                                sunSpecOpenDtuClient, allSerials, registerMap, sunSpecProxyState,
-                                config.sunspecProxy().pollIntervalS())
-                        .start();
-                new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
-
-                if (config.sunspecProxy().forwardToOpendtu()) {
-                    Map<String, Double> nominalPowerW = config.inverters().stream()
-                            .collect(Collectors.toMap(AppConfig.InverterConfig::serial, AppConfig.InverterConfig::nominalPowerW));
-                    List<String> controllableSerials = config.inverters().stream()
-                            .filter(AppConfig.InverterConfig::controllable)
-                            .map(AppConfig.InverterConfig::serial)
-                            .toList();
-                    new SunSpecForwarder(
-                                    sunSpecOpenDtuClient,
-                                    registerMap,
-                                    allSerials,
-                                    controllableSerials,
-                                    nominalPowerW,
-                                    config.capacityProbe().stepW(),
-                                    config.control().minInverterPct(),
-                                    config.control().decisionIntervalS(),
-                                    config.capacityProbe().intervalS(),
-                                    config.control().minChangeW())
-                            .start();
-                }
-            } catch (RuntimeException e) {
-                LOG.severe("[spike SunSpec] demarrage echoue, spike desactive pour cette execution "
-                        + "(la regulation zero-export n'est pas affectee): " + e.getMessage());
-                sunSpecProxyState = null;
+                registerMap.setFirmwareVersion(sunSpecOpenDtuClient.getFirmwareVersion());
+            } catch (OpenDTUException e) {
+                LOG.warning("[SunSpec] lecture version OpenDTU echouee, Vr reste \"unknown\": " + e.getMessage());
             }
+            List<String> allSerials = config.inverters().stream()
+                    .map(AppConfig.InverterConfig::serial)
+                    .collect(Collectors.toList());
+            new SunSpecPoller(
+                            sunSpecOpenDtuClient, allSerials, registerMap, sunSpecProxyState,
+                            config.sunspecProxy().pollIntervalS())
+                    .start();
+            new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
+
+            if (config.sunspecProxy().forwardToOpendtu()) {
+                Map<String, Double> nominalPowerW = config.inverters().stream()
+                        .collect(Collectors.toMap(AppConfig.InverterConfig::serial, AppConfig.InverterConfig::nominalPowerW));
+                List<String> controllableSerials = config.inverters().stream()
+                        .filter(AppConfig.InverterConfig::controllable)
+                        .map(AppConfig.InverterConfig::serial)
+                        .toList();
+                new SunSpecForwarder(
+                                sunSpecOpenDtuClient,
+                                registerMap,
+                                allSerials,
+                                controllableSerials,
+                                nominalPowerW,
+                                config.capacityProbe().stepW(),
+                                config.control().minInverterPct(),
+                                config.control().decisionIntervalS(),
+                                config.capacityProbe().intervalS(),
+                                config.control().minChangeW())
+                        .start();
+            }
+        } catch (RuntimeException e) {
+            LOG.severe("[SunSpec] demarrage du proxy echoue, desactive pour cette execution "
+                    + "(la regulation zero-export n'est pas affectee): " + e.getMessage());
+            sunSpecProxyState = null;
         }
         // Suppresses ControlLoop's own real OpenDTU writes for exactly as long
         // as the SunSpec forwarder is actively commanding the same inverters --
         // it still computes/displays everything normally, same as --dry-run.
-        boolean effectiveDryRun = dryRun || (config.sunspecProxy().enabled() && config.sunspecProxy().forwardToOpendtu());
+        boolean effectiveDryRun = dryRun || config.sunspecProxy().forwardToOpendtu();
 
         WebUiServer.start(
                 configPath, config.web().port(), liveState, internalStatus, energyHistory, inverterEnergyHistory,

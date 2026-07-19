@@ -17,10 +17,11 @@ import java.util.logging.Logger;
  * what a SunSpec master needs: FC3 (Read Holding Registers), FC6 (Write
  * Single Register) and FC16 (Write Multiple Registers).
  *
- * Detection-spike scope: writes to the Model 123 control block (Conn,
- * WMaxLimPct, WMaxLim_Ena) are stored (so a read-back reflects them, normal
- * SunSpec client behaviour) and reported to {@link SunSpecProxyState} for the
- * /internal page, but never forwarded to OpenDTU or the real inverters.
+ * Writes to the Model 123 control block (Conn, WMaxLimPct, WMaxLim_Ena) are
+ * stored (so a read-back reflects them, normal SunSpec client behaviour) and
+ * reported to {@link SunSpecProxyState} for the /internal page; this class
+ * itself never acts on them -- see {@code SunSpecForwarder} for the separate,
+ * opt-in path that forwards them to real OpenDTU commands.
  *
  * One daemon thread per accepted connection -- a single client (Venus OS) is
  * the only expected peer, so no connection pool/executor tuning is needed.
@@ -59,7 +60,7 @@ public final class SunSpecTcpServer {
         Thread acceptThread = new Thread(this::acceptLoop, "sunspec-proxy-accept");
         acceptThread.setDaemon(true);
         acceptThread.start();
-        LOG.info("[spike SunSpec] serveur Modbus TCP demarre sur le port " + serverSocket.getLocalPort());
+        LOG.info("[SunSpec] serveur Modbus TCP demarre sur le port " + serverSocket.getLocalPort());
     }
 
     public void stop() {
@@ -88,7 +89,7 @@ public final class SunSpecTcpServer {
                 clientThread.start();
             } catch (IOException e) {
                 if (running) {
-                    LOG.log(Level.WARNING, "[spike SunSpec] erreur d'acceptation de connexion", e);
+                    LOG.log(Level.WARNING, "[SunSpec] erreur d'acceptation de connexion", e);
                 }
             }
         }
@@ -96,7 +97,7 @@ public final class SunSpecTcpServer {
 
     private void handleClient(Socket socket) {
         String remoteAddress = socket.getRemoteSocketAddress().toString();
-        LOG.info("[spike SunSpec] connexion TCP acceptee depuis " + remoteAddress);
+        LOG.info("[SunSpec] connexion TCP acceptee depuis " + remoteAddress);
         try (Socket s = socket;
                 DataInputStream in = new DataInputStream(s.getInputStream());
                 DataOutputStream out = new DataOutputStream(s.getOutputStream())) {
@@ -104,9 +105,9 @@ public final class SunSpecTcpServer {
                 handleOneRequest(in, out, remoteAddress);
             }
         } catch (EOFException e) {
-            LOG.info("[spike SunSpec] connexion fermee par le client: " + remoteAddress);
+            LOG.info("[SunSpec] connexion fermee par le client: " + remoteAddress);
         } catch (IOException e) {
-            LOG.log(Level.INFO, "[spike SunSpec] connexion fermee (erreur): " + remoteAddress + " -- " + e.getMessage());
+            LOG.log(Level.INFO, "[SunSpec] connexion fermee (erreur): " + remoteAddress + " -- " + e.getMessage());
         }
     }
 
@@ -116,7 +117,7 @@ public final class SunSpecTcpServer {
         in.readUnsignedShort(); // length -- derivable from what follows, not validated
         int unitId = in.readUnsignedByte();
         int functionCode = in.readUnsignedByte();
-        LOG.info("[spike SunSpec] requete de " + remoteAddress + ": unitId=" + unitId
+        LOG.info("[SunSpec] requete de " + remoteAddress + ": unitId=" + unitId
                 + " fonction=0x" + Integer.toHexString(functionCode));
 
         switch (functionCode) {
@@ -126,7 +127,7 @@ public final class SunSpecTcpServer {
             case FUNCTION_WRITE_MULTIPLE_REGISTERS ->
                     handleWriteMultipleRegisters(in, out, transactionId, unitId, remoteAddress);
             default -> {
-                LOG.warning("[spike SunSpec] fonction Modbus non supportee: 0x" + Integer.toHexString(functionCode));
+                LOG.warning("[SunSpec] fonction Modbus non supportee: 0x" + Integer.toHexString(functionCode));
                 sendException(out, transactionId, unitId, functionCode, EXCEPTION_ILLEGAL_FUNCTION);
             }
         }
@@ -137,10 +138,10 @@ public final class SunSpecTcpServer {
         int address = in.readUnsignedShort();
         int count = in.readUnsignedShort();
         int offset = address - SunSpecRegisterMap.SUNSPEC_BASE;
-        LOG.info("[spike SunSpec] lecture FC3: adresse=" + address + " (offset=" + offset + ") nb=" + count);
+        LOG.info("[SunSpec] lecture FC3: adresse=" + address + " (offset=" + offset + ") nb=" + count);
 
         if (!registerMap.isValidRange(offset, count)) {
-            LOG.warning("[spike SunSpec] lecture FC3 hors plage: adresse=" + address + " nb=" + count);
+            LOG.warning("[SunSpec] lecture FC3 hors plage: adresse=" + address + " nb=" + count);
             sendException(out, transactionId, unitId, FUNCTION_READ_HOLDING_REGISTERS, EXCEPTION_ILLEGAL_DATA_ADDRESS);
             return;
         }
@@ -164,10 +165,10 @@ public final class SunSpecTcpServer {
         int address = in.readUnsignedShort();
         int value = in.readUnsignedShort();
         int offset = address - SunSpecRegisterMap.SUNSPEC_BASE;
-        LOG.info("[spike SunSpec] ecriture FC6: adresse=" + address + " (offset=" + offset + ") valeur=" + value);
+        LOG.info("[SunSpec] ecriture FC6: adresse=" + address + " (offset=" + offset + ") valeur=" + value);
 
         if (!registerMap.isValidRange(offset, 1)) {
-            LOG.warning("[spike SunSpec] ecriture FC6 hors plage: adresse=" + address);
+            LOG.warning("[SunSpec] ecriture FC6 hors plage: adresse=" + address);
             sendException(out, transactionId, unitId, FUNCTION_WRITE_SINGLE_REGISTER, EXCEPTION_ILLEGAL_DATA_ADDRESS);
             return;
         }
@@ -196,11 +197,11 @@ public final class SunSpecTcpServer {
         }
         // byteCount is redundant with count for a well-formed request -- not independently validated.
         int offset = address - SunSpecRegisterMap.SUNSPEC_BASE;
-        LOG.info("[spike SunSpec] ecriture FC16: adresse=" + address + " (offset=" + offset + ") nb=" + count
+        LOG.info("[SunSpec] ecriture FC16: adresse=" + address + " (offset=" + offset + ") nb=" + count
                 + " valeurs=" + java.util.Arrays.toString(values));
 
         if (!registerMap.isValidRange(offset, count) || byteCount != count * 2) {
-            LOG.warning("[spike SunSpec] ecriture FC16 hors plage: adresse=" + address + " nb=" + count);
+            LOG.warning("[SunSpec] ecriture FC16 hors plage: adresse=" + address + " nb=" + count);
             sendException(
                     out, transactionId, unitId, FUNCTION_WRITE_MULTIPLE_REGISTERS, EXCEPTION_ILLEGAL_DATA_ADDRESS);
             return;

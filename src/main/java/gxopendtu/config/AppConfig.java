@@ -97,17 +97,17 @@ public record AppConfig(
     public record StatsConfig(double intervalS, int retentionDays, int highResRetentionDays) {}
 
     /**
-     * Detection-spike-only, disabled by default: exposes a SunSpec-compliant
-     * Modbus TCP server (models 1/101/120/123) alongside the existing
-     * control loop, backed by real OpenDTU production data on the read side.
-     * Writes (Venus OS's WMaxLimPct/Conn/WMaxLim_Ena) are stored and shown on
-     * /internal always; whether they're additionally forwarded to real
-     * OpenDTU commands depends on {@code forwardToOpendtu} (see its own
-     * javadoc) -- with it left at the default {@code false}, this stays
-     * purely additive with no effect whatsoever on the existing control loop.
+     * SunSpec Modbus TCP proxy for Venus OS's zero-feed-in/dynamic ESS PV
+     * inverter integration -- exposes a SunSpec-compliant server (models
+     * 1/101/120/123) alongside the existing control loop, backed by real
+     * OpenDTU production data on the read side. Writes (Venus OS's
+     * WMaxLimPct/Conn/WMaxLim_Ena) are always stored and shown on /internal;
+     * whether they're additionally forwarded to real OpenDTU commands
+     * depends on {@code forwardToOpendtu} (see its own javadoc) -- with it
+     * left at the default {@code false}, only the read side and observation
+     * run, with no effect on the existing control loop's own commands.
      */
     public record SunSpecProxyConfig(
-            boolean enabled,
             int tcpPort,
             double pollIntervalS,
             String manufacturer,
