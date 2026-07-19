@@ -44,6 +44,14 @@
     "retention_days": 730,
     "high_res_retention_days": 30
   },
+  "sunspec_proxy": {
+    "enabled": false,
+    "tcp_port": 1502,
+    "poll_interval_s": 2,
+    "manufacturer": "Fronius",
+    "model": "gx-opendtu-java",
+    "serial_number": "GXOPENDTU-SPIKE-001"
+  },
   "inverters": [
     { "serial": "114181801234", "nominal_power_w": 600 },
     { "serial": "114181805678", "nominal_power_w": 380, "controllable": false }

@@ -11,6 +11,7 @@ import gxopendtu.config.AppConfig.LoggingConfig;
 import gxopendtu.config.AppConfig.ModbusGridConfig;
 import gxopendtu.config.AppConfig.OpenDTUConfig;
 import gxopendtu.config.AppConfig.StatsConfig;
+import gxopendtu.config.AppConfig.SunSpecProxyConfig;
 import gxopendtu.config.AppConfig.WebConfig;
 
 import java.io.IOException;
@@ -83,6 +84,20 @@ public final class ConfigLoader {
         public static final double STATS_INTERVAL_S = 300.0;
         public static final int STATS_RETENTION_DAYS = 730;
         public static final int STATS_HIGH_RES_RETENTION_DAYS = 30;
+
+        public static final boolean SUNSPEC_PROXY_ENABLED = false;
+        // 1502, not the standard 502: binding <1024 needs root/CAP_NET_BIND_SERVICE
+        // on Linux. Override to 502 if Venus OS's Modbus scan won't take a custom
+        // port (untested as of this spike) and the process is run with that privilege.
+        public static final int SUNSPEC_PROXY_TCP_PORT = 1502;
+        public static final double SUNSPEC_PROXY_POLL_INTERVAL_S = 2.0;
+        // "Fronius" (2026-07-19): the reference bridge this spike is modeled on
+        // (github.com/Geoffn-Hub/esphome-sunspec-proxy) found this manufacturer
+        // string gives the best Victron compatibility -- borrowed as-is, not
+        // independently verified against this project's own Venus OS yet.
+        public static final String SUNSPEC_PROXY_MANUFACTURER = "Fronius";
+        public static final String SUNSPEC_PROXY_MODEL = "gx-opendtu-java";
+        public static final String SUNSPEC_PROXY_SERIAL_NUMBER = "GXOPENDTU-SPIKE-001";
     }
 
     public static AppConfig loadConfig(Path path) {
@@ -124,6 +139,7 @@ public final class ConfigLoader {
         JsonNode webRaw = raw.path("web");
         JsonNode loggingRaw = raw.path("logging");
         JsonNode statsRaw = raw.path("stats");
+        JsonNode sunspecProxyRaw = raw.path("sunspec_proxy");
 
         JsonNode modbusRaw = gridRaw.path("modbus");
         if (modbusRaw.path("host").isMissingNode()) {
@@ -185,6 +201,13 @@ public final class ConfigLoader {
                         statsRaw.path("interval_s").asDouble(Defaults.STATS_INTERVAL_S),
                         statsRetentionDays,
                         statsHighResRetentionDays),
+                new SunSpecProxyConfig(
+                        sunspecProxyRaw.path("enabled").asBoolean(Defaults.SUNSPEC_PROXY_ENABLED),
+                        sunspecProxyRaw.path("tcp_port").asInt(Defaults.SUNSPEC_PROXY_TCP_PORT),
+                        sunspecProxyRaw.path("poll_interval_s").asDouble(Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S),
+                        sunspecProxyRaw.path("manufacturer").asText(Defaults.SUNSPEC_PROXY_MANUFACTURER),
+                        sunspecProxyRaw.path("model").asText(Defaults.SUNSPEC_PROXY_MODEL),
+                        sunspecProxyRaw.path("serial_number").asText(Defaults.SUNSPEC_PROXY_SERIAL_NUMBER)),
                 inverters);
     }
 

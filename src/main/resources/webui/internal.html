@@ -115,6 +115,23 @@ allocation, hysteresis, overrides) qui n'apparaissent nulle part ailleurs. Rafra
   </table>
 </div>
 
+<div class="section" id="sunspec-section" style="display:none;">
+  <h2>Proxy SunSpec (spike, desactive par defaut)</h2>
+  <p class="hint">Cote lecture : puissance reelle agregee des onduleurs (modele 101). Cote ecriture :
+  ce que Victron ecrit (WMaxLimPct/Conn/WMaxLim_Ena) est juste affiche ici -- rien n'est
+  transmis a OpenDTU ni aux onduleurs reels.</p>
+  <table class="kv">
+    <tr><th>Puissance agregee rapportee (W)</th><td class="num" id="v-ss-power">--</td></tr>
+    <tr><th>Derniere lecture OpenDTU (il y a)</th><td class="num" id="v-ss-power-age">--</td></tr>
+    <tr><th>Connexions TCP acceptees</th><td class="num" id="v-ss-conn-count">--</td></tr>
+    <tr><th>Dernier WMaxLimPct recu de Victron</th><td class="num" id="v-ss-wmaxlimpct">--</td></tr>
+    <tr><th>WMaxLim_Ena recu</th><td class="num" id="v-ss-wmaxlim-ena">--</td></tr>
+    <tr><th>Conn recu</th><td class="num" id="v-ss-conn">--</td></tr>
+    <tr><th>Derniere ecriture recue</th><td class="num" id="v-ss-write-age">--</td></tr>
+    <tr><th>Adresse de l'ecrivain</th><td class="num" id="v-ss-write-addr">--</td></tr>
+  </table>
+</div>
+
 <script>
 let history = [];
 // Mirrors control.CapacityEstimator.STALE_DATA_AGE_S.
@@ -205,6 +222,20 @@ function render(payload) {
 
   document.getElementById('v-grid-failures').textContent = latest.consecutive_grid_failures != null ? latest.consecutive_grid_failures : '--';
   document.getElementById('v-released').innerHTML = boolCell(latest.released_for_charging);
+
+  const ss = payload.sunspec_proxy;
+  document.getElementById('sunspec-section').style.display = ss ? '' : 'none';
+  if (ss) {
+    const now = Date.now() / 1000;
+    document.getElementById('v-ss-power').textContent = fmt(ss.live_power_w, 0) + ' W';
+    document.getElementById('v-ss-power-age').textContent = ss.live_power_updated_at ? fmt(now - ss.live_power_updated_at, 0) + ' s' : '--';
+    document.getElementById('v-ss-conn-count').textContent = ss.tcp_connection_count != null ? ss.tcp_connection_count : '--';
+    document.getElementById('v-ss-wmaxlimpct').textContent = ss.last_write_wmaxlimpct != null ? fmt(ss.last_write_wmaxlimpct, 1) + ' %' : 'aucune ecriture recue';
+    document.getElementById('v-ss-wmaxlim-ena').innerHTML = boolCell(ss.last_write_wmaxlim_enabled);
+    document.getElementById('v-ss-conn').innerHTML = boolCell(ss.last_write_conn);
+    document.getElementById('v-ss-write-age').textContent = ss.last_write_at ? fmt(now - ss.last_write_at, 0) + ' s' : '--';
+    document.getElementById('v-ss-write-addr').textContent = ss.last_write_remote_address || '--';
+  }
 
   document.getElementById('conn-status').textContent = 'Connecte (' + new Date().toLocaleTimeString() + ')';
   document.getElementById('conn-status').classList.remove('stale');

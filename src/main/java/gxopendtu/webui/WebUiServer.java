@@ -8,6 +8,7 @@ import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.stats.StatsStore;
+import gxopendtu.sunspec.SunSpecProxyState;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -43,7 +44,8 @@ public final class WebUiServer {
             InverterEnergyHistory inverterEnergyHistory,
             ManualOverride manualOverride,
             InjectionModeOverride injectionMode,
-            StatsStore statsStore) {
+            StatsStore statsStore,
+            SunSpecProxyState sunSpecProxyState) {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
             server.setExecutor(Executors.newCachedThreadPool(r -> {
@@ -63,7 +65,8 @@ public final class WebUiServer {
                     "/status.json",
                     new StatusJsonHandler(
                             liveState, energyHistory, inverterEnergyHistory, manualOverride, injectionMode));
-            server.createContext("/internal-status.json", new InternalStatusJsonHandler(internalStatus));
+            server.createContext(
+                    "/internal-status.json", new InternalStatusJsonHandler(internalStatus, sunSpecProxyState));
             server.createContext("/history.json", new HistoryJsonHandler(statsStore));
             server.createContext("/hourly-energy.json", new HourlyEnergyJsonHandler(statsStore));
             server.createContext("/fetch-inverters", new FetchInvertersHandler());

@@ -18,6 +18,7 @@ public record AppConfig(
         WebConfig web,
         LoggingConfig logging,
         StatsConfig stats,
+        SunSpecProxyConfig sunspecProxy,
         List<InverterConfig> inverters) {
 
     public double totalNominalPowerW() {
@@ -94,4 +95,21 @@ public record AppConfig(
      * resolution, and must be &gt;= highResRetentionDays.
      */
     public record StatsConfig(double intervalS, int retentionDays, int highResRetentionDays) {}
+
+    /**
+     * Detection-spike-only, disabled by default: exposes a SunSpec-compliant
+     * Modbus TCP server (models 1/101/120/123) alongside the existing
+     * control loop, backed by real OpenDTU production data on the read side.
+     * Writes (Venus OS's WMaxLimPct/Conn/WMaxLim_Ena) are stored and shown on
+     * /internal but never forwarded to OpenDTU -- see the gxopendtu.sunspec
+     * package javadoc. Purely additive: has no effect whatsoever on the
+     * existing control loop even when enabled.
+     */
+    public record SunSpecProxyConfig(
+            boolean enabled,
+            int tcpPort,
+            double pollIntervalS,
+            String manufacturer,
+            String model,
+            String serialNumber) {}
 }

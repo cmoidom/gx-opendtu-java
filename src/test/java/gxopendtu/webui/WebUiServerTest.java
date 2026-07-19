@@ -55,7 +55,8 @@ class WebUiServerTest {
                 new InverterEnergyHistory(),
                 new ManualOverride(),
                 new InjectionModeOverride(),
-                statsStore);
+                statsStore,
+                null);
         http = HttpClient.newHttpClient();
         baseUrl = "http://127.0.0.1:" + server.port();
     }

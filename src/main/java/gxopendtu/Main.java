@@ -3,6 +3,7 @@ package gxopendtu;
 import gxopendtu.config.AppConfig;
 import gxopendtu.config.ConfigLoader;
 import gxopendtu.loop.ControlLoop;
+import gxopendtu.opendtu.OpenDTUClient;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.InternalStatus;
@@ -11,10 +12,16 @@ import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.state.StateStore;
 import gxopendtu.stats.StatsStore;
+import gxopendtu.sunspec.SunSpecPoller;
+import gxopendtu.sunspec.SunSpecProxyState;
+import gxopendtu.sunspec.SunSpecRegisterMap;
+import gxopendtu.sunspec.SunSpecTcpServer;
 import gxopendtu.webui.WebUiServer;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * Entry point: wires the grid meter, OpenDTU client and control loop
@@ -93,9 +100,34 @@ public final class Main {
             statsStore.close();
         }, "stats-shutdown-flush"));
 
+        // Detection spike (2026-07-19, disabled by default): a SunSpec Modbus
+        // TCP server running alongside the existing control loop, so Venus
+        // OS can be tested for whether it discovers this device at all --
+        // read side wired to real OpenDTU production, write side (Venus OS's
+        // WMaxLimPct/Conn) only observed on /internal, never forwarded. Zero
+        // effect on ControlLoop.run below either way -- see gxopendtu.sunspec.
+        SunSpecProxyState sunSpecProxyState = null;
+        if (config.sunspecProxy().enabled()) {
+            sunSpecProxyState = new SunSpecProxyState();
+            SunSpecRegisterMap registerMap = new SunSpecRegisterMap(
+                    config.sunspecProxy().manufacturer(),
+                    config.sunspecProxy().model(),
+                    config.sunspecProxy().serialNumber(),
+                    config.totalNominalPowerW());
+            OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
+                    config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+            List<String> allSerials =
+                    config.inverters().stream().map(AppConfig.InverterConfig::serial).collect(Collectors.toList());
+            new SunSpecPoller(
+                            sunSpecOpenDtuClient, allSerials, registerMap, sunSpecProxyState,
+                            config.sunspecProxy().pollIntervalS())
+                    .start();
+            new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
+        }
+
         WebUiServer.start(
                 configPath, config.web().port(), liveState, internalStatus, energyHistory, inverterEnergyHistory,
-                manualOverride, injectionMode, statsStore);
+                manualOverride, injectionMode, statsStore, sunSpecProxyState);
         LOG.info("tableau de bord disponible sur http://0.0.0.0:" + config.web().port() + "/ "
                 + "(configuration sur http://0.0.0.0:" + config.web().port() + "/config, "
                 + "etat interne sur http://0.0.0.0:" + config.web().port() + "/internal)");

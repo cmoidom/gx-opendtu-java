@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import gxopendtu.state.InternalStatus;
+import gxopendtu.sunspec.SunSpecProxyState;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -19,9 +20,11 @@ final class InternalStatusJsonHandler implements HttpHandler {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final InternalStatus internalStatus;
+    private final SunSpecProxyState sunSpecProxyState;
 
-    InternalStatusJsonHandler(InternalStatus internalStatus) {
+    InternalStatusJsonHandler(InternalStatus internalStatus, SunSpecProxyState sunSpecProxyState) {
         this.internalStatus = internalStatus;
+        this.sunSpecProxyState = sunSpecProxyState;
     }
 
     @Override
@@ -37,6 +40,7 @@ final class InternalStatusJsonHandler implements HttpHandler {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("latest", snapshot.latest());
             payload.put("history", snapshot.history());
+            payload.put("sunspec_proxy", sunSpecProxyState == null ? null : sunSpecProxyState.snapshot());
 
             byte[] body = MAPPER.writeValueAsString(payload).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
