@@ -4,6 +4,7 @@ import gxopendtu.config.AppConfig;
 import gxopendtu.config.ConfigLoader;
 import gxopendtu.loop.ControlLoop;
 import gxopendtu.opendtu.OpenDTUClient;
+import gxopendtu.opendtu.OpenDTUException;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InjectionModeOverride;
 import gxopendtu.state.InternalStatus;
@@ -121,6 +122,16 @@ public final class Main {
                         config.totalNominalPowerW());
                 OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
                         config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+                // Own try/catch, separate from the outer one: a failed fetch here
+                // (e.g. OpenDTU unreachable yet at boot) must not prevent the
+                // poller/TCP server below from starting -- Vr just stays at its
+                // "unknown" placeholder until a later restart succeeds.
+                try {
+                    registerMap.setFirmwareVersion(sunSpecOpenDtuClient.getFirmwareVersion());
+                } catch (OpenDTUException e) {
+                    LOG.warning("[spike SunSpec] lecture version OpenDTU echouee, Vr reste \"unknown\": "
+                            + e.getMessage());
+                }
                 List<String> allSerials = config.inverters().stream()
                         .map(AppConfig.InverterConfig::serial)
                         .collect(Collectors.toList());

@@ -25,6 +25,9 @@ public interface OpenDTUApi {
     /** {serial: measured AC output current, in A}. */
     Map<String, Double> getAcCurrentA(Collection<String> serials);
 
+    /** OpenDTU's own firmware release version (e.g. "v25.5.10"), not tied to any specific inverter. */
+    String getFirmwareVersion();
+
     /**
      * {serial: seconds since OpenDTU's own last successful RF read of that
      * inverter} -- OpenDTU polls inverters one at a time over a single RF

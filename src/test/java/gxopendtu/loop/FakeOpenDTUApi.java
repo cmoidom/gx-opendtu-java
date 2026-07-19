@@ -20,6 +20,7 @@ final class FakeOpenDTUApi implements OpenDTUApi {
     private Map<String, Double> yieldTotalWh = Map.of();
     private Map<String, Double> acVoltageV = Map.of();
     private Map<String, Double> acCurrentA = Map.of();
+    private String firmwareVersion = "unknown";
     private Map<String, Double> dataAgeS = Map.of();
     final List<Map.Entry<String, Double>> absoluteCalls = new ArrayList<>();
     final List<Map.Entry<String, Double>> relativeCalls = new ArrayList<>();
@@ -54,6 +55,11 @@ final class FakeOpenDTUApi implements OpenDTUApi {
         return this;
     }
 
+    FakeOpenDTUApi withFirmwareVersion(String firmwareVersion) {
+        this.firmwareVersion = firmwareVersion;
+        return this;
+    }
+
     FakeOpenDTUApi withDataAgeS(Map<String, Double> dataAgeS) {
         this.dataAgeS = dataAgeS;
         return this;
@@ -85,6 +91,11 @@ final class FakeOpenDTUApi implements OpenDTUApi {
     @Override
     public Map<String, Double> getAcCurrentA(Collection<String> serials) {
         return new HashMap<>(acCurrentA);
+    }
+
+    @Override
+    public String getFirmwareVersion() {
+        return firmwareVersion;
     }
 
     @Override

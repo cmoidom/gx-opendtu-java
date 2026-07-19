@@ -51,6 +51,9 @@ public final class SunSpecRegisterMap {
     private static final int OFF_M123 = 150;
     private static final int OFF_END = 176;
 
+    // Model 1 sub-offset actually written dynamically (real OpenDTU firmware version, once known).
+    private static final int M1_VR = OFF_M1 + 42;
+
     // Model 101 sub-offsets actually written dynamically.
     private static final int M101_A = OFF_M101 + 2;
     private static final int M101_APHA = OFF_M101 + 3;
@@ -93,7 +96,7 @@ public final class SunSpecRegisterMap {
         packString(manufacturer, o + 2, 16);
         packString(model, o + 18, 16);
         packString("", o + 34, 8); // Opt
-        packString("spike", o + 42, 8); // Vr
+        packString("unknown", o + 42, 8); // Vr -- placeholder until the first real setFirmwareVersion() call
         packString(serialNumber, o + 50, 16);
         registers[o + 66] = 0; // DA -- RTU-only, unused over TCP
         registers[o + 67] = 0; // Pad
@@ -145,6 +148,22 @@ public final class SunSpecRegisterMap {
         try {
             registers[M101_W] = toUnsigned16((int) Math.round(aggregateW));
             registers[M101_ST] = aggregateW > 0 ? 4 : 2; // 4=MPPT (producing), 2=SLEEPING
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Real OpenDTU firmware version (its own release tag, e.g. "v25.5.10" --
+     * confirmed against a live install as the {@code git_hash} field of
+     * OpenDTU's own {@code /api/system/status}, a misleading name for what is
+     * actually the release version, not a raw commit hash). Called once at
+     * startup, not on every poll -- this doesn't change while the process runs.
+     */
+    public void setFirmwareVersion(String version) {
+        lock.lock();
+        try {
+            packString(version, M1_VR, 8);
         } finally {
             lock.unlock();
         }

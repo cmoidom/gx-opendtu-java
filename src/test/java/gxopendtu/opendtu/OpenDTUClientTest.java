@@ -147,6 +147,25 @@ class OpenDTUClientTest {
     }
 
     @Test
+    void getFirmwareVersionReadsSystemStatusGitHash() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{\"git_hash\": \"v25.5.10\"}"));
+
+        String version = new OpenDTUClient(baseUrl).getFirmwareVersion();
+
+        assertThat(requestedPaths).containsExactly("/api/system/status");
+        assertThat(version).isEqualTo("v25.5.10");
+    }
+
+    @Test
+    void getFirmwareVersionDefaultsToUnknownWhenFieldMissing() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{}"));
+
+        String version = new OpenDTUClient(baseUrl).getFirmwareVersion();
+
+        assertThat(version).isEqualTo("unknown");
+    }
+
+    @Test
     void getDataAgeSReadsBareNumberField() throws IOException {
         String baseUrl = startServer((exchange) -> respondJson(
                 exchange, "{\"inverters\": [{\"serial\": \"111\", \"data_age\": 16}]}"));

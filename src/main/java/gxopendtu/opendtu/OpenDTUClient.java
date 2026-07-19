@@ -237,6 +237,19 @@ public final class OpenDTUClient implements OpenDTUApi {
     }
 
     /**
+     * Returns OpenDTU's own firmware release version -- not tied to any
+     * specific inverter, unlike every other getter here, so it reads the
+     * bare {@code /api/system/status} endpoint instead. Confirmed against a
+     * live install: despite its name, {@code git_hash} holds the release tag
+     * (e.g. "v25.5.10") when built from a tagged release, not a raw commit hash.
+     */
+    @Override
+    public String getFirmwareVersion() {
+        JsonNode data = get("/api/system/status");
+        return data.path("git_hash").asText("unknown");
+    }
+
+    /**
      * Returns {serial: data_age} (seconds since OpenDTU's own last successful
      * RF read of that inverter) -- confirmed against a live install: it's a
      * bare number at the inverter's top level (not the {"v":...} wrapper the

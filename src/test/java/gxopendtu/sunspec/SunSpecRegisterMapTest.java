@@ -40,6 +40,32 @@ class SunSpecRegisterMapTest {
     }
 
     @Test
+    void defaultsToUnknownFirmwareVersionUntilSet() {
+        int[] vr = map.readRegisters(2 + 42, 8); // Model 1 offset 2 + Vr at +42
+        assertThat(unpackString(vr)).isEqualTo("unknown");
+    }
+
+    @Test
+    void setFirmwareVersionUpdatesVr() {
+        map.setFirmwareVersion("v25.5.10");
+        int[] vr = map.readRegisters(2 + 42, 8);
+        assertThat(unpackString(vr)).isEqualTo("v25.5.10");
+    }
+
+    private static String unpackString(int[] regs) {
+        StringBuilder sb = new StringBuilder();
+        for (int r : regs) {
+            char hi = (char) ((r >> 8) & 0xFF);
+            char lo = (char) (r & 0xFF);
+            if (hi == 0) break;
+            sb.append(hi);
+            if (lo == 0) break;
+            sb.append(lo);
+        }
+        return sb.toString();
+    }
+
+    @Test
     void nameplateReportsRealTotalNominalPower() {
         int[] m120 = map.readRegisters(122, 28);
         assertThat(m120[2]).isEqualTo(4); // DERTyp = PV
