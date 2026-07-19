@@ -375,6 +375,19 @@ final class ConfigPageHandler implements HttpHandler {
         logging.put("verbose_traces", form.containsKey("logging.verbose_traces"));
         raw.set("logging", logging);
 
+        ObjectNode sunspecProxy = MAPPER.createObjectNode();
+        sunspecProxy.put("enabled", form.containsKey("sunspec_proxy.enabled"));
+        sunspecProxy.put("tcp_port",
+                (int) Double.parseDouble(first(form, "sunspec_proxy.tcp_port", d(ConfigLoader.Defaults.SUNSPEC_PROXY_TCP_PORT))));
+        sunspecProxy.put("poll_interval_s",
+                Double.parseDouble(first(form, "sunspec_proxy.poll_interval_s", d(ConfigLoader.Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S))));
+        sunspecProxy.put("manufacturer",
+                first(form, "sunspec_proxy.manufacturer", ConfigLoader.Defaults.SUNSPEC_PROXY_MANUFACTURER).trim());
+        sunspecProxy.put("model", first(form, "sunspec_proxy.model", ConfigLoader.Defaults.SUNSPEC_PROXY_MODEL).trim());
+        sunspecProxy.put("serial_number",
+                first(form, "sunspec_proxy.serial_number", ConfigLoader.Defaults.SUNSPEC_PROXY_SERIAL_NUMBER).trim());
+        raw.set("sunspec_proxy", sunspecProxy);
+
         raw.set("inverters", inverters);
         return raw;
     }
@@ -435,6 +448,8 @@ final class ConfigPageHandler implements HttpHandler {
         String invertersHtml = inverterRowsHtml(dig(raw, "inverters"));
         boolean batteryEnabled = dig(raw, "battery.enabled").asBoolean(ConfigLoader.Defaults.BATTERY_ENABLED);
         boolean verboseTraces = dig(raw, "logging.verbose_traces").asBoolean(ConfigLoader.Defaults.LOGGING_VERBOSE_TRACES);
+        boolean sunspecProxyEnabled =
+                dig(raw, "sunspec_proxy.enabled").asBoolean(ConfigLoader.Defaults.SUNSPEC_PROXY_ENABLED);
 
         return "<!doctype html>\n"
                 + "<html lang=\"fr\">\n"
@@ -707,6 +722,31 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <p class=\"hint\">De " + ConfigLoader.Defaults.CHART_HEIGHT_PX_MIN + " (defaut) a "
                 + ConfigLoader.Defaults.CHART_HEIGHT_PX_MAX + " -- meme hauteur pour tous les graphiques. "
                 + "Prend effet au prochain chargement de la page (pas besoin de redemarrer le service).</p>\n"
+                + "  </fieldset>\n"
+                + "\n"
+                + "  <fieldset>\n"
+                + "    <legend>Proxy SunSpec (spike, experimental)</legend>\n"
+                + "    <label><input type=\"checkbox\" name=\"sunspec_proxy.enabled\"" + (sunspecProxyEnabled ? " checked" : "") + "> Activer</label>\n"
+                + "    <p class=\"hint\">Expose un serveur Modbus TCP SunSpec (modeles 1/101/120/123) en plus de la "
+                + "regulation existante -- pour tester si Venus OS le detecte. Puissance reelle des onduleurs cote lecture ; "
+                + "ce que Victron ecrit (WMaxLimPct/Conn) est juste affiche sur /internal, jamais transmis a OpenDTU/aux "
+                + "onduleurs reels. Aucun effet sur la regulation zero-export ci-dessus, active ou non.</p>\n"
+                + "    <label>Port TCP</label>\n"
+                + "    <input type=\"number\" step=\"1\" name=\"sunspec_proxy.tcp_port\" value=\"" + numVal(raw, "sunspec_proxy.tcp_port", ConfigLoader.Defaults.SUNSPEC_PROXY_TCP_PORT) + "\"" + changedClass(raw, "sunspec_proxy.tcp_port", d(ConfigLoader.Defaults.SUNSPEC_PROXY_TCP_PORT)) + " placeholder=\"" + d(ConfigLoader.Defaults.SUNSPEC_PROXY_TCP_PORT) + "\" required>\n"
+                + "    <p class=\"hint\">Le port standard Modbus (502) demande les droits root sur Linux -- laisser "
+                + "1502 sauf si le scan Modbus de Venus OS n'accepte pas de port personnalise et que le service tourne "
+                + "avec ce privilege.</p>\n"
+                + "    <label>Intervalle de lecture OpenDTU (s)</label>\n"
+                + "    <input type=\"number\" step=\"any\" min=\"0.1\" name=\"sunspec_proxy.poll_interval_s\" value=\"" + numVal(raw, "sunspec_proxy.poll_interval_s", ConfigLoader.Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S) + "\"" + changedClass(raw, "sunspec_proxy.poll_interval_s", d(ConfigLoader.Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S)) + " placeholder=\"" + d(ConfigLoader.Defaults.SUNSPEC_PROXY_POLL_INTERVAL_S) + "\" required>\n"
+                + "    <label>Fabricant declare</label>\n"
+                + "    <input type=\"text\" name=\"sunspec_proxy.manufacturer\" value=\"" + val(raw, "sunspec_proxy.manufacturer", ConfigLoader.Defaults.SUNSPEC_PROXY_MANUFACTURER) + "\">\n"
+                + "    <p class=\"hint\">\"Fronius\" par defaut : le projet de reference sur lequel ce spike est base a "
+                + "trouve que cette valeur donne la meilleure compatibilite avec Victron -- pas encore verifie de maniere "
+                + "independante sur cette installation.</p>\n"
+                + "    <label>Modele declare</label>\n"
+                + "    <input type=\"text\" name=\"sunspec_proxy.model\" value=\"" + val(raw, "sunspec_proxy.model", ConfigLoader.Defaults.SUNSPEC_PROXY_MODEL) + "\">\n"
+                + "    <label>Numero de serie declare</label>\n"
+                + "    <input type=\"text\" name=\"sunspec_proxy.serial_number\" value=\"" + val(raw, "sunspec_proxy.serial_number", ConfigLoader.Defaults.SUNSPEC_PROXY_SERIAL_NUMBER) + "\">\n"
                 + "  </fieldset>\n"
                 + "\n"
                 + "  <fieldset>\n"
