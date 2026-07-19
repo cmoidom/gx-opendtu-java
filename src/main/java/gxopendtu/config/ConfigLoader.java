@@ -86,10 +86,11 @@ public final class ConfigLoader {
         public static final int STATS_HIGH_RES_RETENTION_DAYS = 30;
 
         public static final boolean SUNSPEC_PROXY_ENABLED = false;
-        // 1502, not the standard 502: binding <1024 needs root/CAP_NET_BIND_SERVICE
-        // on Linux. Override to 502 if Venus OS's Modbus scan won't take a custom
-        // port (untested as of this spike) and the process is run with that privilege.
-        public static final int SUNSPEC_PROXY_TCP_PORT = 1502;
+        // 502 (2026-07-19, was 1502): confirmed on a live Venus OS -- its Modbus
+        // scan only checks the standard port, a custom port (1502) went
+        // undetected. Binding <1024 needs root or CAP_NET_BIND_SERVICE on Linux
+        // -- see deploy/systemd/gx-opendtu-zero-export.service.
+        public static final int SUNSPEC_PROXY_TCP_PORT = 502;
         public static final double SUNSPEC_PROXY_POLL_INTERVAL_S = 2.0;
         // "Fronius" (2026-07-19): the reference bridge this spike is modeled on
         // (github.com/Geoffn-Hub/esphome-sunspec-proxy) found this manufacturer

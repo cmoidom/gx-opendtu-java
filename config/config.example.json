@@ -46,7 +46,7 @@
   },
   "sunspec_proxy": {
     "enabled": false,
-    "tcp_port": 1502,
+    "tcp_port": 502,
     "poll_interval_s": 2,
     "manufacturer": "Fronius",
     "model": "gx-opendtu-java",

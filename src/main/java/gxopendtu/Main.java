@@ -106,23 +106,34 @@ public final class Main {
         // read side wired to real OpenDTU production, write side (Venus OS's
         // WMaxLimPct/Conn) only observed on /internal, never forwarded. Zero
         // effect on ControlLoop.run below either way -- see gxopendtu.sunspec.
+        // Deliberately never allowed to crash the process: a bind failure
+        // (e.g. the default port 502 without CAP_NET_BIND_SERVICE, see
+        // deploy/systemd/gx-opendtu-zero-export.service) must not take down
+        // the real zero-export loop below, only disable this optional spike.
         SunSpecProxyState sunSpecProxyState = null;
         if (config.sunspecProxy().enabled()) {
-            sunSpecProxyState = new SunSpecProxyState();
-            SunSpecRegisterMap registerMap = new SunSpecRegisterMap(
-                    config.sunspecProxy().manufacturer(),
-                    config.sunspecProxy().model(),
-                    config.sunspecProxy().serialNumber(),
-                    config.totalNominalPowerW());
-            OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
-                    config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
-            List<String> allSerials =
-                    config.inverters().stream().map(AppConfig.InverterConfig::serial).collect(Collectors.toList());
-            new SunSpecPoller(
-                            sunSpecOpenDtuClient, allSerials, registerMap, sunSpecProxyState,
-                            config.sunspecProxy().pollIntervalS())
-                    .start();
-            new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
+            try {
+                sunSpecProxyState = new SunSpecProxyState();
+                SunSpecRegisterMap registerMap = new SunSpecRegisterMap(
+                        config.sunspecProxy().manufacturer(),
+                        config.sunspecProxy().model(),
+                        config.sunspecProxy().serialNumber(),
+                        config.totalNominalPowerW());
+                OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
+                        config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+                List<String> allSerials = config.inverters().stream()
+                        .map(AppConfig.InverterConfig::serial)
+                        .collect(Collectors.toList());
+                new SunSpecPoller(
+                                sunSpecOpenDtuClient, allSerials, registerMap, sunSpecProxyState,
+                                config.sunspecProxy().pollIntervalS())
+                        .start();
+                new SunSpecTcpServer(config.sunspecProxy().tcpPort(), registerMap, sunSpecProxyState).start();
+            } catch (RuntimeException e) {
+                LOG.severe("[spike SunSpec] demarrage echoue, spike desactive pour cette execution "
+                        + "(la regulation zero-export n'est pas affectee): " + e.getMessage());
+                sunSpecProxyState = null;
+            }
         }
 
         WebUiServer.start(
