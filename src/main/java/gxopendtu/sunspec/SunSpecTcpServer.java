@@ -117,8 +117,6 @@ public final class SunSpecTcpServer {
         in.readUnsignedShort(); // length -- derivable from what follows, not validated
         int unitId = in.readUnsignedByte();
         int functionCode = in.readUnsignedByte();
-        LOG.info("[SunSpec] requete de " + remoteAddress + ": unitId=" + unitId
-                + " fonction=0x" + Integer.toHexString(functionCode));
 
         switch (functionCode) {
             case FUNCTION_READ_HOLDING_REGISTERS -> handleReadHoldingRegisters(in, out, transactionId, unitId);
@@ -138,7 +136,6 @@ public final class SunSpecTcpServer {
         int address = in.readUnsignedShort();
         int count = in.readUnsignedShort();
         int offset = address - SunSpecRegisterMap.SUNSPEC_BASE;
-        LOG.info("[SunSpec] lecture FC3: adresse=" + address + " (offset=" + offset + ") nb=" + count);
 
         if (!registerMap.isValidRange(offset, count)) {
             LOG.warning("[SunSpec] lecture FC3 hors plage: adresse=" + address + " nb=" + count);
@@ -165,7 +162,6 @@ public final class SunSpecTcpServer {
         int address = in.readUnsignedShort();
         int value = in.readUnsignedShort();
         int offset = address - SunSpecRegisterMap.SUNSPEC_BASE;
-        LOG.info("[SunSpec] ecriture FC6: adresse=" + address + " (offset=" + offset + ") valeur=" + value);
 
         if (!registerMap.isValidRange(offset, 1)) {
             LOG.warning("[SunSpec] ecriture FC6 hors plage: adresse=" + address);
@@ -197,8 +193,6 @@ public final class SunSpecTcpServer {
         }
         // byteCount is redundant with count for a well-formed request -- not independently validated.
         int offset = address - SunSpecRegisterMap.SUNSPEC_BASE;
-        LOG.info("[SunSpec] ecriture FC16: adresse=" + address + " (offset=" + offset + ") nb=" + count
-                + " valeurs=" + java.util.Arrays.toString(values));
 
         if (!registerMap.isValidRange(offset, count) || byteCount != count * 2) {
             LOG.warning("[SunSpec] ecriture FC16 hors plage: adresse=" + address + " nb=" + count);
