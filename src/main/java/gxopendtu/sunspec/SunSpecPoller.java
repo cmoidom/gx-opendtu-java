@@ -73,5 +73,13 @@ public final class SunSpecPoller {
         } catch (OpenDTUException e) {
             LOG.log(Level.WARNING, "[spike SunSpec] lecture OpenDTU echouee (aucun effet sur la regulation reelle)", e);
         }
+        try {
+            double aggregateWh =
+                    client.getYieldTotalWh(serials).values().stream().mapToDouble(Double::doubleValue).sum();
+            registerMap.setLifetimeEnergyWh(aggregateWh);
+            state.recordLifetimeEnergyWh(aggregateWh);
+        } catch (OpenDTUException e) {
+            LOG.log(Level.WARNING, "[spike SunSpec] lecture YieldTotal OpenDTU echouee", e);
+        }
     }
 }

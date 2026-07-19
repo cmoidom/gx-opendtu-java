@@ -53,6 +53,7 @@ public final class SunSpecRegisterMap {
 
     // Model 101 sub-offsets actually written dynamically.
     private static final int M101_W = OFF_M101 + 14;
+    private static final int M101_WH = OFF_M101 + 24; // acc32, big-endian (hi register first)
     private static final int M101_ST = OFF_M101 + 38;
 
     // Model 123 sub-offsets Venus OS is expected to read/write -- the only
@@ -141,6 +142,25 @@ public final class SunSpecRegisterMap {
         try {
             registers[M101_W] = toUnsigned16((int) Math.round(aggregateW));
             registers[M101_ST] = aggregateW > 0 ? 4 : 2; // 4=MPPT (producing), 2=SLEEPING
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Real aggregate lifetime AC yield (sum of every configured inverter's own OpenDTU-reported YieldTotal,
+     * already in Wh) -- Model 101's WH accumulator, WH_SF fixed at 0 so the register holds whole Wh directly.
+     * Big-endian word order (hi register first) matches this project's other 32-bit Modbus values -- see
+     * {@code modbus.RegisterCodec#combineBigEndianUint32}.
+     */
+    public void setLifetimeEnergyWh(double wh) {
+        long rounded = Math.max(0, Math.round(wh));
+        int hi = (int) ((rounded >>> 16) & 0xFFFF);
+        int lo = (int) (rounded & 0xFFFF);
+        lock.lock();
+        try {
+            registers[M101_WH] = hi;
+            registers[M101_WH + 1] = lo;
         } finally {
             lock.unlock();
         }

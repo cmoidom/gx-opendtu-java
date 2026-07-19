@@ -177,6 +177,30 @@ public final class OpenDTUClient implements OpenDTUApi {
     }
 
     /**
+     * Returns {serial: lifetime cumulative AC yield in Wh} -- same endpoint
+     * as {@link #getYieldDayWh}, reading {@code INV.0.YieldTotal} instead.
+     * Confirmed against a live install: unlike YieldDay (unit "Wh"),
+     * YieldTotal's own {@code "u"} field is "kWh" -- OpenDTU reports it in
+     * kWh since a lifetime total quickly exceeds what fits comfortably in
+     * Wh, so the raw value is multiplied by 1000 here to keep this client's
+     * whole API consistently in Wh.
+     */
+    @Override
+    public Map<String, Double> getYieldTotalWh(Collection<String> serials) {
+        Map<String, Double> result = new HashMap<>();
+        for (String serial : serials) {
+            JsonNode data = get("/api/livedata/status?inv=" + URLEncoder.encode(serial, StandardCharsets.UTF_8));
+            for (JsonNode inv : data.path("inverters")) {
+                if (!serial.equals(inv.path("serial").asText())) {
+                    continue;
+                }
+                result.put(serial, JsonValues.extractValue(inv.path("INV").path("0").path("YieldTotal")) * 1000.0);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Returns {serial: data_age} (seconds since OpenDTU's own last successful
      * RF read of that inverter) -- confirmed against a live install: it's a
      * bare number at the inverter's top level (not the {"v":...} wrapper the

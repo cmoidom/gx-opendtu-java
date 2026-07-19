@@ -66,6 +66,22 @@ class SunSpecRegisterMapTest {
     }
 
     @Test
+    void setLifetimeEnergyWhSplitsIntoBigEndianAcc32() {
+        map.setLifetimeEnergyWh(1885189.0);
+        int[] m101 = map.readRegisters(70, 52);
+        long rebuilt = ((long) m101[24] << 16) | (m101[25] & 0xFFFFL);
+        assertThat(rebuilt).isEqualTo(1885189L);
+    }
+
+    @Test
+    void setLifetimeEnergyWhClampsNegativeToZero() {
+        map.setLifetimeEnergyWh(-5.0);
+        int[] m101 = map.readRegisters(70, 52);
+        assertThat(m101[24]).isEqualTo(0);
+        assertThat(m101[25]).isEqualTo(0);
+    }
+
+    @Test
     void writeRegistersToControlBlockIsReflectedOnReadBack() {
         // WMaxLimPct = 55.0% (tenths of percent, SF=-1) and WMaxLim_Ena = 1 (ENABLED).
         map.writeRegisters(SunSpecRegisterMap.M123_WMAXLIMPCT, new int[] {550});

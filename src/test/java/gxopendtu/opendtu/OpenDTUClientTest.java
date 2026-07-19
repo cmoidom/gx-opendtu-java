@@ -104,6 +104,28 @@ class OpenDTUClientTest {
     }
 
     @Test
+    void getYieldTotalWhConvertsKwhToWh() throws IOException {
+        // Confirmed against a live install: YieldTotal's own "u" field is "kWh", unlike YieldDay's "Wh".
+        String baseUrl = startServer((exchange) -> respondJson(
+                exchange,
+                "{\"inverters\": [{\"serial\": \"111\", \"INV\": {\"0\": {\"YieldTotal\": {\"v\": 1885.189, \"u\": \"kWh\"}}}}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getYieldTotalWh(List.of("111"));
+
+        assertThat(requestedPaths).containsExactly("/api/livedata/status?inv=111");
+        assertThat(result.get("111")).isCloseTo(1885189.0, org.assertj.core.data.Offset.offset(0.001));
+    }
+
+    @Test
+    void getYieldTotalWhDefaultsToZeroWhenInvMissing() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{\"inverters\": [{\"serial\": \"111\"}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getYieldTotalWh(List.of("111"));
+
+        assertThat(result).containsEntry("111", 0.0);
+    }
+
+    @Test
     void getDataAgeSReadsBareNumberField() throws IOException {
         String baseUrl = startServer((exchange) -> respondJson(
                 exchange, "{\"inverters\": [{\"serial\": \"111\", \"data_age\": 16}]}"));

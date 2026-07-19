@@ -16,6 +16,9 @@ public interface OpenDTUApi {
     /** {serial: today's cumulative AC yield, in Wh} -- resets to 0 at local midnight on the inverter itself. */
     Map<String, Double> getYieldDayWh(Collection<String> serials);
 
+    /** {serial: lifetime cumulative AC yield, in Wh} -- never resets, unlike {@link #getYieldDayWh}. */
+    Map<String, Double> getYieldTotalWh(Collection<String> serials);
+
     /**
      * {serial: seconds since OpenDTU's own last successful RF read of that
      * inverter} -- OpenDTU polls inverters one at a time over a single RF

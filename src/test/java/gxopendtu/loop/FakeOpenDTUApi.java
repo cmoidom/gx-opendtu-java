@@ -17,6 +17,7 @@ final class FakeOpenDTUApi implements OpenDTUApi {
     private final Map<String, LimitStatus> limitStatus;
     private final boolean livePowerError;
     private Map<String, Double> yieldDayWh = Map.of();
+    private Map<String, Double> yieldTotalWh = Map.of();
     private Map<String, Double> dataAgeS = Map.of();
     final List<Map.Entry<String, Double>> absoluteCalls = new ArrayList<>();
     final List<Map.Entry<String, Double>> relativeCalls = new ArrayList<>();
@@ -36,6 +37,11 @@ final class FakeOpenDTUApi implements OpenDTUApi {
         return this;
     }
 
+    FakeOpenDTUApi withYieldTotalWh(Map<String, Double> yieldTotalWh) {
+        this.yieldTotalWh = yieldTotalWh;
+        return this;
+    }
+
     FakeOpenDTUApi withDataAgeS(Map<String, Double> dataAgeS) {
         this.dataAgeS = dataAgeS;
         return this;
@@ -52,6 +58,11 @@ final class FakeOpenDTUApi implements OpenDTUApi {
     @Override
     public Map<String, Double> getYieldDayWh(Collection<String> serials) {
         return new HashMap<>(yieldDayWh);
+    }
+
+    @Override
+    public Map<String, Double> getYieldTotalWh(Collection<String> serials) {
+        return new HashMap<>(yieldTotalWh);
     }
 
     @Override

@@ -21,6 +21,7 @@ public final class SunSpecProxyState {
     private final ReentrantLock lock = new ReentrantLock();
     private double lastLivePowerW;
     private double lastLivePowerUpdatedAtEpochS;
+    private double lastLifetimeEnergyWh;
     private Double lastWriteWMaxLimPct;
     private Boolean lastWriteWMaxLimEnabled;
     private Boolean lastWriteConn;
@@ -33,6 +34,15 @@ public final class SunSpecProxyState {
         try {
             lastLivePowerW = aggregateW;
             lastLivePowerUpdatedAtEpochS = nowEpochS;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void recordLifetimeEnergyWh(double aggregateWh) {
+        lock.lock();
+        try {
+            lastLifetimeEnergyWh = aggregateWh;
         } finally {
             lock.unlock();
         }
@@ -68,6 +78,7 @@ public final class SunSpecProxyState {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("live_power_w", lastLivePowerW);
             m.put("live_power_updated_at", lastLivePowerUpdatedAtEpochS);
+            m.put("lifetime_energy_wh", lastLifetimeEnergyWh);
             m.put("last_write_wmaxlimpct", lastWriteWMaxLimPct);
             m.put("last_write_wmaxlim_enabled", lastWriteWMaxLimEnabled);
             m.put("last_write_conn", lastWriteConn);
