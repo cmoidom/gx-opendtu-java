@@ -6,6 +6,7 @@ import gxopendtu.opendtu.LimitStatus;
 import gxopendtu.opendtu.OpenDTUApi;
 import gxopendtu.opendtu.OpenDTUException;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -42,11 +43,13 @@ public final class SunSpecForwarder {
     private final double totalNominalPowerW;
     private final CapacityEstimator capacity;
     private final double minInverterPct;
+    private final double minChangeW;
     private final long decisionIntervalMs;
     private final long probeIntervalMs;
     private volatile boolean running;
     private int consecutiveFailures;
     private boolean released;
+    private final Map<String, Double> lastSentW = new HashMap<>();
 
     public SunSpecForwarder(
             OpenDTUApi client,
@@ -57,7 +60,8 @@ public final class SunSpecForwarder {
             double capacityProbeStepW,
             double minInverterPct,
             double decisionIntervalS,
-            double capacityProbeIntervalS) {
+            double capacityProbeIntervalS,
+            double minChangeW) {
         this.client = client;
         this.registerMap = registerMap;
         this.allSerials = allSerials;
@@ -67,6 +71,7 @@ public final class SunSpecForwarder {
         this.minInverterPct = minInverterPct;
         this.decisionIntervalMs = Math.round(decisionIntervalS * 1000);
         this.probeIntervalMs = Math.round(capacityProbeIntervalS * 1000);
+        this.minChangeW = minChangeW;
     }
 
     public void start() {
@@ -131,9 +136,22 @@ public final class SunSpecForwarder {
             Map<String, Double> allocation = WaterFillAllocator.waterFillAllocate(
                     targetW, controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
 
+            // Only resends an inverter whose allocation moved by more than
+            // min_change_w since the last real send -- otherwise every
+            // decision tick (control.decision_interval_s, independent of
+            // whether Victron's own WMaxLimPct actually changed meaningfully)
+            // would reissue a command, resetting OpenDTU's RF acknowledgement
+            // to Pending before the previous one ever had a chance to land
+            // (confirmed live: every inverter stuck at "Pending" indefinitely
+            // before this fix).
             allocation.forEach((serial, watts) -> {
+                Double previous = lastSentW.get(serial);
+                if (previous != null && Math.abs(watts - previous) < minChangeW) {
+                    return;
+                }
                 try {
                     client.setAbsoluteLimitW(serial, watts);
+                    lastSentW.put(serial, watts);
                 } catch (OpenDTUException e) {
                     LOG.severe("[spike SunSpec] envoi limite " + serial + " echoue: " + e.getMessage());
                 }

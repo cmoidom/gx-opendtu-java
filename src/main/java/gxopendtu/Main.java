@@ -161,7 +161,8 @@ public final class Main {
                                     config.capacityProbe().stepW(),
                                     config.control().minInverterPct(),
                                     config.control().decisionIntervalS(),
-                                    config.capacityProbe().intervalS())
+                                    config.capacityProbe().intervalS(),
+                                    config.control().minChangeW())
                             .start();
                 }
             } catch (RuntimeException e) {

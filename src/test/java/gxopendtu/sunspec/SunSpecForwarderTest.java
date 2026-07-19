@@ -15,7 +15,7 @@ class SunSpecForwarderTest {
     private static final Map<String, Double> NOMINAL = Map.of("a", 800.0, "b", 1000.0, "nc", 400.0);
 
     private SunSpecForwarder forwarder(FakeOpenDTUApi fake, SunSpecRegisterMap map) {
-        return new SunSpecForwarder(fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0);
+        return new SunSpecForwarder(fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0, 5.0);
     }
 
     private static SunSpecRegisterMap registerMap() {
@@ -76,6 +76,30 @@ class SunSpecForwarderTest {
         double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
         assertThat(total).isCloseTo(1050.0, org.assertj.core.data.Offset.offset(0.01));
         assertThat(fake.absoluteCalls).extracting(Map.Entry::getKey).containsExactlyInAnyOrder("a", "b");
+    }
+
+    @Test
+    void doesNotResendWhenAllocationBarelyChangesButDoesWhenItMovesEnough() {
+        SunSpecRegisterMap map = registerMap();
+        setWMaxLim(map, true, 50.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
+                .withLimitStatus(Map.of(
+                        "a", new LimitStatus(50.0, 800.0, "Ok"), "b", new LimitStatus(50.0, 1000.0, "Ok")));
+        SunSpecForwarder forwarder = forwarder(fake, map);
+
+        forwarder.decisionTick();
+        int firstSendCount = fake.absoluteCalls.size();
+        assertThat(firstSendCount).isEqualTo(2); // both "a" and "b" sent on the first tick
+
+        // WMaxLimPct unchanged -> identical allocation next tick -> no resend at all.
+        forwarder.decisionTick();
+        assertThat(fake.absoluteCalls).hasSize(firstSendCount);
+
+        // A real, meaningful change (50% -> 90%) must still go through.
+        setWMaxLim(map, true, 90.0);
+        forwarder.decisionTick();
+        assertThat(fake.absoluteCalls).hasSizeGreaterThan(firstSendCount);
     }
 
     @Test
