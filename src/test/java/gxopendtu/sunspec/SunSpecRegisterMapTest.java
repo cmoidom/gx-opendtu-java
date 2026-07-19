@@ -66,6 +66,15 @@ class SunSpecRegisterMapTest {
     }
 
     @Test
+    void setLivePowerWAlsoDerivesNonZeroCurrentFromRealPower() {
+        // 2300W at the fixed 230V placeholder (PhVphA) -> 10.0A, A_SF=-1 so raw=100.
+        map.setLivePowerW(2300.0);
+        int[] m101 = map.readRegisters(70, 52);
+        assertThat(m101[2]).isEqualTo(100); // A
+        assertThat(m101[3]).isEqualTo(100); // AphA
+    }
+
+    @Test
     void setLifetimeEnergyWhSplitsIntoBigEndianAcc32() {
         map.setLifetimeEnergyWh(1885189.0);
         int[] m101 = map.readRegisters(70, 52);

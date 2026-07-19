@@ -52,9 +52,14 @@ public final class SunSpecRegisterMap {
     private static final int OFF_END = 176;
 
     // Model 101 sub-offsets actually written dynamically.
+    private static final int M101_A = OFF_M101 + 2;
+    private static final int M101_APHA = OFF_M101 + 3;
     private static final int M101_W = OFF_M101 + 14;
     private static final int M101_WH = OFF_M101 + 24; // acc32, big-endian (hi register first)
     private static final int M101_ST = OFF_M101 + 38;
+
+    /** Matches PhVphA's fixed 230V placeholder -- derives A/AphA from real W so current isn't stuck at 0. */
+    private static final double ASSUMED_VOLTAGE_V = 230.0;
 
     // Model 123 sub-offsets Venus OS is expected to read/write -- the only
     // writable points this spike handles (see SunSpecTcpServer).
@@ -138,8 +143,13 @@ public final class SunSpecRegisterMap {
 
     /** Called periodically with the real aggregate live power across every configured inverter. */
     public void setLivePowerW(double aggregateW) {
+        // A_SF=-1 (0.1A resolution): P = V*I at near-unity PF, so I = P/V -- otherwise A/AphA
+        // stay at their zero default forever even while W correctly shows real production.
+        int currentRaw = toUnsigned16((int) Math.round(aggregateW / ASSUMED_VOLTAGE_V * 10));
         lock.lock();
         try {
+            registers[M101_A] = currentRaw;
+            registers[M101_APHA] = currentRaw;
             registers[M101_W] = toUnsigned16((int) Math.round(aggregateW));
             registers[M101_ST] = aggregateW > 0 ? 4 : 2; // 4=MPPT (producing), 2=SLEEPING
         } finally {
