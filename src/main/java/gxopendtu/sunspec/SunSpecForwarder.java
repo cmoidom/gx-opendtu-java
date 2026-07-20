@@ -1,6 +1,8 @@
 package gxopendtu.sunspec;
 
 import gxopendtu.allocator.WaterFillAllocator;
+import gxopendtu.battery.BatterySoc;
+import gxopendtu.battery.BatterySocUnavailableException;
 import gxopendtu.control.CapacityEstimator;
 import gxopendtu.opendtu.LimitStatus;
 import gxopendtu.opendtu.OpenDTUApi;
@@ -34,6 +36,7 @@ public final class SunSpecForwarder {
 
     private static final Logger LOG = Logger.getLogger(SunSpecForwarder.class.getName());
     private static final int FAILSAFE_THRESHOLD = 3;
+    private static final double BATTERY_FULL_THRESHOLD_PCT = 99.0;
 
     private final OpenDTUApi client;
     private final SunSpecRegisterMap registerMap;
@@ -43,6 +46,7 @@ public final class SunSpecForwarder {
     private final CapacityEstimator capacity;
     private final double minInverterPct;
     private final double minChangeW;
+    private final BatterySoc batteryReader;
     private final long decisionIntervalMs;
     private final long probeIntervalMs;
     private volatile boolean running;
@@ -60,7 +64,8 @@ public final class SunSpecForwarder {
             double minInverterPct,
             double decisionIntervalS,
             double capacityProbeIntervalS,
-            double minChangeW) {
+            double minChangeW,
+            BatterySoc batteryReader) {
         this.client = client;
         this.registerMap = registerMap;
         this.allSerials = allSerials;
@@ -71,6 +76,7 @@ public final class SunSpecForwarder {
         this.decisionIntervalMs = Math.round(decisionIntervalS * 1000);
         this.probeIntervalMs = Math.round(capacityProbeIntervalS * 1000);
         this.minChangeW = minChangeW;
+        this.batteryReader = batteryReader;
     }
 
     public void start() {
@@ -130,7 +136,7 @@ public final class SunSpecForwarder {
                     .filter(s -> !controllableSerials.contains(s))
                     .mapToDouble(s -> livePowerW.getOrDefault(s, 0.0))
                     .sum();
-            double wMaxLimPct = registerMap.wMaxLimPctPercent();
+            double wMaxLimPct = effectiveWMaxLimPctPercent();
             double targetW = Math.max(0.0, wMaxLimPct / 100.0 * totalNominalPowerW - nonControllableActualW);
             Map<String, Double> allocation = WaterFillAllocator.waterFillAllocate(
                     targetW, controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
@@ -174,6 +180,33 @@ public final class SunSpecForwarder {
             if (consecutiveFailures >= FAILSAFE_THRESHOLD) {
                 failsafe();
             }
+        }
+    }
+
+    /**
+     * Victron's own zero-feed-in WMaxLimPct curtails purely off its grid
+     * meter, with no knowledge of our battery's state -- confirmed live
+     * (2026-07-20 08:20) requesting as little as 30% while the battery was
+     * actively discharging at -1.5kW, i.e. curtailing PV at the exact moment
+     * more of it was needed. Below the full threshold there's still room to
+     * absorb any excess production, so Victron's cap is ignored (treated as
+     * 100%) and the water-fill/capacity-estimator ceiling is left to do the
+     * only limiting that still applies. Any BatterySoc read failure, or no
+     * battery configured at all, falls back to trusting Victron's cap as-is
+     * -- the safe default when battery headroom can't be confirmed.
+     */
+    private double effectiveWMaxLimPctPercent() {
+        double wMaxLimPct = registerMap.wMaxLimPctPercent();
+        if (batteryReader == null) {
+            return wMaxLimPct;
+        }
+        try {
+            double socPct = batteryReader.readSocPct();
+            return socPct < BATTERY_FULL_THRESHOLD_PCT ? 100.0 : wMaxLimPct;
+        } catch (BatterySocUnavailableException e) {
+            LOG.warning("[SunSpec] lecture SOC batterie echouee, consigne Victron respectee par defaut: "
+                    + e.getMessage());
+            return wMaxLimPct;
         }
     }
 

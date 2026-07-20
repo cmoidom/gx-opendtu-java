@@ -1,5 +1,7 @@
 package gxopendtu;
 
+import gxopendtu.battery.BatterySoc;
+import gxopendtu.battery.ModbusBatterySoc;
 import gxopendtu.config.AppConfig;
 import gxopendtu.config.ConfigLoader;
 import gxopendtu.loop.ControlLoop;
@@ -149,6 +151,12 @@ public final class Main {
                         .filter(AppConfig.InverterConfig::controllable)
                         .map(AppConfig.InverterConfig::serial)
                         .toList();
+                // Own instance, separate from ControlLoop's own battery reader --
+                // same reasoning as SunSpecPoller having its own OpenDTUClient:
+                // this module and ControlLoop must stay independently wired.
+                BatterySoc sunSpecBatteryReader = config.battery().enabled()
+                        ? new ModbusBatterySoc(config.grid().modbus().host(), config.grid().modbus().port())
+                        : null;
                 new SunSpecForwarder(
                                 sunSpecOpenDtuClient,
                                 registerMap,
@@ -159,7 +167,8 @@ public final class Main {
                                 config.control().minInverterPct(),
                                 config.control().decisionIntervalS(),
                                 config.capacityProbe().intervalS(),
-                                config.control().minChangeW())
+                                config.control().minChangeW(),
+                                sunSpecBatteryReader)
                         .start();
             }
         } catch (RuntimeException e) {

@@ -1,5 +1,7 @@
 package gxopendtu.sunspec;
 
+import gxopendtu.battery.BatterySoc;
+import gxopendtu.battery.BatterySocUnavailableException;
 import gxopendtu.opendtu.LimitStatus;
 import org.junit.jupiter.api.Test;
 
@@ -16,8 +18,62 @@ class SunSpecForwarderTest {
     private static final List<String> CONTROLLABLE = List.of("a", "b");
     private static final Map<String, Double> NOMINAL = Map.of("a", 800.0, "b", 1000.0, "nc", 400.0);
 
+    private static final class FixedSocBattery implements BatterySoc {
+        private final double socPct;
+
+        FixedSocBattery(double socPct) {
+            this.socPct = socPct;
+        }
+
+        @Override
+        public double readSocPct() {
+            return socPct;
+        }
+
+        @Override
+        public double readPowerW() {
+            return 0.0;
+        }
+
+        @Override
+        public double readCurrentA() {
+            return 0.0;
+        }
+
+        @Override
+        public double readVoltageV() {
+            return 0.0;
+        }
+    }
+
+    private static final class FailingSocBattery implements BatterySoc {
+        @Override
+        public double readSocPct() {
+            throw new BatterySocUnavailableException("simulated failure");
+        }
+
+        @Override
+        public double readPowerW() {
+            return 0.0;
+        }
+
+        @Override
+        public double readCurrentA() {
+            return 0.0;
+        }
+
+        @Override
+        public double readVoltageV() {
+            return 0.0;
+        }
+    }
+
     private SunSpecForwarder forwarder(FakeOpenDTUApi fake, SunSpecRegisterMap map) {
-        return new SunSpecForwarder(fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0, 5.0);
+        return forwarder(fake, map, null);
+    }
+
+    private SunSpecForwarder forwarder(FakeOpenDTUApi fake, SunSpecRegisterMap map, BatterySoc batteryReader) {
+        return new SunSpecForwarder(fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0, 5.0, batteryReader);
     }
 
     private static SunSpecRegisterMap registerMap() {
@@ -102,6 +158,64 @@ class SunSpecForwarderTest {
         setWMaxLim(map, true, 90.0);
         forwarder.decisionTick();
         assertThat(fake.absoluteCalls).hasSizeGreaterThan(firstSendCount);
+    }
+
+    @Test
+    void ignoresWMaxLimPctWhenBatteryIsBelowFullThreshold() {
+        SunSpecRegisterMap map = registerMap();
+        // 30% would be 660W raw target; ignored because the battery isn't full -> 100%
+        // (2150W after subtracting nc's actual) instead, capped at "a"+"b"'s combined
+        // nominal capacity (1800W) since that raw target exceeds what they can produce.
+        setWMaxLim(map, true, 30.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
+                .withLimitStatus(Map.of(
+                        "a", new LimitStatus(50.0, 800.0, "Ok"), "b", new LimitStatus(50.0, 1000.0, "Ok")));
+        SunSpecForwarder forwarder = forwarder(fake, map, new FixedSocBattery(66.0));
+
+        forwarder.decisionTick();
+
+        double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
+        assertThat(total).isCloseTo(1800.0, org.assertj.core.data.Offset.offset(0.01)); // a+b nominal ceiling
+    }
+
+    @Test
+    void respectsWMaxLimPctWhenBatteryIsAtOrAboveFullThreshold() {
+        SunSpecRegisterMap map = registerMap();
+        setWMaxLim(map, true, 30.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
+                .withLimitStatus(Map.of(
+                        "a", new LimitStatus(50.0, 800.0, "Ok"), "b", new LimitStatus(50.0, 1000.0, "Ok")));
+        SunSpecForwarder forwarder = forwarder(fake, map, new FixedSocBattery(99.0));
+
+        forwarder.decisionTick();
+
+        double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
+        assertThat(total).isCloseTo(610.0, org.assertj.core.data.Offset.offset(0.01)); // 30% of 2200 - 50
+    }
+
+    @Test
+    void respectsWMaxLimPctWhenBatterySocReadFails() {
+        SunSpecRegisterMap map = registerMap();
+        setWMaxLim(map, true, 30.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
+                .withLimitStatus(Map.of(
+                        "a", new LimitStatus(50.0, 800.0, "Ok"), "b", new LimitStatus(50.0, 1000.0, "Ok")));
+        SunSpecForwarder forwarder = forwarder(fake, map, new FailingSocBattery());
+
+        Logger logger = Logger.getLogger(SunSpecForwarder.class.getName());
+        Level previousLevel = logger.getLevel();
+        logger.setLevel(Level.OFF);
+        try {
+            forwarder.decisionTick();
+        } finally {
+            logger.setLevel(previousLevel);
+        }
+
+        double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
+        assertThat(total).isCloseTo(610.0, org.assertj.core.data.Offset.offset(0.01)); // 30% of 2200 - 50
     }
 
     @Test
