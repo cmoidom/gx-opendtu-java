@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * Write path opt-in via {@code sunspec_proxy.forward_to_opendtu}: translates Venus OS's
@@ -139,14 +140,27 @@ public final class SunSpecForwarder {
                     .filter(s -> !controllableSerials.contains(s))
                     .mapToDouble(s -> livePowerW.getOrDefault(s, 0.0))
                     .sum();
-            double wMaxLimPct = effectiveWMaxLimPctPercent();
-            double targetW = Math.max(0.0, wMaxLimPct / 100.0 * totalNominalPowerW - nonControllableActualW);
-            Map<String, Double> allocation = WaterFillAllocator.waterFillAllocate(
-                    targetW, controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
+            VictronCap cap = effectiveWMaxLimPctPercent();
+            double targetW = Math.max(0.0, cap.pct() / 100.0 * totalNominalPowerW - nonControllableActualW);
+            // Ignored means the battery has headroom -- nothing is actually
+            // restricting production, so every controllable inverter goes
+            // straight to its own nameplate power. Water-fill/the capacity
+            // estimator's ceiling exist to intelligently share a genuinely
+            // restricted target across inverters (e.g. Victron really did ask
+            // for only 30%); there is nothing to share out when nothing is
+            // restricted, and consulting a ceiling here would silently
+            // reintroduce a limit below 100% (e.g. from a previous cloud
+            // passage) that this whole bypass exists to avoid.
+            Map<String, Double> allocation = cap.ignored()
+                    ? controllableSerials.stream().collect(Collectors.toMap(
+                            s -> s, s -> capacity.nominalPowerW().getOrDefault(s, 0.0)))
+                    : WaterFillAllocator.waterFillAllocate(
+                            targetW, controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
 
             if (verboseTraces) {
                 LOG.info("[SunSpec] targetW=" + targetW
                         + " nonControllableActualW=" + nonControllableActualW
+                        + " ignored=" + cap.ignored()
                         + " ceilingsW=" + capacity.ceilingsW()
                         + " allocation=" + allocation);
             }
@@ -193,22 +207,27 @@ public final class SunSpecForwarder {
         }
     }
 
+    /** {@code pct} is 100 whenever {@code ignored} is true -- kept together so callers can't use one without the other. */
+    private record VictronCap(double pct, boolean ignored) {}
+
     /**
      * Victron's own zero-feed-in WMaxLimPct curtails purely off its grid
      * meter, with no knowledge of our battery's state -- confirmed live
      * (2026-07-20 08:20) requesting as little as 30% while the battery was
      * actively discharging at -1.5kW, i.e. curtailing PV at the exact moment
      * more of it was needed. Below the full threshold there's still room to
-     * absorb any excess production, so Victron's cap is ignored (treated as
-     * 100%) and the water-fill/capacity-estimator ceiling is left to do the
-     * only limiting that still applies. Any BatterySoc read failure, or no
-     * battery configured at all, falls back to trusting Victron's cap as-is
-     * -- the safe default when battery headroom can't be confirmed.
+     * absorb any excess production, so Victron's cap is ignored entirely --
+     * every controllable inverter goes straight to 100%, not just to
+     * whatever the capacity estimator currently believes it can reach (see
+     * the {@code ignored} branch in decisionTick). Any BatterySoc read
+     * failure, or no battery configured at all, falls back to trusting
+     * Victron's cap as-is -- the safe default when battery headroom can't be
+     * confirmed.
      */
-    private double effectiveWMaxLimPctPercent() {
+    private VictronCap effectiveWMaxLimPctPercent() {
         double wMaxLimPct = registerMap.wMaxLimPctPercent();
         if (batteryReader == null) {
-            return wMaxLimPct;
+            return new VictronCap(wMaxLimPct, false);
         }
         try {
             double socPct = batteryReader.readSocPct();
@@ -217,11 +236,11 @@ public final class SunSpecForwarder {
                 LOG.info("[SunSpec] SOC=" + socPct + "% WMaxLimPct(Victron)=" + wMaxLimPct + "% -> "
                         + (ignored ? "ignoree (100%)" : "respectee"));
             }
-            return ignored ? 100.0 : wMaxLimPct;
+            return ignored ? new VictronCap(100.0, true) : new VictronCap(wMaxLimPct, false);
         } catch (BatterySocUnavailableException e) {
             LOG.warning("[SunSpec] lecture SOC batterie echouee, consigne Victron respectee par defaut: "
                     + e.getMessage());
-            return wMaxLimPct;
+            return new VictronCap(wMaxLimPct, false);
         }
     }
 

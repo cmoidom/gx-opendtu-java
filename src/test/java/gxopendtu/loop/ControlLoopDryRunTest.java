@@ -170,7 +170,7 @@ class ControlLoopDryRunTest {
         FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of("a", 210.0, "b", 95.0), Map.of())
                 .withDataAgeS(Map.of("a", 12.0, "b", 90.0));
         List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
-                client, List.of("a", "b"), List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), Map.of("a", "Toit Sud"));
+                client, List.of("a", "b"), List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), Map.of("a", "Toit Sud"), false);
 
         assertThat(payload).hasSize(2);
         Map<String, Object> a = payload.get(0);
@@ -202,7 +202,7 @@ class ControlLoopDryRunTest {
         FakeOpenDTUApi client = new FakeOpenDTUApi(
                 Map.of("a", 210.0, "b", 95.0), Map.of("b", new LimitStatus(42, 400, "Ok")));
         List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
-                client, List.of("a", "b"), List.of("a"), Map.of("a", 600.0, "b", 400.0), Map.of());
+                client, List.of("a", "b"), List.of("a"), Map.of("a", 600.0, "b", 400.0), Map.of(), false);
 
         assertThat(payload.get(0).get("controllable")).isEqualTo(true);
         assertThat(payload.get(0).get("limit_relative_pct")).isEqualTo(100);
@@ -213,10 +213,29 @@ class ControlLoopDryRunTest {
     }
 
     @Test
+    void offStateInvertersPayloadInDryRunReadsRealLimitForControllableInverters() {
+        // dryRun=true (e.g. sunspec_proxy.forward_to_opendtu is the one really
+        // driving limits): releaseForCharging never actually ran, so a
+        // controllable inverter must report its real OpenDTU-reported limit,
+        // exactly like a non-controllable one -- not a fabricated 100%.
+        FakeOpenDTUApi client = new FakeOpenDTUApi(
+                Map.of("a", 210.0, "b", 95.0),
+                Map.of("a", new LimitStatus(31, 600, "Ok"), "b", new LimitStatus(42, 400, "Ok")));
+        List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
+                client, List.of("a", "b"), List.of("a"), Map.of("a", 600.0, "b", 400.0), Map.of(), true);
+
+        assertThat(payload.get(0).get("controllable")).isEqualTo(true);
+        assertThat(payload.get(0).get("limit_relative_pct")).isEqualTo(31.0);
+        assertThat(payload.get(0).get("acknowledged")).isEqualTo(true);
+        assertThat(payload.get(1).get("controllable")).isEqualTo(false);
+        assertThat(payload.get(1).get("limit_relative_pct")).isEqualTo(42.0);
+    }
+
+    @Test
     void offStateInvertersPayloadEmptyOnOpenDTUFailure() {
         FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of(), Map.of(), true);
         List<Map<String, Object>> payload = ControlLoop.offStateInvertersPayload(
-                client, List.of("a", "b"), List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), null);
+                client, List.of("a", "b"), List.of("a", "b"), Map.of("a", 600.0, "b", 400.0), null, false);
         assertThat(payload).isEmpty();
     }
 

@@ -317,7 +317,8 @@ public final class ControlLoop {
             List<String> serials,
             List<String> controllableSerials,
             Map<String, Double> nominalPowerW,
-            Map<String, String> nameBySerial) {
+            Map<String, String> nameBySerial,
+            boolean dryRun) {
         Map<String, String> names = nameBySerial != null ? nameBySerial : Map.of();
         Map<String, Double> livePowerW;
         try {
@@ -337,18 +338,28 @@ public final class ControlLoop {
         } catch (OpenDTUException e) {
             dataAgeS = Map.of(); // dashboard display only, not safety-critical
         }
+        // "controllable ? 100 : real value" is only accurate while THIS
+        // process's own releaseForCharging (just called before this) is what
+        // actually uncapped the inverters. In dryRun -- most commonly because
+        // sunspec_proxy.forward_to_opendtu means the SunSpec forwarder, not
+        // this loop, is the one really driving limits -- that write never
+        // happened, so a controllable inverter's real limit must be read from
+        // OpenDTU exactly like a non-controllable one is (2026-07-26: the
+        // fabricated 100% was masking the forwarder's own capacity-estimator-
+        // driven limit on the dashboard).
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
             boolean controllable = controllableSerials.contains(serial);
+            boolean assumeReleased = controllable && !dryRun;
             LimitStatus status = limitStatus.get(serial);
             result.add(inverterPayloadEntry(
                     serial,
                     names.get(serial),
                     null,
                     livePowerW.getOrDefault(serial, 0.0),
-                    controllable ? (Object) 100 : (status != null ? status.limitRelative() : null),
+                    assumeReleased ? (Object) 100 : (status != null ? status.limitRelative() : null),
                     nominalPowerW.getOrDefault(serial, 0.0),
-                    controllable ? null : (status != null ? status.acknowledged() : null),
+                    assumeReleased ? null : (status != null ? status.acknowledged() : null),
                     dataAgeS.get(serial),
                     controllableSerials.contains(serial)));
         }
@@ -635,7 +646,7 @@ public final class ControlLoop {
                             socPct,
                             "OFF",
                             null,
-                            offStateInvertersPayload(client, serials, controllableSerials, nominalPowerW, nameBySerial),
+                            offStateInvertersPayload(client, serials, controllableSerials, nominalPowerW, nameBySerial, dryRun),
                             batteryPowerW,
                             batteryVoltageV,
                             batteryCurrentA,

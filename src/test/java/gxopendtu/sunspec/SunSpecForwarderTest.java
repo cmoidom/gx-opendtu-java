@@ -19,9 +19,13 @@ class SunSpecForwarderTest {
     private static final Map<String, Double> NOMINAL = Map.of("a", 800.0, "b", 1000.0, "nc", 400.0);
 
     private static final class FixedSocBattery implements BatterySoc {
-        private final double socPct;
+        private double socPct;
 
         FixedSocBattery(double socPct) {
+            this.socPct = socPct;
+        }
+
+        void setSocPct(double socPct) {
             this.socPct = socPct;
         }
 
@@ -178,6 +182,50 @@ class SunSpecForwarderTest {
 
         double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
         assertThat(total).isCloseTo(1800.0, org.assertj.core.data.Offset.offset(0.01)); // a+b nominal ceiling
+    }
+
+    @Test
+    void ignoredBypassSendsFullNominalEvenWithADegradedCapacityCeiling() {
+        // A previously-observed shortfall (persisted across enough cycles)
+        // lowers "a"'s capacity ceiling while Victron's cap is still trusted
+        // (battery full). Once the battery drops below the full threshold,
+        // the bypass must send "a" its full nominal power directly -- not
+        // the stale, degraded ceiling -- since nothing genuinely restricts
+        // production anymore (2026-07-26 fix: the ceiling used to still gate
+        // the allocation even while the Victron cap itself was ignored).
+        SunSpecRegisterMap map = registerMap();
+        setWMaxLim(map, true, 100.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 100.0, "b", 1000.0, "nc", 0.0))
+                .withLimitStatus(Map.of(
+                        "a", new LimitStatus(100.0, 800.0, "Ok"), "b", new LimitStatus(100.0, 1000.0, "Ok")));
+        FixedSocBattery battery = new FixedSocBattery(99.0);
+        SunSpecForwarder forwarder = forwarder(fake, map, battery);
+
+        // 3 cycles of persistent, acknowledged underperformance on "a" (100W
+        // actual against an 800W ask) degrade its ceiling; a 4th tick is what
+        // actually sends that newly-degraded (lower) ceiling.
+        forwarder.decisionTick();
+        forwarder.decisionTick();
+        forwarder.decisionTick();
+        forwarder.decisionTick();
+
+        double lastSentToA = fake.absoluteCalls.stream()
+                .filter(e -> e.getKey().equals("a"))
+                .mapToDouble(Map.Entry::getValue)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        assertThat(lastSentToA).isLessThan(800.0); // ceiling did degrade, confirming the setup
+
+        battery.setSocPct(80.0); // battery drops below the full threshold -> bypass engages
+        forwarder.decisionTick();
+
+        double finalSentToA = fake.absoluteCalls.stream()
+                .filter(e -> e.getKey().equals("a"))
+                .mapToDouble(Map.Entry::getValue)
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        assertThat(finalSentToA).isEqualTo(800.0); // full nominal, not the degraded ceiling
     }
 
     @Test
