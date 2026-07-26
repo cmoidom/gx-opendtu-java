@@ -73,7 +73,8 @@ class SunSpecForwarderTest {
     }
 
     private SunSpecForwarder forwarder(FakeOpenDTUApi fake, SunSpecRegisterMap map, BatterySoc batteryReader) {
-        return new SunSpecForwarder(fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0, 5.0, batteryReader);
+        return new SunSpecForwarder(
+                fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0, 5.0, batteryReader, false);
     }
 
     private static SunSpecRegisterMap registerMap() {

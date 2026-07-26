@@ -168,7 +168,8 @@ public final class Main {
                                 config.control().decisionIntervalS(),
                                 config.capacityProbe().intervalS(),
                                 config.control().minChangeW(),
-                                sunSpecBatteryReader)
+                                sunSpecBatteryReader,
+                                config.logging().verboseTraces())
                         .start();
             }
         } catch (RuntimeException e) {

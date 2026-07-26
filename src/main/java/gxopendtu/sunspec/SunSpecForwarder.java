@@ -47,6 +47,7 @@ public final class SunSpecForwarder {
     private final double minInverterPct;
     private final double minChangeW;
     private final BatterySoc batteryReader;
+    private final boolean verboseTraces;
     private final long decisionIntervalMs;
     private final long probeIntervalMs;
     private volatile boolean running;
@@ -65,7 +66,8 @@ public final class SunSpecForwarder {
             double decisionIntervalS,
             double capacityProbeIntervalS,
             double minChangeW,
-            BatterySoc batteryReader) {
+            BatterySoc batteryReader,
+            boolean verboseTraces) {
         this.client = client;
         this.registerMap = registerMap;
         this.allSerials = allSerials;
@@ -77,6 +79,7 @@ public final class SunSpecForwarder {
         this.probeIntervalMs = Math.round(capacityProbeIntervalS * 1000);
         this.minChangeW = minChangeW;
         this.batteryReader = batteryReader;
+        this.verboseTraces = verboseTraces;
     }
 
     public void start() {
@@ -141,6 +144,13 @@ public final class SunSpecForwarder {
             Map<String, Double> allocation = WaterFillAllocator.waterFillAllocate(
                     targetW, controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
 
+            if (verboseTraces) {
+                LOG.info("[SunSpec] targetW=" + targetW
+                        + " nonControllableActualW=" + nonControllableActualW
+                        + " ceilingsW=" + capacity.ceilingsW()
+                        + " allocation=" + allocation);
+            }
+
             // Only resends an inverter whose allocation moved by more than
             // min_change_w since the last real send -- otherwise every
             // decision tick (control.decision_interval_s, independent of
@@ -202,7 +212,12 @@ public final class SunSpecForwarder {
         }
         try {
             double socPct = batteryReader.readSocPct();
-            return socPct < BATTERY_FULL_THRESHOLD_PCT ? 100.0 : wMaxLimPct;
+            boolean ignored = socPct < BATTERY_FULL_THRESHOLD_PCT;
+            if (verboseTraces) {
+                LOG.info("[SunSpec] SOC=" + socPct + "% WMaxLimPct(Victron)=" + wMaxLimPct + "% -> "
+                        + (ignored ? "ignoree (100%)" : "respectee"));
+            }
+            return ignored ? 100.0 : wMaxLimPct;
         } catch (BatterySocUnavailableException e) {
             LOG.warning("[SunSpec] lecture SOC batterie echouee, consigne Victron respectee par defaut: "
                     + e.getMessage());
