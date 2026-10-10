@@ -268,6 +268,39 @@ class SunSpecForwarderTest {
     }
 
     @Test
+    void resendsAllocationAfterFailsafeEvenWhenItIsUnchanged() {
+        SunSpecRegisterMap map = registerMap();
+        setWMaxLim(map, true, 30.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
+                .withLimitStatus(Map.of(
+                        "a", new LimitStatus(50.0, 800.0, "Ok"), "b", new LimitStatus(50.0, 1000.0, "Ok")));
+        // SOC bypass: constant nameplate allocation every tick, the exact live case.
+        SunSpecForwarder forwarder = forwarder(fake, map, new FixedSocBattery(37.0));
+
+        forwarder.decisionTick();
+        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 800.0), Map.entry("b", 1000.0));
+
+        Logger logger = Logger.getLogger(SunSpecForwarder.class.getName());
+        Level previousLevel = logger.getLevel();
+        logger.setLevel(Level.OFF);
+        try {
+            fake.failing(true);
+            forwarder.decisionTick();
+            forwarder.decisionTick();
+            forwarder.decisionTick();
+        } finally {
+            logger.setLevel(previousLevel);
+        }
+        assertThat(fake.relativeCalls).containsExactlyInAnyOrder(Map.entry("a", 0.0), Map.entry("b", 0.0));
+
+        fake.failing(false);
+        fake.absoluteCalls.clear();
+        forwarder.decisionTick();
+        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 800.0), Map.entry("b", 1000.0));
+    }
+
+    @Test
     void repeatedOpenDTUFailuresTriggerFailsafeCurtailment() {
         SunSpecRegisterMap map = registerMap();
         setWMaxLim(map, true, 100.0);

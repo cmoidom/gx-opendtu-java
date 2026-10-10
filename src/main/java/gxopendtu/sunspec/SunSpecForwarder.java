@@ -250,6 +250,7 @@ public final class SunSpecForwarder {
             return;
         }
         LOG.info("[SunSpec] WMaxLim_Ena=0/Conn=0: liberation des onduleurs pilotables a 100%");
+        lastSentW.clear(); // same reason as in failsafe(): the 100% below overwrites the last absolute limits
         for (String serial : controllableSerials) {
             try {
                 client.setRelativeLimitPct(serial, 100);
@@ -262,6 +263,13 @@ public final class SunSpecForwarder {
 
     private void failsafe() {
         LOG.warning("[SunSpec] fail-safe: mise a 0% de tous les onduleurs pilotables (pertes OpenDTU repetees)");
+        // The 0% below overwrites whatever lastSentW says each inverter is at --
+        // forgotten so the first successful tick after recovery resends every
+        // allocation. Without this, an allocation unchanged since before the
+        // failure (always the case in the SOC bypass, which sends a constant
+        // nameplate) was skipped as "already sent" and the inverters stayed
+        // stuck at 0% indefinitely (confirmed live 2026-10-09 13:23-15:42).
+        lastSentW.clear();
         for (String serial : controllableSerials) {
             try {
                 client.setRelativeLimitPct(serial, 0);
