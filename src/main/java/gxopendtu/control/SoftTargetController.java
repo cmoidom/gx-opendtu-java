@@ -61,7 +61,7 @@ public final class SoftTargetController {
 
     /**
      * Forgets the last total actually sent, for when something outside this
-     * controller (fail-safe, battery-charge release, manual override) has just
+     * controller (battery-charge release, manual override) has just
      * overwritten the inverters' real limits. The next computeTarget() then
      * always reports changed=true and starts from the current quantized target
      * instead of ramping from a value the inverters no longer hold -- otherwise

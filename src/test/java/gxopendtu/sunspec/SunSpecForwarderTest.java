@@ -268,7 +268,7 @@ class SunSpecForwarderTest {
     }
 
     @Test
-    void resendsAllocationAfterFailsafeEvenWhenItIsUnchanged() {
+    void resendsAllocationAfterOpenDTURecoveryEvenWhenItIsUnchanged() {
         SunSpecRegisterMap map = registerMap();
         setWMaxLim(map, true, 30.0);
         FakeOpenDTUApi fake = new FakeOpenDTUApi()
@@ -292,7 +292,7 @@ class SunSpecForwarderTest {
         } finally {
             logger.setLevel(previousLevel);
         }
-        assertThat(fake.relativeCalls).containsExactlyInAnyOrder(Map.entry("a", 0.0), Map.entry("b", 0.0));
+        assertThat(fake.relativeCalls).isEmpty();
 
         fake.failing(false);
         fake.absoluteCalls.clear();
@@ -301,7 +301,7 @@ class SunSpecForwarderTest {
     }
 
     @Test
-    void repeatedOpenDTUFailuresTriggerFailsafeCurtailment() {
+    void repeatedOpenDTUFailuresSendNothingSoCurrentLimitsAreKept() {
         SunSpecRegisterMap map = registerMap();
         setWMaxLim(map, true, 100.0);
         FakeOpenDTUApi fake = new FakeOpenDTUApi().failing(true);
@@ -313,12 +313,11 @@ class SunSpecForwarderTest {
         Level previousLevel = logger.getLevel();
         logger.setLevel(Level.OFF);
         try {
-            forwarder.decisionTick();
-            forwarder.decisionTick();
-            assertThat(fake.relativeCalls).isEmpty(); // not yet at the failure threshold
-
-            forwarder.decisionTick();
-            assertThat(fake.relativeCalls).containsExactlyInAnyOrder(Map.entry("a", 0.0), Map.entry("b", 0.0));
+            for (int i = 0; i < 6; i++) {
+                forwarder.decisionTick(); // well past the 3-failure threshold
+            }
+            assertThat(fake.relativeCalls).isEmpty();
+            assertThat(fake.absoluteCalls).isEmpty();
         } finally {
             logger.setLevel(previousLevel);
         }

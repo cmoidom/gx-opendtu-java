@@ -450,19 +450,21 @@ public final class ControlLoop {
         }
     }
 
-    static void applyFailsafe(OpenDTUApi client, List<String> serials, boolean dryRun) {
-        if (dryRun) {
-            LOG.warning("[DRY-RUN] fail-safe se declencherait: mise a 0% de tous les onduleurs (rien envoye)");
-            return;
-        }
-        LOG.warning("applying fail-safe: curtailing all inverters to 0%");
-        for (String serial : serials) {
-            try {
-                client.setRelativeLimitPct(serial, 0);
-            } catch (OpenDTUException e) {
-                LOG.severe(String.format("fail-safe curtail of %s failed: %s", serial, e.getMessage()));
-            }
-        }
+    /**
+     * Communication loss (grid meter or OpenDTU): deliberately sends nothing,
+     * so every inverter keeps the last limit it was given. User decision
+     * (2026-10-10), replacing the former "curtail everything to 0%" fail-safe
+     * inherited from the Python original: during a real OpenDTU outage the 0%
+     * could never be delivered anyway, and it only ever landed during the
+     * brief reconnects of a flapping link -- i.e. right as things recovered
+     * (confirmed live 2026-10-09, a ~4 min LAN outage). Limits are
+     * non-persistent, so they can't outlive the next inverter restart
+     * (sunset) either. Callers still reset their "last sent" bookkeeping so
+     * the first successful cycle after recovery resends every limit.
+     */
+    static void holdLimitsOnCommunicationLoss(String cause) {
+        LOG.warning("perte de communication (" + cause + "): aucune commande envoyee, "
+                + "les onduleurs gardent leur limite courante");
     }
 
     public static void run(
@@ -517,7 +519,7 @@ public final class ControlLoop {
         List<String> serials = config.inverters().stream().map(InverterConfig::serial).toList();
         // Never commanded, ever -- excluded from water-filling, CapacityEstimator
         // and every setAbsoluteLimitW/setRelativeLimitPct call site (decisionCycle,
-        // releaseForCharging, applyFailsafe, sendManualOverride). Still read
+        // releaseForCharging, sendManualOverride). Still read
         // (livePowerW/YieldDay) and shown on the dashboard like any other inverter.
         List<String> controllableSerials =
                 config.inverters().stream().filter(InverterConfig::controllable).map(InverterConfig::serial).toList();
@@ -553,7 +555,9 @@ public final class ControlLoop {
                 consecutiveGridFailures++;
                 LOG.severe(String.format("grid meter read failed (%d in a row): %s", consecutiveGridFailures, e.getMessage()));
                 if (consecutiveGridFailures >= FAILSAFE_AFTER_CONSECUTIVE_FAILURES) {
-                    applyFailsafe(client, controllableSerials, dryRun);
+                    if (consecutiveGridFailures == FAILSAFE_AFTER_CONSECUTIVE_FAILURES) {
+                        holdLimitsOnCommunicationLoss("compteur reseau");
+                    }
                     controller.forgetLastSent();
                     lastOverridePctSent = null;
                 }
@@ -708,7 +712,7 @@ public final class ControlLoop {
                                     nominalPowerW);
                         } catch (OpenDTUException e) {
                             LOG.severe("OpenDTU communication failed: " + e.getMessage());
-                            applyFailsafe(client, controllableSerials, dryRun);
+                            holdLimitsOnCommunicationLoss("OpenDTU");
                             controller.forgetLastSent();
                             lastOverridePctSent = null;
                         }

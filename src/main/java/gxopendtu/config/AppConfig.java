@@ -62,7 +62,7 @@ public record AppConfig(
      * balance accounting) but never commanded -- excluded from water-filling,
      * CapacityEstimator, and every code path that calls
      * setAbsoluteLimitW/setRelativeLimitPct (decisionCycle, releaseForCharging,
-     * applyFailsafe, sendManualOverride included).
+     * sendManualOverride included).
      */
     public record InverterConfig(String serial, double nominalPowerW, String name, boolean controllable) {}
 
@@ -76,7 +76,7 @@ public record AppConfig(
 
     /**
      * verboseTraces gates only the per-cycle state line, never errors/warnings
-     * or one-off actions (fail-safe, charge-priority release, restart request).
+     * or one-off actions (communication-loss hold, charge-priority release, restart request).
      */
     public record LoggingConfig(boolean verboseTraces) {}
 

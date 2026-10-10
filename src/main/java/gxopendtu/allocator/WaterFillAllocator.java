@@ -83,8 +83,8 @@ public final class WaterFillAllocator {
         // go below this. Applied even when the water-filled share is exactly 0.
         // Clamped to the inverter's own capacity ceiling, so an inverter with no
         // real capacity right now (capacityEstimates == 0) is never floored above
-        // 0 -- fail-safe and the battery-charge-priority release don't go
-        // through this method at all, so there's no other "genuine zero" to protect.
+        // 0 -- the battery-charge-priority release doesn't go through this
+        // method at all, so there's no other "genuine zero" to protect.
         if (minInverterPct > 0) {
             for (String s : allocation.keySet()) {
                 double cap = capacityEstimates.getOrDefault(s, INFINITE);

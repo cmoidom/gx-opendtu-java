@@ -57,8 +57,7 @@ code par un agent IA.
   Si l'API OpenDTU exige une authentification (Basic Auth, souvent
   utilisateur `admin`), renseigner `opendtu.username`/`opendtu.password` en
   config -- sans ça, `POST /api/limit/config` échoue en `401 Unauthorized`
-  et le contrôleur ne peut **plus limiter les onduleurs, y compris le repli
-  fail-safe**.
+  et le contrôleur ne peut **plus limiter les onduleurs**.
 
 ## Configuration
 
@@ -92,7 +91,7 @@ minime et permanente à SOC ~100% peut bloquer la consigne à un niveau trop
 haut en continu (incident réel corrigé le 2026-07-13, voir `AGENTS.md`).
 
 Par onduleur, `controllable` (défaut `true`) : mettre `false` pour un
-onduleur que ce logiciel ne doit **jamais** commander (fail-safe compris)
+onduleur que ce logiciel ne doit **jamais** commander
 -- toujours lu et affiché sur le tableau de bord, mais sa limite reste
 telle qu'elle est réglée ailleurs.
 ```json
@@ -273,7 +272,7 @@ détail de la frontière testable/non testable.
 
 > `mvn test` passe intégralement (0 échec) et le jar produit par `mvn package`
 > a été fumé-testé en `--dry-run` (serveur web + boucle de contrôle,
-> fail-safe déclenché face à un Modbus/OpenDTU factice injoignable). Reste
+> repli sur perte de communication face à un Modbus/OpenDTU factice injoignable). Reste
 > à valider contre du vrai matériel Victron/OpenDTU avant tout déploiement.
 
 ## Dépannage

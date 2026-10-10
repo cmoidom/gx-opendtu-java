@@ -13,7 +13,7 @@ Modbus TCP — there is no D-Bus/Venus OS code path at all.
 
 Read [`ARCHITECTURE.md`](ARCHITECTURE.md) before making non-trivial changes,
 and [`AGENTS.md`](AGENTS.md) for the invariants that must not be broken
-(sign conventions, fail-safe behavior, Modbus register layout, etc.) and the
+(sign conventions, communication-loss behavior, Modbus register layout, etc.) and the
 testable/non-testable boundary.
 
 ## Commands
@@ -54,7 +54,7 @@ Package root: `gxopendtu` (no `io.github...` prefix — deliberately flat).
   `StateStore` (the one bit of state persisted to disk, `state.json`).
 - `loop/ControlLoop` — orchestration: `run(...)` wires everything from
   config and loops forever (not unit-tested, same as Python's `main.run()`);
-  its package-private static helpers (`decisionCycle`, `applyFailsafe`,
+  its package-private static helpers (`decisionCycle`,
   `releaseForCharging`, etc.) are the actual unit-test surface, exercised via
   a hand-written `FakeOpenDTUApi` in tests — mirrors `tests/test_dry_run.py`
   from the Python original.

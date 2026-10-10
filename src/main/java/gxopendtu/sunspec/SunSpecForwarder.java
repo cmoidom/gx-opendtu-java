@@ -201,8 +201,8 @@ public final class SunSpecForwarder {
                     Level.WARNING,
                     "[SunSpec] lecture OpenDTU echouee (" + consecutiveFailures + " fois de suite)",
                     e);
-            if (consecutiveFailures >= FAILSAFE_THRESHOLD) {
-                failsafe();
+            if (consecutiveFailures == FAILSAFE_THRESHOLD) {
+                holdOnOpenDtuLoss();
             }
         }
     }
@@ -250,7 +250,7 @@ public final class SunSpecForwarder {
             return;
         }
         LOG.info("[SunSpec] WMaxLim_Ena=0/Conn=0: liberation des onduleurs pilotables a 100%");
-        lastSentW.clear(); // same reason as in failsafe(): the 100% below overwrites the last absolute limits
+        lastSentW.clear(); // the 100% below overwrites the last absolute limits, so they must be resent later
         for (String serial : controllableSerials) {
             try {
                 client.setRelativeLimitPct(serial, 100);
@@ -261,22 +261,19 @@ public final class SunSpecForwarder {
         released = true;
     }
 
-    private void failsafe() {
-        LOG.warning("[SunSpec] fail-safe: mise a 0% de tous les onduleurs pilotables (pertes OpenDTU repetees)");
-        // The 0% below overwrites whatever lastSentW says each inverter is at --
-        // forgotten so the first successful tick after recovery resends every
-        // allocation. Without this, an allocation unchanged since before the
-        // failure (always the case in the SOC bypass, which sends a constant
-        // nameplate) was skipped as "already sent" and the inverters stayed
-        // stuck at 0% indefinitely (confirmed live 2026-10-09 13:23-15:42).
+    /**
+     * Repeated OpenDTU loss: sends nothing, every inverter keeps its current
+     * limit -- see ControlLoop.holdLimitsOnCommunicationLoss for why this
+     * replaced the former curtail-to-0% fail-safe (user decision 2026-10-10).
+     * lastSentW is still forgotten: what actually landed during a flapping
+     * link is unknown, so the first successful tick after recovery resends
+     * every allocation (a stale lastSentW once left the inverters stuck at
+     * 0% for over 2h, confirmed live 2026-10-09 13:23-15:42).
+     */
+    private void holdOnOpenDtuLoss() {
+        LOG.warning("[SunSpec] pertes OpenDTU repetees: aucune commande envoyee, "
+                + "les onduleurs gardent leur limite courante");
         lastSentW.clear();
-        for (String serial : controllableSerials) {
-            try {
-                client.setRelativeLimitPct(serial, 0);
-            } catch (OpenDTUException e) {
-                LOG.severe("[SunSpec] fail-safe curtail de " + serial + " echoue: " + e.getMessage());
-            }
-        }
     }
 
     private static void sleep(long ms) {

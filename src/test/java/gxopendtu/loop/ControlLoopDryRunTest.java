@@ -138,20 +138,6 @@ class ControlLoopDryRunTest {
     }
 
     @Test
-    void dryRunFailsafeNeverCallsOpenDTU() {
-        FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of(), Map.of());
-        ControlLoop.applyFailsafe(client, List.of("a", "b"), true);
-        assertThat(client.relativeCalls).isEmpty();
-    }
-
-    @Test
-    void normalFailsafeCurtailsEveryInverterToZero() {
-        FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of(), Map.of());
-        ControlLoop.applyFailsafe(client, List.of("a", "b"), false);
-        assertThat(client.relativeCalls).containsExactly(Map.entry("a", 0.0), Map.entry("b", 0.0));
-    }
-
-    @Test
     void dryRunReleaseForChargingNeverCallsOpenDTU() {
         FakeOpenDTUApi client = new FakeOpenDTUApi(Map.of(), Map.of());
         ControlLoop.releaseForCharging(client, List.of("a", "b"), true);

@@ -79,7 +79,7 @@ class ControllerTest {
         assertThat(controller.computeTarget(30, 200, 1000).changed()).isTrue();
         assertThat(controller.computeTarget(30, 200, 1000).changed()).isFalse();
 
-        // e.g. a fail-safe just set every inverter to 0% behind the controller's back
+        // e.g. a battery-charge release just set every inverter to 100% behind the controller's back
         controller.forgetLastSent();
         ControlDecision afterReset = controller.computeTarget(30, 200, 1000);
         assertThat(afterReset.changed()).isTrue();

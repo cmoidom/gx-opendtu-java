@@ -127,14 +127,24 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   (dusk, pas un nuage passager) re-flambe au nominal à chaque `probeTick`
   indéfiniment, exactement le yoyo que l'hystérésis de quantification
   ailleurs dans ce fichier essaie d'éviter.
-- **Fail-safe** : toute perte de communication (Modbus ou OpenDTU) doit
-  ramener les onduleurs à une limite basse et sûre plutôt que de laisser le
-  service "en roue libre" (`ControlLoop.applyFailsafe`).
+- **Perte de communication (Modbus ou OpenDTU) : on garde la limite
+  courante, aucune commande n'est envoyée** (`ControlLoop.holdLimitsOnCommunicationLoss`,
+  `SunSpecForwarder.holdOnOpenDtuLoss`). Décision utilisateur du 2026-10-10,
+  qui remplace l'ancien fail-safe « tout à 0 % » hérité du projet Python :
+  pendant une vraie coupure OpenDTU l'ordre 0 % ne pouvait de toute façon
+  pas partir, et il ne passait que pendant les reconnexions brèves d'un lien
+  instable -- c'est-à-dire au moment où tout revenait (constaté le
+  2026-10-09, coupure LAN de ~4 min suivie de 2 h bloquées à 0 %). Les
+  limites étant non persistantes, elles ne survivent pas au redémarrage des
+  onduleurs (coucher du soleil). En revanche, la mémoire « dernière limite
+  envoyée » **doit** être oubliée à chaque perte de communication (et après
+  tout déblocage/forçage) pour que le premier cycle réussi renvoie tout --
+  ne pas retirer ces `forgetLastSent()`/`lastSentW.clear()`.
 - **`config.inverters[].controllable=false` (2026-07-13) : exclusion totale,
   sans exception.** Un onduleur non pilotable est lu (puissance/yield, pour
   l'affichage et la comptabilité réseau du PI) mais **jamais commandé**, y
-  compris par le fail-safe, le déblocage à 100% (charge batterie
-  prioritaire) et le forçage manuel -- ces trois chemins reçoivent
+  compris par le déblocage à 100% (charge batterie prioritaire) et le
+  forçage manuel -- ces chemins reçoivent
   désormais `controllableSerials`, pas la liste complète `serials`. Ne pas
   réintroduire `serials` sur un de ces trois appels sans revalider ce
   comportement : le but explicite est qu'aucun code de ce projet ne
@@ -188,7 +198,7 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   d'I/O) : tout ajout de logique doit rester testable unitairement, sans
   mock de socket ni de réseau.
 - `loop/ControlLoop`'s méthodes package-private (`decisionCycle`,
-  `applyFailsafe`, `releaseForCharging`, `offStateInvertersPayload`,
+  `releaseForCharging`, `offStateInvertersPayload`,
   `sendManualOverride`, `manualOverridePayload`, `minInverterFloorWarning`)
   sont testées via un **`FakeOpenDTUApi`** (`gxopendtu.loop` test package,
   implémente `OpenDTUApi`) -- pas de vrai HTTP. `ControlLoop.run(...)`

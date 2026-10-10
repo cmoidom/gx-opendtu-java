@@ -10,8 +10,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * indefinitely.
  *
  * Written by the webui HTTP server threads, read by the control loop once
- * per decision cycle. A lost grid meter (fail-safe) or battery-charge-
- * priority release both take priority over an active override -- this class
+ * per decision cycle. A lost grid meter (no decision at all that cycle) or
+ * a battery-charge-priority release both take priority over an active
+ * override -- this class
  * has no way to prevent that, by construction. Port of
  * src/manual_override.py's ManualOverride.
  */

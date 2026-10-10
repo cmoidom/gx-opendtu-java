@@ -75,7 +75,7 @@ gx-opendtu-java/
 │   │   └── StateStore.java             persistance state.json (hysterese batterie)
 │   ├── loop/
 │   │   └── ControlLoop.java            orchestration complete (run + methodes testables
-│   │                                    decisionCycle/applyFailsafe/releaseForCharging/...)
+│   │                                    decisionCycle/releaseForCharging/...)        
 │   └── webui/
 │       ├── WebUiServer.java            com.sun.net.httpserver.HttpServer, routage
 │       ├── ConfigPageHandler.java      page de config ("/config"), /config/save, /config/apply
@@ -138,7 +138,7 @@ chaîne vide sinon) -- OpenDTU ignore simplement cet en-tête sur les endpoints
 qui n'en ont pas besoin. Nécessaire dès que `/api/limit/config` (écriture)
 exige une authentification -- ce qui est courant même quand les endpoints de
 lecture n'en demandent pas. Sans ces identifiants dans ce cas, toute écriture
-échoue en 401 -- y compris le repli fail-safe.
+échoue en 401.
 
 `state/LiveState` est un tampon circulaire thread-safe (`ArrayDeque` +
 `ReentrantLock`, ~900 échantillons par défaut, soit environ 30 min au
@@ -558,15 +558,15 @@ solaire pourrait couvrir).
 2026-07-13, sans équivalent Python)** : un onduleur ainsi marqué est exclu de
 `serials` partout où `ControlLoop.run` construit `controllableSerials` --
 `WaterFillAllocator.waterFillAllocate`, `CapacityEstimator` (construit avec
-un `nominalPowerW` déjà filtré), et les trois seuls appels qui écrivent
+un `nominalPowerW` déjà filtré), et les seuls appels qui écrivent
 réellement vers OpenDTU (`decisionCycle`, `releaseForCharging`,
-`applyFailsafe`, `sendManualOverride`). Toujours **lu** (`getLivePowerW`/
+`sendManualOverride`). Toujours **lu** (`getLivePowerW`/
 `getYieldDayWh` restent appelés avec la liste complète `serials`) pour
 l'affichage tableau de bord et pour que le PI compte correctement sa
 production dans le bilan réseau -- seule l'écriture est coupée. Pensé pour
 un onduleur dédié à un usage hors de la régulation zero-export (ex. un
 circuit spécifique) qu'on ne veut jamais voir bridé par ce logiciel, quel
-que soit le mode (y compris fail-safe).
+que soit le mode.
 
 `limit_relative_pct`/`acknowledged` dans le payload dashboard restent la
 **vraie valeur lue** via `client.getLimitStatus()` pour un onduleur non
@@ -677,8 +677,8 @@ s'applique au total agrégé) est appliqué en post-traitement sur la map
 sa part calculée était plus basse -- **y compris quand cette part est
 exactement 0**, tant qu'il y a de la capacité. La config est prioritaire : ce
 plancher peut donc causer une injection réseau réelle si `totalTargetW`
-calculé par le PI est plus bas que ce que le plancher impose. Fail-safe et le
-déblocage à 100% pendant la charge batterie prioritaire ne passent pas par
+calculé par le PI est plus bas que ce que le plancher impose. Le
+déblocage à 100% pendant la charge batterie prioritaire ne passe pas par
 `waterFillAllocate` du tout (`setRelativeLimitPct` direct), donc ce plancher
 ne les concerne jamais.
 
@@ -701,8 +701,8 @@ par cycle de décision dans `ControlLoop.run` :
   n'a d'effet que si `injectionActive` est vrai ce cycle ; si faux (charge
   batterie prioritaire), le déblocage à 100% reste prioritaire et l'override
   est ignoré pour ce cycle (mais reste actif, réappliqué dès qu'`injectionActive`
-  redevient vrai). Le fail-safe (perte du compteur réseau) est vérifié plus
-  haut dans la boucle et `continue` avant d'atteindre cette logique.
+  redevient vrai). La perte du compteur réseau est vérifiée plus haut dans
+  la boucle et `continue` avant d'atteindre cette logique.
 
 ## Persistance de l'hystérèse batterie et du mode (`state.json`)
 
@@ -790,8 +790,12 @@ variantes).
 ## Sécurité / repli
 
 - Échec de lecture Modbus répété (`FAILSAFE_AFTER_CONSECUTIVE_FAILURES=3`,
-  `ControlLoop`) ou échec de communication OpenDTU : tous les onduleurs sont
-  ramenés à 0 % (`applyFailsafe`). Le service ne reste jamais "en roue libre".
+  `ControlLoop`) ou échec de communication OpenDTU (3 de suite côté
+  `SunSpecForwarder`) : **aucune commande n'est envoyée, les onduleurs
+  gardent leur limite courante** (décision utilisateur 2026-10-10, voir
+  AGENTS.md -- l'ancien repli "tout à 0 %" ne passait qu'au moment où le lien
+  revenait). La mémoire de la dernière limite envoyée est oubliée, pour que
+  le premier cycle réussi après la coupure renvoie toutes les limites.
 - La marge de sécurité `export_setpoint_w` (> 0) garantit que le point de
   fonctionnement visé reste toujours légèrement côté import, jamais export.
 
@@ -827,8 +831,8 @@ config au prochain démarrage.
 
 ## Mode dry-run
 
-`Main` accepte `--dry-run` : `ControlLoop.run` traverse `decisionCycle`/
-`applyFailsafe` normalement (lecture Modbus, lecture OpenDTU, calcul PI +
+`Main` accepte `--dry-run` : `ControlLoop.run` traverse `decisionCycle`
+normalement (lecture Modbus, lecture OpenDTU, calcul PI +
 water-filling) mais n'appelle jamais `OpenDTUApi.setAbsoluteLimitW`/
 `setRelativeLimitPct`. Chaque cycle logue la valeur du compteur réseau, la
 production actuelle vue par OpenDTU et la consigne calculée -- mécanisme de
@@ -854,6 +858,6 @@ onduleurs. Testé par `loop/ControlLoopDryRunTest.java` via un
   configuration elle-même.
 - `mvn test` passe intégralement et `mvn package` produit un jar exécutable
   vérifié en `--dry-run` (serveur web + boucle de contrôle démarrent
-  correctement, fail-safe déclenché face à un Modbus/OpenDTU factice
+  correctement, repli sur perte de communication face à un Modbus/OpenDTU factice
   injoignable) -- reste à valider contre du vrai matériel Victron/OpenDTU
   avant tout déploiement réel.
