@@ -137,7 +137,12 @@ public final class ControlLoop {
         if (minInverterPct <= 0 || gridPowerAvgW >= 0) {
             return new FloorWarning(false, null);
         }
-        double totalAllocatedW = serials.stream().mapToDouble(s -> allocation.getOrDefault(s, 0.0)).sum();
+        // Capped at each inverter's ceiling: since the floor is no longer clamped
+        // to it, an allocation above what the sun allows isn't actually produced
+        // and can't be what's causing the export.
+        double totalAllocatedW = serials.stream()
+                .mapToDouble(s -> Math.min(allocation.getOrDefault(s, 0.0), ceilingsW.getOrDefault(s, Double.POSITIVE_INFINITY)))
+                .sum();
         if (totalAllocatedW <= targetW + 1e-6) {
             return new FloorWarning(false, null);
         }

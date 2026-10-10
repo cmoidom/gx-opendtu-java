@@ -609,7 +609,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "OpenDTU -- evite de solliciter la liaison RF/HTTP pour des variations negligeables.</p>\n"
                 + "    <label>Seuil mini onduleur (% de sa puissance nominale)</label>\n"
                 + "    <input type=\"number\" step=\"any\" min=\"0\" max=\"100\" name=\"control.min_inverter_pct\" value=\"" + numVal(raw, "control.min_inverter_pct", ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT) + "\"" + changedClass(raw, "control.min_inverter_pct", d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_INVERTER_PCT) + "\" required>\n"
-                + "    <p class=\"hint\">Un onduleur qui produit n'est jamais commande sous ce seuil. Mettre 0 pour desactiver. "
+                + "    <p class=\"hint\">Aucune limite envoyee a un onduleur ne descend sous ce seuil, sans exception. Mettre 0 pour desactiver. "
                 + "Le deblocage a 100% (charge batterie prioritaire) n'est jamais concerne.</p>\n"
                 + "    <label>Decharge batterie ignoree en dessous de (W)</label>\n"
                 + "    <input type=\"number\" step=\"any\" min=\"0\" name=\"control.min_battery_discharge_w\" value=\"" + numVal(raw, "control.min_battery_discharge_w", ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W) + "\"" + changedClass(raw, "control.min_battery_discharge_w", d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W)) + " placeholder=\"" + d(ConfigLoader.Defaults.CONTROL_MIN_BATTERY_DISCHARGE_W) + "\" required>\n"

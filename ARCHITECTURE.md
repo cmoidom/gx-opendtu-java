@@ -671,11 +671,16 @@ aux valeurs par défaut) au lieu de chaque cycle de sonde (30s).
 `min_inverter_pct` (`config.control.minInverterPct`, défaut **5%**,
 **par onduleur** -- pas à confondre avec `control.stepRelativePct`, qui lui
 s'applique au total agrégé) est appliqué en post-traitement sur la map
-`allocation` retournée : pour chaque onduleur ayant une capacité réelle
-(`capacityEstimates[serial] > 0` -- donc pas nuit/ombrage total), on relève à
-`min(capacityEstimates[serial], minInverterPct% * nominalPowerW[serial])` si
-sa part calculée était plus basse -- **y compris quand cette part est
-exactement 0**, tant qu'il y a de la capacité. La config est prioritaire : ce
+`allocation` retournée : pour **chaque** onduleur pilotable, on relève à
+`minInverterPct% * nominalPowerW[serial]` si sa part calculée était plus basse
+-- **sans exception** depuis le 2026-10-10 (décision utilisateur) : ni quand
+cette part est exactement 0, ni quand le capacity estimator met son plafond
+à 0, et sans rabattre ce plancher au plafond estimé. Une limite au-dessus de
+ce que le soleil permet ne force rien, elle plafonne seulement ; c'est une
+limite proche de 0 qui est brutale. Le bandeau d'avertissement
+(`minInverterFloorWarning`) compte donc chaque allocation plafonnée à la
+capacité estimée, pour ne pas attribuer au plancher une production qui
+n'existe pas. La config est prioritaire : ce
 plancher peut donc causer une injection réseau réelle si `totalTargetW`
 calculé par le PI est plus bas que ce que le plancher impose. Le
 déblocage à 100% pendant la charge batterie prioritaire ne passe pas par

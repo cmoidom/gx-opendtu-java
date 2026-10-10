@@ -103,19 +103,20 @@ class WaterFillAllocatorTest {
     }
 
     @Test
-    void minInverterPctStaysZeroWithNoRealCapacity() {
-        // capacityEstimates == 0 means genuinely irradiance-limited to zero.
+    void minInverterPctAppliesEvenWithNoEstimatedCapacity() {
+        // A ceiling of 0 no longer exempts the inverter: the floor has no exception.
         Map<String, Double> allocation = waterFillAllocate(
                 0.0, List.of("a", "b"), Map.of("a", 0.0, "b", 600.0), Map.of("a", 600.0, "b", 600.0), 10.0);
-        assertThat(allocation).containsExactlyInAnyOrderEntriesOf(Map.of("a", 0.0, "b", 60.0));
+        assertThat(allocation).containsExactlyInAnyOrderEntriesOf(Map.of("a", 60.0, "b", 60.0));
     }
 
     @Test
-    void minInverterPctNeverExceedsCapacityCeiling() {
-        // Floor would be 10% of 600 = 60W, but this inverter is shaded down to 20W.
+    void minInverterPctIsNotClampedToCapacityCeiling() {
+        // Shaded down to 20W: the 60W floor (10% of 600) still applies -- a limit
+        // above what the sun allows only caps production, it never forces it.
         Map<String, Double> allocation =
                 waterFillAllocate(5.0, List.of("a"), Map.of("a", 20.0), Map.of("a", 600.0), 10.0);
-        assertThat(allocation).containsExactlyInAnyOrderEntriesOf(Map.of("a", 20.0));
+        assertThat(allocation).containsExactlyInAnyOrderEntriesOf(Map.of("a", 60.0));
     }
 
     @Test

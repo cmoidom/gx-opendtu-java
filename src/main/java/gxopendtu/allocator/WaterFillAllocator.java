@@ -79,21 +79,17 @@ public final class WaterFillAllocator {
         }
 
         // Global floor (config.control.minInverterPct, % of each inverter's own
-        // nominal power): never ask an inverter with real producible capacity to
-        // go below this. Applied even when the water-filled share is exactly 0.
-        // Clamped to the inverter's own capacity ceiling, so an inverter with no
-        // real capacity right now (capacityEstimates == 0) is never floored above
-        // 0 -- the battery-charge-priority release doesn't go through this
-        // method at all, so there's no other "genuine zero" to protect.
+        // nominal power): no limit below this is ever produced, without
+        // exception -- not even when the capacity estimator puts an inverter's
+        // ceiling at 0, nor clamped down to that ceiling (user decision
+        // 2026-10-10: a near-0 limit is too violent, and a limit above what the
+        // sun currently allows is harmless since it only caps production).
+        // Applied even when the water-filled share is exactly 0.
         if (minInverterPct > 0) {
             for (String s : allocation.keySet()) {
-                double cap = capacityEstimates.getOrDefault(s, INFINITE);
-                if (cap <= 0) {
-                    continue;
-                }
                 double floorW = minInverterPct / 100.0 * nominalPowerW.getOrDefault(s, 0.0);
                 if (floorW > allocation.get(s)) {
-                    allocation.put(s, Math.min(cap, floorW));
+                    allocation.put(s, floorW);
                 }
             }
         }
