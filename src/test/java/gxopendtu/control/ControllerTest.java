@@ -74,6 +74,19 @@ class ControllerTest {
     }
 
     @Test
+    void forgetLastSentForcesResendOfAnUnchangedTarget() {
+        SoftTargetController controller = new SoftTargetController(30, 1.0, 0.0, 100, 0, 5);
+        assertThat(controller.computeTarget(30, 200, 1000).changed()).isTrue();
+        assertThat(controller.computeTarget(30, 200, 1000).changed()).isFalse();
+
+        // e.g. a fail-safe just set every inverter to 0% behind the controller's back
+        controller.forgetLastSent();
+        ControlDecision afterReset = controller.computeTarget(30, 200, 1000);
+        assertThat(afterReset.changed()).isTrue();
+        assertThat(afterReset.targetW()).isEqualTo(200.0);
+    }
+
+    @Test
     void controlDecisionExposesErrorAndPiIntegralForDebugging() {
         SoftTargetController controller = new SoftTargetController(30, 1.0, 0.5, 100, 0, 5);
         ControlDecision decision = controller.computeTarget(50, 200, 1000);

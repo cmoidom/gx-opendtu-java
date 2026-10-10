@@ -554,6 +554,8 @@ public final class ControlLoop {
                 LOG.severe(String.format("grid meter read failed (%d in a row): %s", consecutiveGridFailures, e.getMessage()));
                 if (consecutiveGridFailures >= FAILSAFE_AFTER_CONSECUTIVE_FAILURES) {
                     applyFailsafe(client, controllableSerials, dryRun);
+                    controller.forgetLastSent();
+                    lastOverridePctSent = null;
                 }
                 sleepSeconds(config.grid().readIntervalS());
                 continue;
@@ -636,6 +638,7 @@ public final class ControlLoop {
                 if (!injectionActive) {
                     if (!releasedForCharging) {
                         releaseForCharging(client, controllableSerials, dryRun);
+                        controller.forgetLastSent();
                         releasedForCharging = true;
                     }
                     // So a still-active % override gets re-sent (not skipped
@@ -668,6 +671,7 @@ public final class ControlLoop {
                     if (overridePct != null) {
                         if (!overridePct.equals(lastOverridePctSent)) {
                             sendManualOverride(client, controllableSerials, overridePct, dryRun);
+                            controller.forgetLastSent();
                             lastOverridePctSent = overridePct;
                         }
                         liveState.updateDecision(
@@ -705,6 +709,8 @@ public final class ControlLoop {
                         } catch (OpenDTUException e) {
                             LOG.severe("OpenDTU communication failed: " + e.getMessage());
                             applyFailsafe(client, controllableSerials, dryRun);
+                            controller.forgetLastSent();
+                            lastOverridePctSent = null;
                         }
                     }
                 }

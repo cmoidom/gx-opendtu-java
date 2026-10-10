@@ -59,6 +59,20 @@ public final class SoftTargetController {
         this.minBatteryDischargeW = minBatteryDischargeW;
     }
 
+    /**
+     * Forgets the last total actually sent, for when something outside this
+     * controller (fail-safe, battery-charge release, manual override) has just
+     * overwritten the inverters' real limits. The next computeTarget() then
+     * always reports changed=true and starts from the current quantized target
+     * instead of ramping from a value the inverters no longer hold -- otherwise
+     * an unchanged target was never resent and the inverters stayed at the
+     * overwritten limit (the SunSpec forwarder's equivalent stuck-at-0% bug was
+     * confirmed live 2026-10-09).
+     */
+    public void forgetLastSent() {
+        lastSentTotalW = null;
+    }
+
     public SoftTargetController(
             double exportSetpointW,
             double kp,
