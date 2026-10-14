@@ -108,6 +108,26 @@ class SunSpecForwarderTest {
     }
 
     @Test
+    void sendsNothingUntilVictronHasWrittenOnceThenReleasesOnAnExplicitDisable() {
+        SunSpecRegisterMap map = registerMap(); // fresh: Ena=0 by default, but Victron hasn't spoken yet
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 100.0, "b", 100.0, "nc", 50.0))
+                .withLimitStatus(Map.of());
+        SunSpecForwarder forwarder = forwarder(fake, map);
+
+        forwarder.decisionTick();
+        forwarder.decisionTick();
+
+        assertThat(fake.relativeCalls).isEmpty();
+        assertThat(fake.absoluteCalls).isEmpty();
+
+        setWMaxLim(map, false, 100.0); // Victron really disables the limit
+        forwarder.decisionTick();
+
+        assertThat(fake.relativeCalls).containsExactlyInAnyOrder(Map.entry("a", 100.0), Map.entry("b", 100.0));
+    }
+
+    @Test
     void disconnectedIsTreatedAsDisabledEvenIfEnaIsSet() {
         SunSpecRegisterMap map = registerMap();
         setWMaxLim(map, true, 50.0);

@@ -54,6 +54,7 @@ public final class SunSpecForwarder {
     private volatile boolean running;
     private int consecutiveFailures;
     private boolean released;
+    private boolean waitingLogged;
     private final Map<String, Double> lastSentW = new HashMap<>();
 
     public SunSpecForwarder(
@@ -121,6 +122,10 @@ public final class SunSpecForwarder {
             Map<String, Double> dataAgeS = client.getDataAgeS(allSerials);
             consecutiveFailures = 0;
 
+            if (!registerMap.everWritten()) {
+                holdUntilVictronConnects();
+                return;
+            }
             boolean limitEnabled = registerMap.wMaxLimEnabled() && registerMap.connected();
             if (!limitEnabled) {
                 releaseIfNeeded();
@@ -241,6 +246,23 @@ public final class SunSpecForwarder {
             LOG.warning("[SunSpec] lecture SOC batterie echouee, consigne Victron respectee par defaut: "
                     + e.getMessage());
             return new VictronCap(wMaxLimPct, false);
+        }
+    }
+
+    /**
+     * Right after a (re)start, before Victron's first Modbus write: the
+     * register defaults read as WMaxLim_Ena=0, which used to trigger
+     * releaseIfNeeded and send every inverter to 100% for the ~15-20s the
+     * Cerbo takes to reconnect -- an export spike of -1000 to -1400W on each
+     * restart (confirmed live 2026-10-14 16:47/16:54/16:57). Sends nothing
+     * instead, so the inverters keep their current limits, same rule as on a
+     * communication loss (user decision 2026-10-14).
+     */
+    private void holdUntilVictronConnects() {
+        if (!waitingLogged) {
+            LOG.info("[SunSpec] en attente de la premiere ecriture de Victron: aucune commande envoyee, "
+                    + "les onduleurs gardent leur limite courante");
+            waitingLogged = true;
         }
     }
 

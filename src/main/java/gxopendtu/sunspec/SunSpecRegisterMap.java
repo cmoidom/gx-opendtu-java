@@ -74,6 +74,7 @@ public final class SunSpecRegisterMap {
 
     private final ReentrantLock lock = new ReentrantLock();
     private final int[] registers = new int[TOTAL_REGISTERS];
+    private boolean everWritten;
 
     public SunSpecRegisterMap(String manufacturer, String model, String serialNumber, double totalNominalPowerW) {
         writeSunS();
@@ -230,6 +231,7 @@ public final class SunSpecRegisterMap {
         lock.lock();
         try {
             System.arraycopy(values, 0, registers, offset, values.length);
+            everWritten = true;
         } finally {
             lock.unlock();
         }
@@ -343,6 +345,20 @@ public final class SunSpecRegisterMap {
         lock.lock();
         try {
             return registers[M123_WMAXLIM_ENA] != 0;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * False until Victron has written anything at all since this process
+     * started -- until then WMaxLim_Ena/Conn are only this class's own
+     * defaults, not a real "limit disabled" decision from Victron.
+     */
+    public boolean everWritten() {
+        lock.lock();
+        try {
+            return everWritten;
         } finally {
             lock.unlock();
         }

@@ -809,6 +809,10 @@ variantes).
   AGENTS.md -- l'ancien repli "tout à 0 %" ne passait qu'au moment où le lien
   revenait). La mémoire de la dernière limite envoyée est oubliée, pour que
   le premier cycle réussi après la coupure renvoie toutes les limites.
+- Démarrage du service avec `forward_to_opendtu` : rien n'est envoyé tant
+  que Victron n'a pas écrit au moins une fois sur le proxy SunSpec
+  (`SunSpecRegisterMap.everWritten()`) -- les onduleurs gardent leur limite
+  courante au lieu d'être débridés à 100 % pendant la reconnexion du Cerbo.
 - La marge de sécurité `export_setpoint_w` (> 0) garantit que le point de
   fonctionnement visé reste toujours légèrement côté import, jamais export.
 

@@ -129,7 +129,13 @@ l'intention d'une règle, le projet Python d'origine (son `ARCHITECTURE.md`/
   ailleurs dans ce fichier essaie d'éviter.
 - **Perte de communication (Modbus ou OpenDTU) : on garde la limite
   courante, aucune commande n'est envoyée** (`ControlLoop.holdLimitsOnCommunicationLoss`,
-  `SunSpecForwarder.holdOnOpenDtuLoss`). Décision utilisateur du 2026-10-10,
+  `SunSpecForwarder.holdOnOpenDtuLoss`). Même règle au démarrage du service,
+  tant que Victron n'a encore rien écrit sur le proxy SunSpec
+  (`SunSpecForwarder.holdUntilVictronConnects`, 2026-10-14) : les valeurs par
+  défaut des registres (WMaxLim_Ena=0) ne sont pas une décision de Victron, et
+  les traiter comme « limite désactivée » débridait tout à 100 % pendant les
+  ~20 s de reconnexion du Cerbo (pic d'injection de -1000 à -1400 W à chaque
+  redémarrage). Décision utilisateur du 2026-10-10,
   qui remplace l'ancien fail-safe « tout à 0 % » hérité du projet Python :
   pendant une vraie coupure OpenDTU l'ordre 0 % ne pouvait de toute façon
   pas partir, et il ne passait que pendant les reconnexions brèves d'un lien
