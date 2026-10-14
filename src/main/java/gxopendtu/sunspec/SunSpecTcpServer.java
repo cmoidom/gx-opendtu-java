@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,6 +42,13 @@ public final class SunSpecTcpServer {
     private final SunSpecProxyState state;
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
+    private volatile long startedAtMs;
+    // Every Victron write is logged during this window after start, to see in
+    // which order Victron sets WMaxLim_Ena/WMaxLimPct when it (re)connects
+    // (2026-10-14: a first WMaxLimPct=100% caused a ~10s export spike after
+    // each restart -- either a real write or our register default read before
+    // Victron wrote the percentage; these logs tell which).
+    private static final long STARTUP_WRITE_LOG_WINDOW_MS = 120_000;
 
     public SunSpecTcpServer(int port, SunSpecRegisterMap registerMap, SunSpecProxyState state) {
         this.port = port;
@@ -50,6 +58,7 @@ public final class SunSpecTcpServer {
 
     /** Binds and starts accepting connections on a daemon thread; returns immediately. */
     public void start() {
+        startedAtMs = System.currentTimeMillis();
         try {
             serverSocket = new ServerSocket();
             serverSocket.bind(new InetSocketAddress(port));
@@ -156,6 +165,17 @@ public final class SunSpecTcpServer {
         out.flush();
     }
 
+    private void logStartupWrite(String function, int address, int[] values, String remoteAddress) {
+        if (System.currentTimeMillis() - startedAtMs > STARTUP_WRITE_LOG_WINDOW_MS) {
+            return;
+        }
+        LOG.info("[SunSpec] ecriture " + function + " depuis " + remoteAddress + ": adresse=" + address
+                + " (WMaxLimPct=" + (SunSpecRegisterMap.SUNSPEC_BASE + SunSpecRegisterMap.M123_WMAXLIMPCT)
+                + ", WMaxLim_Ena=" + (SunSpecRegisterMap.SUNSPEC_BASE + SunSpecRegisterMap.M123_WMAXLIM_ENA)
+                + ", Conn=" + (SunSpecRegisterMap.SUNSPEC_BASE + SunSpecRegisterMap.M123_CONN)
+                + ") valeurs=" + Arrays.toString(values));
+    }
+
     private void handleWriteSingleRegister(
             DataInputStream in, DataOutputStream out, int transactionId, int unitId, String remoteAddress)
             throws IOException {
@@ -169,6 +189,7 @@ public final class SunSpecTcpServer {
             return;
         }
         registerMap.writeRegisters(offset, new int[] {value});
+        logStartupWrite("FC6", address, new int[] {value}, remoteAddress);
         recordIfControlWrite(offset, remoteAddress);
 
         out.writeShort(transactionId);
@@ -201,6 +222,7 @@ public final class SunSpecTcpServer {
             return;
         }
         registerMap.writeRegisters(offset, values);
+        logStartupWrite("FC16", address, values, remoteAddress);
         recordIfControlWrite(offset, remoteAddress);
 
         out.writeShort(transactionId);
