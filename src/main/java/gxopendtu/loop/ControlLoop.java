@@ -100,7 +100,8 @@ public final class ControlLoop {
             double maxPowerW,
             Object acknowledged,
             Double dataAgeS,
-            boolean controllable) {
+            boolean controllable,
+            Double acCurrentA) {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("serial", serial);
         entry.put("name", name);
@@ -111,7 +112,17 @@ public final class ControlLoop {
         entry.put("acknowledged", acknowledged);
         entry.put("data_age_s", dataAgeS);
         entry.put("controllable", controllable);
+        entry.put("ac_current_a", acCurrentA);
         return entry;
+    }
+
+    /** Per-inverter AC current for the dashboard table only -- a failed read just shows "-". */
+    private static Map<String, Double> acCurrentForDisplay(OpenDTUApi client, List<String> serials) {
+        try {
+            return client.getAcCurrentA(serials);
+        } catch (OpenDTUException e) {
+            return Map.of();
+        }
     }
 
     /**
@@ -218,6 +229,7 @@ public final class ControlLoop {
         }
 
         if (liveState != null) {
+            Map<String, Double> acCurrentA = acCurrentForDisplay(client, serials);
             List<Map<String, Object>> invertersPayload = new ArrayList<>();
             for (String serial : serials) {
                 boolean controllable = controllableSerials.contains(serial);
@@ -237,7 +249,8 @@ public final class ControlLoop {
                         controllable ? capacity.ceilingsW().getOrDefault(serial, 0.0) : nominalPowerW.getOrDefault(serial, 0.0),
                         status != null ? status.acknowledged() : null,
                         dataAgeS.get(serial),
-                        controllable));
+                        controllable,
+                        acCurrentA.get(serial)));
             }
             liveState.updateDecision(
                     socPct,
@@ -343,6 +356,7 @@ public final class ControlLoop {
         } catch (OpenDTUException e) {
             dataAgeS = Map.of(); // dashboard display only, not safety-critical
         }
+        Map<String, Double> acCurrentA = acCurrentForDisplay(client, serials);
         // "controllable ? 100 : real value" is only accurate while THIS
         // process's own releaseForCharging (just called before this) is what
         // actually uncapped the inverters. In dryRun -- most commonly because
@@ -366,7 +380,8 @@ public final class ControlLoop {
                     nominalPowerW.getOrDefault(serial, 0.0),
                     assumeReleased ? null : (status != null ? status.acknowledged() : null),
                     dataAgeS.get(serial),
-                    controllableSerials.contains(serial)));
+                    controllableSerials.contains(serial),
+                    acCurrentA.get(serial)));
         }
         return result;
     }
@@ -418,6 +433,7 @@ public final class ControlLoop {
         } catch (OpenDTUException e) {
             dataAgeS = Map.of(); // dashboard display only, not safety-critical
         }
+        Map<String, Double> acCurrentA = acCurrentForDisplay(client, serials);
         List<Map<String, Object>> result = new ArrayList<>();
         for (String serial : serials) {
             boolean controllable = controllableSerials.contains(serial);
@@ -434,7 +450,8 @@ public final class ControlLoop {
                     nominalPowerW.getOrDefault(serial, 0.0),
                     status != null ? status.acknowledged() : null,
                     dataAgeS.get(serial),
-                    controllable));
+                    controllable,
+                    acCurrentA.get(serial)));
         }
         return result;
     }

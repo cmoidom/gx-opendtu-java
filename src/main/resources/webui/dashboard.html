@@ -174,8 +174,8 @@
 
 <h2>Detail par onduleur</h2>
 <table id="inverters-table">
-  <colgroup><col style="width:21%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:8%"><col style="width:9%"><col style="width:20%"><col style="width:20%"></colgroup>
-  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Dernier reglage</th><th class="center">Etat</th></tr></thead>
+  <colgroup><col style="width:19%"><col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:7%"><col style="width:8%"><col style="width:8%"><col style="width:18%"><col style="width:19%"></colgroup>
+  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Courant</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Dernier reglage</th><th class="center">Etat</th></tr></thead>
   <tbody></tbody>
 </table>
 <p class="hint">Pendant la charge batterie prioritaire (regulation OFF), "Limite" affiche
@@ -1260,7 +1260,7 @@ function renderInverterTable(latest, lastLimitCommands) {
   const commands = lastLimitCommands || {};
   const tbody = document.querySelector('#inverters-table tbody');
   const inverters = (latest && latest.inverters) || [];
-  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="8" class="hint">aucune donnee</td></tr>'; return; }
+  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="9" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
     const age = inv.data_age_s;
@@ -1272,6 +1272,7 @@ function renderInverterTable(latest, lastLimitCommands) {
       : '<span class="' + (fullPowerRatio >= FULL_POWER_RATIO * 100 ? 'full-power' : '') + '">' + fmtPct(fullPowerRatio) + '</span>';
     return '<tr><td>' + (inv.name ? inv.name + ' <span class="hint">(' + inv.serial + ')</span>' : inv.serial) + '</td>' +
     '<td class="num">' + fmtW(inv.actual_w) + '</td>' +
+    '<td class="num">' + fmtAmp(inv.ac_current_a) + '</td>' +
     '<td class="num">' + ageCell + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
