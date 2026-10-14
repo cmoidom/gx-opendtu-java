@@ -1217,14 +1217,25 @@ function effectiveLimitW(inv) {
   return inv.allocated_w != null ? inv.allocated_w : inv.max_power_w;
 }
 
-/** Time of the last limit command OpenDTU accepted for this inverter (any module) -- date added when not today. */
+/** "2 min 13 s" style elapsed time, for the "Dernier reglage" column. */
+function fmtElapsed(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + ' min';
+  return Math.floor(s / 86400) + ' j ' + Math.floor(s % 86400 / 3600) + ' h';
+}
+
+/** Time of the last limit command OpenDTU accepted for this inverter (any module) -- date added when not today --
+ * plus how long ago it was. */
 function fmtLastLimitCommand(cmd) {
   if (!cmd) return '<span class="hint">--</span>';
   const d = new Date(cmd.t * 1000);
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const label = d.toDateString() === new Date().toDateString()
     ? time : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + time;
-  return '<span title="' + Math.round(cmd.value) + ' ' + cmd.unit + '">' + label + '</span>';
+  return '<span title="' + Math.round(cmd.value) + ' ' + cmd.unit + '">' + label +
+    ' <span class="hint">(il y a ' + fmtElapsed(Date.now() / 1000 - cmd.t) + ')</span></span>';
 }
 
 function renderInverterTable(latest, lastLimitCommands) {
