@@ -100,6 +100,7 @@ public final class SunSpecForwarder {
     void decisionTick() {
         try {
             Map<String, Double> livePowerW = client.getLivePowerW(allSerials);
+            Map<String, Double> dataAgeS = client.getDataAgeS(controllableSerials);
             consecutiveFailures = 0;
 
             if (!registerMap.everWritten()) {
@@ -137,7 +138,7 @@ public final class SunSpecForwarder {
                 allocation = controllableSerials.stream().collect(Collectors.toMap(
                         s -> s, s -> nominalPowerW.getOrDefault(s, 0.0)));
             } else {
-                allocation = cascade.allocate(targetW, livePowerW);
+                allocation = cascade.allocate(targetW, livePowerW, dataAgeS, System.currentTimeMillis() / 1000.0);
             }
 
             if (verboseTraces) {

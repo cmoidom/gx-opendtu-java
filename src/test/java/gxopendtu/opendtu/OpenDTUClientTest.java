@@ -172,8 +172,21 @@ class OpenDTUClientTest {
 
         Map<String, Double> result = new OpenDTUClient(baseUrl).getDataAgeS(List.of("111"));
 
-        assertThat(requestedPaths).containsExactly("/api/livedata/status?inv=111");
+        assertThat(requestedPaths).containsExactly("/api/livedata/status");
         assertThat(result).containsEntry("111", 16.0);
+    }
+
+    @Test
+    void getDataAgeSPrefersMillisecondsAndReadsAllInvertersInOneRequest() throws IOException {
+        String baseUrl = startServer((exchange) -> respondJson(exchange, "{\"inverters\": ["
+                + "{\"serial\": \"111\", \"data_age\": 6, \"data_age_ms\": 6874},"
+                + "{\"serial\": \"222\", \"data_age\": 2, \"data_age_ms\": 2875},"
+                + "{\"serial\": \"333\", \"data_age\": 9, \"data_age_ms\": 9000}]}"));
+
+        Map<String, Double> result = new OpenDTUClient(baseUrl).getDataAgeS(List.of("111", "222"));
+
+        assertThat(requestedPaths).containsExactly("/api/livedata/status");
+        assertThat(result).containsOnly(Map.entry("111", 6.874), Map.entry("222", 2.875));
     }
 
     @Test

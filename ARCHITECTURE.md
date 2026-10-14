@@ -575,8 +575,12 @@ changement de consigne n'envoie donc qu'une commande. L'hystérésis vient de
 l'écart plancher/nominale : on passe au suivant quand le marginal devrait
 descendre sous son plancher, on revient au précédent quand il devrait
 dépasser sa nominale -- ou plus tôt, quand il produit nettement moins que
-sa limite pendant 4 cycles (~20 s) : sa limite ne bride alors rien (peu de
-soleil, ombre) et le précédent était retenu à son plancher pour rien. Ordre : `inverters[].curtail_priority` croissant
+sa limite sur 2 lectures OpenDTU successives : sa limite ne bride alors
+rien (peu de soleil, ombre) et le précédent était retenu à son plancher pour
+rien. OpenDTU interroge les onduleurs à tour de rôle (~3 s chacun, donc une
+nouvelle valeur par onduleur toutes les ~18 s) : chaque lecture est datée
+par `data_age_ms` et comparée à la limite réellement en vigueur à ce
+moment-là (moins 5 s de mise en place), et n'est comptée qu'une fois. Ordre : `inverters[].curtail_priority` croissant
 (colonne « Ordre de bridage » de /config), puis les autres par puissance
 nominale décroissante. `ControlLoop` (régulation interne, utilisée quand le
 proxy ne pilote pas) garde le water-filling.

@@ -264,15 +264,20 @@ public final class OpenDTUClient implements OpenDTUApi {
      */
     @Override
     public Map<String, Double> getDataAgeS(Collection<String> serials) {
+        // Unlike the AC data, data_age is in the bare /api/livedata/status
+        // summary for every inverter at once: one request instead of one per
+        // inverter. data_age_ms when present (whole seconds are too coarse to
+        // tell two consecutive RF reads ~3s apart).
         Map<String, Double> result = new HashMap<>();
-        for (String serial : serials) {
-            JsonNode data = get("/api/livedata/status?inv=" + URLEncoder.encode(serial, StandardCharsets.UTF_8));
-            for (JsonNode inv : data.path("inverters")) {
-                if (!serial.equals(inv.path("serial").asText())) {
-                    continue;
-                }
-                result.put(serial, JsonValues.extractValue(inv.path("data_age")));
+        JsonNode data = get("/api/livedata/status");
+        for (JsonNode inv : data.path("inverters")) {
+            String serial = inv.path("serial").asText();
+            if (!serials.contains(serial)) {
+                continue;
             }
+            result.put(serial, inv.has("data_age_ms")
+                    ? JsonValues.extractValue(inv.path("data_age_ms")) / 1000.0
+                    : JsonValues.extractValue(inv.path("data_age")));
         }
         return result;
     }
