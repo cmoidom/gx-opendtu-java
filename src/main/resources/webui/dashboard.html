@@ -1032,7 +1032,17 @@ function attachBarHover(canvas, opts) {
   canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 }
 
+// Every time-axis line chart registered by attachHover -- they share one
+// time axis (viewTMin/viewTMax), so hovering any of them moves the same
+// vertical cursor on all of them; only the hovered one shows the tooltip.
+const syncedHoverCharts = [];
+
+function setSyncedHoverT(t) {
+  syncedHoverCharts.forEach(c => { c._hoverT = t; redrawChart(c); });
+}
+
 function attachHover(canvas, opts) {
+  syncedHoverCharts.push(canvas);
   const tooltip = document.getElementById('tooltip');
   canvas.addEventListener('mousemove', (ev) => {
     if (isDragging) { tooltip.style.display = 'none'; return; }
@@ -1053,8 +1063,7 @@ function attachHover(canvas, opts) {
       }
     });
 
-    canvas._hoverT = t;
-    redrawChart(canvas);
+    setSyncedHoverT(t);
 
     if (!lines.length) { tooltip.style.display = 'none'; return; }
     tooltip.style.display = 'block';
@@ -1064,8 +1073,7 @@ function attachHover(canvas, opts) {
   });
   canvas.addEventListener('mouseleave', () => {
     tooltip.style.display = 'none';
-    canvas._hoverT = null;
-    redrawChart(canvas);
+    setSyncedHoverT(null);
   });
 }
 
