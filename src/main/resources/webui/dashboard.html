@@ -1239,7 +1239,7 @@ function fmtElapsed(seconds) {
 function fmtLastLimitCommand(cmd) {
   if (!cmd) return '<span class="hint">--</span>';
   const d = new Date(cmd.t * 1000);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
   const label = d.toDateString() === new Date().toDateString()
     ? time : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + time;
   return '<span title="' + Math.round(cmd.value) + ' ' + cmd.unit + '">' + label +
