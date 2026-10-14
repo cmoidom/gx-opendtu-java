@@ -268,6 +268,8 @@ final class ConfigPageHandler implements HttpHandler {
         // state -- a bare checkbox alone submits nothing when unchecked,
         // which would desync this list's indices from inverter_serial's.
         List<String> controllableFlags = form.getOrDefault("inverter_controllable", List.of());
+        // Always one (possibly empty) value per row, like the other text/number inputs.
+        List<String> curtailPriorities = form.getOrDefault("inverter_curtail_priority", List.of());
         ArrayNode inverters = MAPPER.createArrayNode();
         for (int i = 0; i < serials.size(); i++) {
             String serial = serials.get(i).trim();
@@ -285,6 +287,10 @@ final class ConfigPageHandler implements HttpHandler {
                 inv.put("name", name);
             }
             inv.put("controllable", controllable);
+            String priority = i < curtailPriorities.size() ? curtailPriorities.get(i).trim() : "";
+            if (!priority.isEmpty()) {
+                inv.put("curtail_priority", Integer.parseInt(priority));
+            }
             inverters.add(inv);
         }
 
@@ -431,6 +437,9 @@ final class ConfigPageHandler implements HttpHandler {
                     .append("\"><input type=\"checkbox\"")
                     .append(inv.path("controllable").asBoolean(true) ? " checked" : "")
                     .append(" onchange=\"this.previousElementSibling.value = this.checked ? 'true' : 'false'\"></td>")
+                    .append("<td><input type=\"number\" name=\"inverter_curtail_priority\" value=\"")
+                    .append(inv.path("curtail_priority").isNumber() ? inv.path("curtail_priority").asText() : "")
+                    .append("\" step=\"1\" min=\"1\" placeholder=\"auto\"></td>")
                     .append("<td><button type=\"button\" class=\"remove-btn\" "
                             + "onclick=\"this.closest('tr').remove()\">&times;</button></td></tr>\n");
         }
@@ -691,7 +700,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  <fieldset>\n"
                 + "    <legend>Onduleurs</legend>\n"
                 + "    <table id=\"inv-table\">\n"
-                + "      <thead><tr><th>Serie</th><th>Nom</th><th>Puissance nominale (W)</th><th>Pilotable</th><th></th></tr></thead>\n"
+                + "      <thead><tr><th>Serie</th><th>Nom</th><th>Puissance nominale (W)</th><th>Pilotable</th><th>Ordre de bridage</th><th></th></tr></thead>\n"
                 + "      <tbody id=\"inv-tbody\">\n"
                 + invertersHtml
                 + "      </tbody>\n"
@@ -700,6 +709,10 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <p class=\"hint\">Decocher \"Pilotable\" pour un onduleur : sa puissance mesuree reste affichee sur le "
                 + "tableau de bord, mais la regulation ne lui envoie plus jamais de commande (jamais de changement de limite), "
                 + "quel que soit le mode (auto, charge batterie prioritaire, forcage manuel).</p>\n"
+                + "    <p class=\"hint\">Ordre de bridage (proxy SunSpec, quand la consigne Victron est appliquee) : "
+                + "les onduleurs sont brides un par un, le 1 d'abord jusqu'a son minimum, puis le 2, etc. -- les "
+                + "autres restent a 100%, donc un changement de consigne ne modifie la limite que d'un seul onduleur. "
+                + "Vide = automatique : apres ceux qui ont un ordre, du plus puissant au moins puissant.</p>\n"
                 + "\n"
                 + "    <div style=\"margin-top:0.8rem\">\n"
                 + "      <button type=\"button\" onclick=\"fetchInverters()\">Charger la liste depuis OpenDTU</button>\n"
@@ -790,6 +803,7 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    '<td><input type=\"hidden\" name=\"inverter_controllable\" value=\"true\">' +\n"
                 + "    '<input type=\"checkbox\" checked onchange=\"this.previousElementSibling.value = " +
                         "this.checked ? \\'true\\' : \\'false\\'\"></td>' +\n"
+                + "    '<td><input type=\"number\" name=\"inverter_curtail_priority\" value=\"\" step=\"1\" min=\"1\" placeholder=\"auto\"></td>' +\n"
                 + "    '<td><button type=\"button\" class=\"remove-btn\" onclick=\"this.closest(\\'tr\\').remove()\">&times;</button></td>';\n"
                 + "  tbody.appendChild(tr);\n"
                 + "}\n"

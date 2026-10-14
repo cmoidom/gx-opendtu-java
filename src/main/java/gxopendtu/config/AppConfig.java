@@ -25,6 +25,23 @@ public record AppConfig(
         return inverters.stream().mapToDouble(InverterConfig::nominalPowerW).sum();
     }
 
+    /**
+     * Controllable inverters in the order the SunSpec forwarder curtails them
+     * (see allocator.CascadeAllocator): ascending curtail_priority first, then
+     * the ones without a priority by decreasing nominal power (biggest
+     * curtailed first), config order breaking ties.
+     */
+    public List<String> curtailOrder() {
+        return inverters.stream()
+                .filter(InverterConfig::controllable)
+                .sorted(java.util.Comparator
+                        .comparing((InverterConfig inv) -> inv.curtailPriority() == null)
+                        .thenComparing(inv -> inv.curtailPriority() != null ? inv.curtailPriority() : 0)
+                        .thenComparing(InverterConfig::nominalPowerW, java.util.Comparator.reverseOrder()))
+                .map(InverterConfig::serial)
+                .toList();
+    }
+
     public record OpenDTUConfig(String baseUrl, String username, String password) {}
 
     public record ModbusGridConfig(String host, int port) {}
@@ -62,9 +79,12 @@ public record AppConfig(
      * balance accounting) but never commanded -- excluded from water-filling,
      * CapacityEstimator, and every code path that calls
      * setAbsoluteLimitW/setRelativeLimitPct (decisionCycle, releaseForCharging,
-     * sendManualOverride included).
+     * sendManualOverride included). curtailPriority (optional, lower =
+     * curtailed first) orders the SunSpec forwarder's cascade, see
+     * {@link #curtailOrder()}.
      */
-    public record InverterConfig(String serial, double nominalPowerW, String name, boolean controllable) {}
+    public record InverterConfig(
+            String serial, double nominalPowerW, String name, boolean controllable, Integer curtailPriority) {}
 
     /**
      * The config page + live dashboard are always on -- port and dashboard

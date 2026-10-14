@@ -560,6 +560,25 @@ mais une propriété du calcul lui-même. Le seuil filtre ce bruit tout en
 laissant intacte la protection pour une vraie décharge (charge imprévue que le
 solaire pourrait couvrir).
 
+## Bridage en cascade (forwarder SunSpec, 2026-10-14)
+
+Quand la consigne Victron s'applique (batterie pleine), `SunSpecForwarder`
+ne répartit plus la cible sur tous les onduleurs (water-filling +
+`CapacityEstimator`, qui déplaçait la limite de chaque onduleur à chaque
+variation de la consigne : beaucoup de trafic RF et de puissance échangée
+entre onduleurs). `allocator/CascadeAllocator` (pur, testé) bride les
+onduleurs pilotables **un par un** dans `AppConfig.curtailOrder()` : ceux
+avant l'onduleur « marginal » sont à leur plancher (`min_inverter_pct`),
+ceux après restent à leur puissance nominale (non bridés, leur production
+réelle est soustraite de la cible), et seul le marginal est ajusté -- un
+changement de consigne n'envoie donc qu'une commande. L'hystérésis vient de
+l'écart plancher/nominale : on passe au suivant quand le marginal devrait
+descendre sous son plancher, on revient au précédent quand il devrait
+dépasser sa nominale. Ordre : `inverters[].curtail_priority` croissant
+(colonne « Ordre de bridage » de /config), puis les autres par puissance
+nominale décroissante. `ControlLoop` (régulation interne, utilisée quand le
+proxy ne pilote pas) garde le water-filling.
+
 ## Répartition multi-onduleurs (water-filling)
 
 **Onduleurs non pilotables (`config.inverters[].controllable=false`,

@@ -78,7 +78,7 @@ class SunSpecForwarderTest {
 
     private SunSpecForwarder forwarder(FakeOpenDTUApi fake, SunSpecRegisterMap map, BatterySoc batteryReader) {
         return new SunSpecForwarder(
-                fake, map, ALL, CONTROLLABLE, NOMINAL, 50.0, 0.0, 5.0, 30.0, 5.0, batteryReader, false);
+                fake, map, ALL, CONTROLLABLE, CONTROLLABLE, NOMINAL, 0.0, 5.0, 5.0, batteryReader, false);
     }
 
     private static SunSpecRegisterMap registerMap() {
@@ -142,10 +142,11 @@ class SunSpecForwarderTest {
     }
 
     @Test
-    void enabledLimitDistributesWMaxLimPctAcrossControllableInvertersOnly() {
+    void enabledLimitCurtailsOnlyTheFirstControllableInverterInCascadeOrder() {
         SunSpecRegisterMap map = registerMap();
         // 50% of the WHOLE nameplate (800+1000+400=2200) -> 1100W raw target, minus the
-        // non-controllable inverter's own uncapped 50W actual production -> 1050W for water-fill.
+        // non-controllable inverter's own uncapped 50W actual production -> 1050W. Cascade
+        // order a, b: b stays uncapped (its 500W live production is subtracted), a takes the rest.
         setWMaxLim(map, true, 50.0);
         FakeOpenDTUApi fake = new FakeOpenDTUApi()
                 .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
@@ -156,9 +157,25 @@ class SunSpecForwarderTest {
         forwarder.decisionTick();
 
         assertThat(fake.relativeCalls).isEmpty();
-        double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
-        assertThat(total).isCloseTo(1050.0, org.assertj.core.data.Offset.offset(0.01));
-        assertThat(fake.absoluteCalls).extracting(Map.Entry::getKey).containsExactlyInAnyOrder("a", "b");
+        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 550.0), Map.entry("b", 1000.0));
+    }
+
+    @Test
+    void cascadeOnlyResendsTheMarginalInverterWhenVictronsCapMoves() {
+        SunSpecRegisterMap map = registerMap();
+        setWMaxLim(map, true, 50.0);
+        FakeOpenDTUApi fake = new FakeOpenDTUApi()
+                .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
+                .withLimitStatus(Map.of());
+        SunSpecForwarder forwarder = forwarder(fake, map);
+
+        forwarder.decisionTick();
+        fake.absoluteCalls.clear();
+
+        setWMaxLim(map, true, 40.0); // 880 - 50 = 830W -> a = 830 - 500 = 330W, b untouched
+        forwarder.decisionTick();
+
+        assertThat(fake.absoluteCalls).containsExactly(Map.entry("a", 330.0));
     }
 
     @Test
@@ -205,50 +222,6 @@ class SunSpecForwarderTest {
     }
 
     @Test
-    void ignoredBypassSendsFullNominalEvenWithADegradedCapacityCeiling() {
-        // A previously-observed shortfall (persisted across enough cycles)
-        // lowers "a"'s capacity ceiling while Victron's cap is still trusted
-        // (battery full). Once the battery drops below the full threshold,
-        // the bypass must send "a" its full nominal power directly -- not
-        // the stale, degraded ceiling -- since nothing genuinely restricts
-        // production anymore (2026-07-26 fix: the ceiling used to still gate
-        // the allocation even while the Victron cap itself was ignored).
-        SunSpecRegisterMap map = registerMap();
-        setWMaxLim(map, true, 100.0);
-        FakeOpenDTUApi fake = new FakeOpenDTUApi()
-                .withLivePowerW(Map.of("a", 100.0, "b", 1000.0, "nc", 0.0))
-                .withLimitStatus(Map.of(
-                        "a", new LimitStatus(100.0, 800.0, "Ok"), "b", new LimitStatus(100.0, 1000.0, "Ok")));
-        FixedSocBattery battery = new FixedSocBattery(99.0);
-        SunSpecForwarder forwarder = forwarder(fake, map, battery);
-
-        // 3 cycles of persistent, acknowledged underperformance on "a" (100W
-        // actual against an 800W ask) degrade its ceiling; a 4th tick is what
-        // actually sends that newly-degraded (lower) ceiling.
-        forwarder.decisionTick();
-        forwarder.decisionTick();
-        forwarder.decisionTick();
-        forwarder.decisionTick();
-
-        double lastSentToA = fake.absoluteCalls.stream()
-                .filter(e -> e.getKey().equals("a"))
-                .mapToDouble(Map.Entry::getValue)
-                .reduce((first, second) -> second)
-                .orElseThrow();
-        assertThat(lastSentToA).isLessThan(800.0); // ceiling did degrade, confirming the setup
-
-        battery.setSocPct(80.0); // battery drops below the full threshold -> bypass engages
-        forwarder.decisionTick();
-
-        double finalSentToA = fake.absoluteCalls.stream()
-                .filter(e -> e.getKey().equals("a"))
-                .mapToDouble(Map.Entry::getValue)
-                .reduce((first, second) -> second)
-                .orElseThrow();
-        assertThat(finalSentToA).isEqualTo(800.0); // full nominal, not the degraded ceiling
-    }
-
-    @Test
     void respectsWMaxLimPctWhenBatteryIsAtOrAboveFullThreshold() {
         SunSpecRegisterMap map = registerMap();
         setWMaxLim(map, true, 30.0);
@@ -260,8 +233,8 @@ class SunSpecForwarderTest {
 
         forwarder.decisionTick();
 
-        double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
-        assertThat(total).isCloseTo(610.0, org.assertj.core.data.Offset.offset(0.01)); // 30% of 2200 - 50
+        // 30% of 2200 - 50 = 610W -> a = 610 - b's 500W = 110W, b uncapped
+        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 110.0), Map.entry("b", 1000.0));
     }
 
     @Test
@@ -283,8 +256,8 @@ class SunSpecForwarderTest {
             logger.setLevel(previousLevel);
         }
 
-        double total = fake.absoluteCalls.stream().mapToDouble(Map.Entry::getValue).sum();
-        assertThat(total).isCloseTo(610.0, org.assertj.core.data.Offset.offset(0.01)); // 30% of 2200 - 50
+        // 30% of 2200 - 50 = 610W -> a = 610 - b's 500W = 110W, b uncapped
+        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 110.0), Map.entry("b", 1000.0));
     }
 
     @Test

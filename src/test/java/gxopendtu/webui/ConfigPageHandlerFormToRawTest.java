@@ -49,6 +49,25 @@ class ConfigPageHandlerFormToRawTest {
     }
 
     @Test
+    void curtailPriorityRoundTripsAndOrdersTheCascade() {
+        Map<String, List<String>> form = Map.of(
+                "opendtu.base_url", List.of("http://x"),
+                "grid.modbus.host", List.of("10.0.0.1"),
+                "inverter_serial", List.of("small", "big", "mid", "other", "off"),
+                "inverter_nominal_power_w", List.of("400", "2000", "1000", "800", "500"),
+                "inverter_name", List.of("", "", "", "", ""),
+                "inverter_controllable", List.of("true", "true", "true", "true", "false"),
+                "inverter_curtail_priority", List.of("", "1", "2", "", "3"));
+
+        AppConfig config = ConfigLoader.parseConfig(ConfigPageHandler.formToRaw(form));
+
+        assertThat(config.inverters().get(0).curtailPriority()).isNull();
+        assertThat(config.inverters().get(1).curtailPriority()).isEqualTo(1);
+        // prioritized first, then the rest by decreasing nominal power; non-controllable excluded
+        assertThat(config.curtailOrder()).containsExactly("big", "mid", "other", "small");
+    }
+
+    @Test
     void minBatteryDischargeWRoundTripsWhenProvided() {
         Map<String, List<String>> form = Map.of(
                 "opendtu.base_url", List.of("http://x"),

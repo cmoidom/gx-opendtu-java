@@ -163,11 +163,10 @@ public final class Main {
                                 registerMap,
                                 allSerials,
                                 controllableSerials,
+                                config.curtailOrder(),
                                 nominalPowerW,
-                                config.capacityProbe().stepW(),
                                 config.control().minInverterPct(),
                                 config.control().decisionIntervalS(),
-                                config.capacityProbe().intervalS(),
                                 config.control().minChangeW(),
                                 sunSpecBatteryReader,
                                 config.logging().verboseTraces())

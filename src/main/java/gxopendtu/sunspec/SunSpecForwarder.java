@@ -1,10 +1,8 @@
 package gxopendtu.sunspec;
 
-import gxopendtu.allocator.WaterFillAllocator;
+import gxopendtu.allocator.CascadeAllocator;
 import gxopendtu.battery.BatterySoc;
 import gxopendtu.battery.BatterySocUnavailableException;
-import gxopendtu.control.CapacityEstimator;
-import gxopendtu.opendtu.LimitStatus;
 import gxopendtu.opendtu.OpenDTUApi;
 import gxopendtu.opendtu.OpenDTUException;
 
@@ -17,21 +15,18 @@ import java.util.stream.Collectors;
 
 /**
  * Write path opt-in via {@code sunspec_proxy.forward_to_opendtu}: translates Venus OS's
- * WMaxLimPct/WMaxLim_Ena/Conn into real OpenDTU commands, distributed
- * across the real inverters via the same {@link WaterFillAllocator} +
- * {@link CapacityEstimator} pattern {@code loop.ControlLoop} uses for its
- * own PI-computed target -- its own separate {@code CapacityEstimator}
- * instance, since this module and {@code ControlLoop} must never both be
- * commanding the same inverters at once. {@code Main} enforces that by
- * suppressing {@code ControlLoop}'s own OpenDTU writes (treating it as an
- * effective dry-run) for exactly as long as this forwarder is active.
+ * WMaxLimPct/WMaxLim_Ena/Conn into real OpenDTU commands, curtailing the
+ * controllable inverters one at a time in {@code AppConfig.curtailOrder()}
+ * via {@link CascadeAllocator} (2026-10-14 -- replaced the water-fill +
+ * CapacityEstimator distribution, which moved every inverter's limit on
+ * every change of Victron's cap: lots of RF traffic and limits shuffling
+ * between inverters, see CascadeAllocator). {@code Main} suppresses
+ * {@code ControlLoop}'s own OpenDTU writes (treating it as an effective
+ * dry-run) for exactly as long as this forwarder is active, since both must
+ * never command the same inverters at once.
  *
- * Two independent-cadence loops on their own daemon threads, mirroring
- * {@code ControlLoop}'s own two-cadence design: a decision loop
- * ({@code control.decision_interval_s}) that reads WMaxLimPct/Ena and sends
- * real limits, and a probe loop ({@code capacity_probe.interval_s}) that
- * nudges each inverter's capacity ceiling back up -- see
- * {@code CapacityEstimator}'s own javadoc for why that recovery exists.
+ * One decision loop on its own daemon thread ({@code control.decision_interval_s})
+ * that reads WMaxLimPct/Ena and sends real limits.
  */
 public final class SunSpecForwarder {
 
@@ -44,13 +39,12 @@ public final class SunSpecForwarder {
     private final List<String> allSerials;
     private final List<String> controllableSerials;
     private final double totalNominalPowerW;
-    private final CapacityEstimator capacity;
-    private final double minInverterPct;
+    private final Map<String, Double> nominalPowerW;
+    private final CascadeAllocator cascade;
     private final double minChangeW;
     private final BatterySoc batteryReader;
     private final boolean verboseTraces;
     private final long decisionIntervalMs;
-    private final long probeIntervalMs;
     private volatile boolean running;
     private int consecutiveFailures;
     private boolean released;
@@ -62,11 +56,10 @@ public final class SunSpecForwarder {
             SunSpecRegisterMap registerMap,
             List<String> allSerials,
             List<String> controllableSerials,
+            List<String> curtailOrder,
             Map<String, Double> nominalPowerW,
-            double capacityProbeStepW,
             double minInverterPct,
             double decisionIntervalS,
-            double capacityProbeIntervalS,
             double minChangeW,
             BatterySoc batteryReader,
             boolean verboseTraces) {
@@ -75,10 +68,9 @@ public final class SunSpecForwarder {
         this.allSerials = allSerials;
         this.controllableSerials = controllableSerials;
         this.totalNominalPowerW = nominalPowerW.values().stream().mapToDouble(Double::doubleValue).sum();
-        this.capacity = new CapacityEstimator(nominalPowerW, capacityProbeStepW);
-        this.minInverterPct = minInverterPct;
+        this.nominalPowerW = Map.copyOf(nominalPowerW);
+        this.cascade = new CascadeAllocator(curtailOrder, nominalPowerW, minInverterPct);
         this.decisionIntervalMs = Math.round(decisionIntervalS * 1000);
-        this.probeIntervalMs = Math.round(capacityProbeIntervalS * 1000);
         this.minChangeW = minChangeW;
         this.batteryReader = batteryReader;
         this.verboseTraces = verboseTraces;
@@ -89,9 +81,6 @@ public final class SunSpecForwarder {
         Thread decisionThread = new Thread(this::decisionLoop, "sunspec-forwarder-decision");
         decisionThread.setDaemon(true);
         decisionThread.start();
-        Thread probeThread = new Thread(this::probeLoop, "sunspec-forwarder-probe");
-        probeThread.setDaemon(true);
-        probeThread.start();
         LOG.warning("[SunSpec] forwarding vers OpenDTU ACTIF -- ce proxy pilote reellement les onduleurs "
                 + "d'apres la limite ecrite par Victron; la regulation zero-export habituelle n'envoie plus rien");
     }
@@ -107,19 +96,10 @@ public final class SunSpecForwarder {
         }
     }
 
-    private void probeLoop() {
-        while (running) {
-            sleep(probeIntervalMs);
-            capacity.probeTick();
-        }
-    }
-
     /** Package-private: the actual decision logic, callable directly in tests without waiting on real threads. */
     void decisionTick() {
         try {
             Map<String, Double> livePowerW = client.getLivePowerW(allSerials);
-            Map<String, LimitStatus> limitStatus = client.getLimitStatus();
-            Map<String, Double> dataAgeS = client.getDataAgeS(allSerials);
             consecutiveFailures = 0;
 
             if (!registerMap.everWritten()) {
@@ -149,24 +129,22 @@ public final class SunSpecForwarder {
             double targetW = Math.max(0.0, cap.pct() / 100.0 * totalNominalPowerW - nonControllableActualW);
             // Ignored means the battery has headroom -- nothing is actually
             // restricting production, so every controllable inverter goes
-            // straight to its own nameplate power. Water-fill/the capacity
-            // estimator's ceiling exist to intelligently share a genuinely
-            // restricted target across inverters (e.g. Victron really did ask
-            // for only 30%); there is nothing to share out when nothing is
-            // restricted, and consulting a ceiling here would silently
-            // reintroduce a limit below 100% (e.g. from a previous cloud
-            // passage) that this whole bypass exists to avoid.
-            Map<String, Double> allocation = cap.ignored()
-                    ? controllableSerials.stream().collect(Collectors.toMap(
-                            s -> s, s -> capacity.nominalPowerW().getOrDefault(s, 0.0)))
-                    : WaterFillAllocator.waterFillAllocate(
-                            targetW, controllableSerials, capacity.ceilingsW(), capacity.nominalPowerW(), minInverterPct);
+            // straight to its own nameplate power, and the cascade starts
+            // over from its first inverter the next time Victron's cap applies.
+            Map<String, Double> allocation;
+            if (cap.ignored()) {
+                cascade.reset();
+                allocation = controllableSerials.stream().collect(Collectors.toMap(
+                        s -> s, s -> nominalPowerW.getOrDefault(s, 0.0)));
+            } else {
+                allocation = cascade.allocate(targetW, livePowerW);
+            }
 
             if (verboseTraces) {
                 LOG.info("[SunSpec] targetW=" + targetW
                         + " nonControllableActualW=" + nonControllableActualW
                         + " ignored=" + cap.ignored()
-                        + " ceilingsW=" + capacity.ceilingsW()
+                        + " livePowerW=" + livePowerW
                         + " allocation=" + allocation);
             }
 
@@ -190,16 +168,6 @@ public final class SunSpecForwarder {
                     LOG.severe("[SunSpec] envoi limite " + serial + " echoue: " + e.getMessage());
                 }
             });
-
-            for (String serial : controllableSerials) {
-                LimitStatus status = limitStatus.get(serial);
-                capacity.observe(
-                        serial,
-                        allocation.getOrDefault(serial, 0.0),
-                        livePowerW.getOrDefault(serial, 0.0),
-                        status != null ? status.acknowledged() : true,
-                        dataAgeS.getOrDefault(serial, 0.0));
-            }
         } catch (OpenDTUException e) {
             consecutiveFailures++;
             LOG.log(
@@ -222,9 +190,8 @@ public final class SunSpecForwarder {
      * actively discharging at -1.5kW, i.e. curtailing PV at the exact moment
      * more of it was needed. Below the full threshold there's still room to
      * absorb any excess production, so Victron's cap is ignored entirely --
-     * every controllable inverter goes straight to 100%, not just to
-     * whatever the capacity estimator currently believes it can reach (see
-     * the {@code ignored} branch in decisionTick). Any BatterySoc read
+     * every controllable inverter goes straight to 100% (see the
+     * {@code ignored} branch in decisionTick). Any BatterySoc read
      * failure, or no battery configured at all, falls back to trusting
      * Victron's cap as-is -- the safe default when battery headroom can't be
      * confirmed.
@@ -273,6 +240,7 @@ public final class SunSpecForwarder {
         }
         LOG.info("[SunSpec] WMaxLim_Ena=0/Conn=0: liberation des onduleurs pilotables a 100%");
         lastSentW.clear(); // the 100% below overwrites the last absolute limits, so they must be resent later
+        cascade.reset(); // ...and nothing is curtailed anymore
         for (String serial : controllableSerials) {
             try {
                 client.setRelativeLimitPct(serial, 100);
