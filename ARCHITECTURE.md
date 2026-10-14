@@ -574,7 +574,9 @@ réelle est soustraite de la cible), et seul le marginal est ajusté -- un
 changement de consigne n'envoie donc qu'une commande. L'hystérésis vient de
 l'écart plancher/nominale : on passe au suivant quand le marginal devrait
 descendre sous son plancher, on revient au précédent quand il devrait
-dépasser sa nominale. Ordre : `inverters[].curtail_priority` croissant
+dépasser sa nominale -- ou plus tôt, quand il produit nettement moins que
+sa limite pendant 4 cycles (~20 s) : sa limite ne bride alors rien (peu de
+soleil, ombre) et le précédent était retenu à son plancher pour rien. Ordre : `inverters[].curtail_priority` croissant
 (colonne « Ordre de bridage » de /config), puis les autres par puissance
 nominale décroissante. `ControlLoop` (régulation interne, utilisée quand le
 proxy ne pilote pas) garde le water-filling.
