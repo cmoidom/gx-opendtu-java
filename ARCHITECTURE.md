@@ -150,7 +150,13 @@ expose `GET /status.json?since=<epoch>` (récupération incrémentale) et
 la page `/dashboard`, qui interroge cet endpoint toutes les 2s. L'état est
 perdu à chaque redémarrage du service : c'est une vue en direct sur les
 30 dernières minutes, pas un historique persistant -- voir `stats/StatsStore`
-ci-dessous pour la persistance long terme.
+ci-dessous pour la persistance long terme. `LiveState` garde aussi, hors
+historique, la dernière commande de limite acceptée par OpenDTU pour chaque
+onduleur (`recordLimitCommand`, branché comme `LimitCommandListener` sur les
+deux `OpenDTUClient`, celui de `ControlLoop` et celui du forwarder SunSpec) ;
+`/status.json` l'expose dans `last_limit_commands` pour la colonne
+"Dernier reglage" du tableau par onduleur. Non persistée : vide après un
+redémarrage jusqu'au prochain envoi.
 
 **`state/InternalStatus` (2026-07-13, sans équivalent Python)** : même
 principe que `LiveState` (tampon circulaire + verrou, ~360 échantillons soit
@@ -204,7 +210,9 @@ battery_voltage_v, battery_current_a, injection_control, une ligne par `t`
 -- les deux dernières colonnes ajoutées après coup via une migration
 `ALTER TABLE` idempotente au démarrage, `ensureColumn`, pour ne pas casser un
 `stats.db` déjà déployé), `inverter_samples` (une ligne par
-onduleur par `t`), `hourly_energy` (miroir persistant de
+onduleur par `t` : `actual_w`, et `limit_pct` -- limite relative lue dans
+OpenDTU, ajoutée le 2026-10-14 par la même migration `ensureColumn`, NULL
+pour les lignes antérieures), `hourly_energy` (miroir persistant de
 `HourlyEnergyHistory.snapshot()`, réécrit intégralement -- `INSERT OR
 REPLACE` -- à chaque écriture, donc auto-cicatrisant si une écriture a été
 manquée). `INSERT OR REPLACE` partout : idempotent, une même clé (`t`,

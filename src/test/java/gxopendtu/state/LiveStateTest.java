@@ -162,4 +162,18 @@ class LiveStateTest {
 
         assertThat(state.snapshotSince(0.0).history()).hasSize(1);
     }
+
+    @Test
+    void recordLimitCommandKeepsOnlyTheLatestCommandPerSerial() {
+        LiveState state = new LiveState();
+        state.recordLimitCommand("a", 300.0, "W");
+        state.recordLimitCommand("b", 100.0, "%");
+        state.recordLimitCommand("a", 450.0, "W");
+
+        Map<String, Map<String, Object>> commands = state.lastLimitCommands();
+
+        assertThat(commands).containsOnlyKeys("a", "b");
+        assertThat(commands.get("a")).containsEntry("value", 450.0).containsEntry("unit", "W").containsKey("t");
+        assertThat(commands.get("b")).containsEntry("value", 100.0).containsEntry("unit", "%");
+    }
 }

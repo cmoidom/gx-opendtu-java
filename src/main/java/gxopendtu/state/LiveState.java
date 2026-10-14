@@ -38,6 +38,11 @@ public final class LiveState {
     private boolean minInverterFloorWarning;
     private Double recommendedMinInverterPct;
     private Double sunspecTargetW;
+    // serial -> {t, value, unit} of the last limit command OpenDTU accepted,
+    // see recordLimitCommand. Not part of the sampled history (it would just
+    // repeat the same value in every sample) and not persisted: empty again
+    // after a restart until the next command is sent.
+    private final Map<String, Map<String, Object>> lastLimitCommands = new LinkedHashMap<>();
 
     public LiveState() {
         this(DEFAULT_MAX_SAMPLES);
@@ -178,6 +183,29 @@ public final class LiveState {
             }
             Map<String, Object> latest = history.isEmpty() ? null : history.peekLast();
             return new Snapshot(latest, filtered);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Wired as the OpenDTUClient's LimitCommandListener (both ControlLoop's and the SunSpec forwarder's). */
+    public void recordLimitCommand(String serial, double value, String unit) {
+        Map<String, Object> command = new LinkedHashMap<>();
+        command.put("t", System.currentTimeMillis() / 1000.0);
+        command.put("value", value);
+        command.put("unit", unit);
+        lock.lock();
+        try {
+            lastLimitCommands.put(serial, Collections.unmodifiableMap(command));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public Map<String, Map<String, Object>> lastLimitCommands() {
+        lock.lock();
+        try {
+            return new LinkedHashMap<>(lastLimitCommands);
         } finally {
             lock.unlock();
         }

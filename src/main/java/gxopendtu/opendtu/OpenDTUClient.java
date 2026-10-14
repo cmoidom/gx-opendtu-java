@@ -42,6 +42,7 @@ public final class OpenDTUClient implements OpenDTUApi {
     private final Duration timeout;
     private final HttpClient httpClient;
     private final String authHeader;
+    private volatile LimitCommandListener limitCommandListener;
 
     public OpenDTUClient(String baseUrl, double timeoutS, String username, String password) {
         this.baseUrl = stripTrailingSlash(baseUrl);
@@ -63,6 +64,12 @@ public final class OpenDTUClient implements OpenDTUApi {
 
     public OpenDTUClient(String baseUrl, String username, String password) {
         this(baseUrl, 5.0, username, password);
+    }
+
+    /** Returns this client, for chaining right after construction. */
+    public OpenDTUClient withLimitCommandListener(LimitCommandListener listener) {
+        this.limitCommandListener = listener;
+        return this;
     }
 
     public OpenDTUClient(String baseUrl) {
@@ -314,6 +321,7 @@ public final class OpenDTUClient implements OpenDTUApi {
         post(
                 "/api/limit/config",
                 Map.of("serial", serial, "limit_type", LIMIT_TYPE_ABSOLUTE_NONPERSISTENT, "limit_value", Math.round(watts)));
+        notifyLimitSent(serial, Math.round(watts), "W");
     }
 
     @Override
@@ -321,5 +329,14 @@ public final class OpenDTUClient implements OpenDTUApi {
         post(
                 "/api/limit/config",
                 Map.of("serial", serial, "limit_type", LIMIT_TYPE_RELATIVE_NONPERSISTENT, "limit_value", Math.round(percent)));
+        notifyLimitSent(serial, Math.round(percent), "%");
+    }
+
+    /** Only reached when post() didn't throw, i.e. OpenDTU accepted the command. */
+    private void notifyLimitSent(String serial, double value, String unit) {
+        LimitCommandListener listener = limitCommandListener;
+        if (listener != null) {
+            listener.limitSent(serial, value, unit);
+        }
     }
 }

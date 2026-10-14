@@ -109,6 +109,58 @@ class StatsStoreTest {
     }
 
     @Test
+    void persistSnapshotStoresPerInverterLimitPctAndItRoundTripsThroughLoadMethods(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        LiveState liveState = new LiveState();
+        java.util.Map<String, Object> noLimitRead = new java.util.HashMap<>();
+        noLimitRead.put("serial", "c");
+        noLimitRead.put("actual_w", 5.0);
+        noLimitRead.put("limit_relative_pct", null);
+        liveState.updateDecision(
+                80.0,
+                "ON",
+                300.0,
+                List.of(
+                        Map.of("serial", "a", "actual_w", 210.0, "limit_relative_pct", 42.0),
+                        // the OFF path reports a literal Integer 100, not a Double
+                        Map.of("serial", "b", "actual_w", 90.0, "limit_relative_pct", 100),
+                        noLimitRead),
+                null,
+                null,
+                null,
+                false,
+                null);
+        liveState.recordGrid(10.0, 9.0);
+
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> inverters = (List<Map<String, Object>>) store.loadRecentSamples(10).get(0).get("inverters");
+            Map<String, Object> limitBySerial = new java.util.HashMap<>();
+            inverters.forEach(inv -> limitBySerial.put((String) inv.get("serial"), inv.get("limit_relative_pct")));
+            assertThat(limitBySerial).containsEntry("a", 42.0).containsEntry("b", 100.0).containsEntry("c", null);
+        }
+    }
+
+    @Test
+    void addsLimitPctColumnToAPreExistingInverterSamplesTable(@TempDir Path tmpDir) throws Exception {
+        Path dbPath = tmpDir.resolve("stats.db");
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE inverter_samples (t INTEGER, serial TEXT, actual_w REAL, PRIMARY KEY (t, serial))");
+        }
+
+        try (StatsStore store = new StatsStore(dbPath)) {
+            store.recordSample(1_000.0, 10.0, 10.0, null, null, null, null, "ON", Map.of("a", 1.0));
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> inverters = (List<Map<String, Object>>) store.loadRecentSamples(10).get(0).get("inverters");
+            assertThat(inverters).hasSize(1);
+            assertThat(inverters.get(0).get("limit_relative_pct")).isNull();
+        }
+    }
+
+    @Test
     void persistSnapshotWithoutSunSpecTargetPersistsNull(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         LiveState liveState = new LiveState();

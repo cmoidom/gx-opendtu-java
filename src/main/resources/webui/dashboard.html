@@ -160,9 +160,17 @@
   <div class="legend" id="inverters-legend"></div>
 </div>
 
+<h2>Limite par onduleur (%)</h2>
+<div class="chart-box">
+  <canvas id="chart-inverter-limits"></canvas>
+  <div class="legend" id="inverter-limits-legend"></div>
+  <p class="hint">Limite relative lue dans OpenDTU pour chaque onduleur. Les courbes a 100% se superposent --
+  cliquer un nom dans la legende pour le masquer.</p>
+</div>
+
 <h2>Detail par onduleur</h2>
 <table id="inverters-table">
-  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Etat</th></tr></thead>
+  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Dernier reglage</th><th class="center">Etat</th></tr></thead>
   <tbody></tbody>
 </table>
 <p class="hint">Pendant la charge batterie prioritaire (regulation OFF), "Limite" affiche
@@ -1125,6 +1133,7 @@ const chartSoc = document.getElementById('chart-soc');
 const chartGrid = document.getElementById('chart-grid');
 const chartSunSpec = document.getElementById('chart-sunspec');
 const chartInverters = document.getElementById('chart-inverters');
+const chartInverterLimits = document.getElementById('chart-inverter-limits');
 const chartEnergy = document.getElementById('chart-energy');
 const chartInverterEnergy = document.getElementById('chart-inverter-energy');
 const chartInverterWeek = document.getElementById('chart-inverter-week');
@@ -1132,6 +1141,7 @@ attachHover(chartSoc, { yFormat: fmtPct });
 attachHover(chartGrid, { yFormat: fmtW });
 attachHover(chartSunSpec, { yFormat: fmtW });
 attachHover(chartInverters, { yFormat: fmtW });
+attachHover(chartInverterLimits, { yFormat: fmtPct });
 attachBarHover(chartEnergy);
 attachBarHover(chartInverterEnergy, { yFormat: fmtWh });
 attachBarHover(chartInverterWeek, { yFormat: fmtWh, xFormat: fmtDay, bucketSeconds: 86400 });
@@ -1139,6 +1149,7 @@ attachZoomPan(chartSoc);
 attachZoomPan(chartGrid);
 attachZoomPan(chartSunSpec);
 attachZoomPan(chartInverters);
+attachZoomPan(chartInverterLimits);
 
 // Linear extrapolation of the recent SOC trend to estimate a clock time for
 // "full" (100%) or "empty" (0%) -- entirely client-side, from the same
@@ -1206,10 +1217,21 @@ function effectiveLimitW(inv) {
   return inv.allocated_w != null ? inv.allocated_w : inv.max_power_w;
 }
 
-function renderInverterTable(latest) {
+/** Time of the last limit command OpenDTU accepted for this inverter (any module) -- date added when not today. */
+function fmtLastLimitCommand(cmd) {
+  if (!cmd) return '<span class="hint">--</span>';
+  const d = new Date(cmd.t * 1000);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const label = d.toDateString() === new Date().toDateString()
+    ? time : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + time;
+  return '<span title="' + Math.round(cmd.value) + ' ' + cmd.unit + '">' + label + '</span>';
+}
+
+function renderInverterTable(latest, lastLimitCommands) {
+  const commands = lastLimitCommands || {};
   const tbody = document.querySelector('#inverters-table tbody');
   const inverters = (latest && latest.inverters) || [];
-  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="7" class="hint">aucune donnee</td></tr>'; return; }
+  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="8" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
     const age = inv.data_age_s;
@@ -1225,6 +1247,7 @@ function renderInverterTable(latest) {
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
     '<td class="num">' + fullPowerCell + '</td>' +
+    '<td class="center">' + fmtLastLimitCommand(commands[inv.serial]) + '</td>' +
     '<td class="center">' + (inv.controllable === false ? 'non pilote' :
                inv.acknowledged === false ? 'en attente (RF)' :
                inv.acknowledged === null ? 'debride (charge batterie)' : 'ok') + '</td></tr>';
@@ -1304,10 +1327,24 @@ function renderCharts() {
   drawChart(chartInverters, visibleSeries('inverters', invSeries), Object.assign({ yFormat: fmtW }, viewOpts));
   renderLegend('inverters-legend', 'inverters', invSeries);
 
+  const limitSeries = inverterOrder.map(serial => ({
+    key: serial,
+    label: inverterLabel(serial),
+    color: inverterColor(serial),
+    points: history.flatMap(s => {
+      const inv = (s.inverters || []).find(i => i.serial === serial);
+      return (inv && inv.limit_relative_pct !== null && inv.limit_relative_pct !== undefined)
+        ? [{ t: s.t, v: inv.limit_relative_pct, backfilled: !!s.backfilled }] : [];
+    }),
+  }));
+  drawChart(chartInverterLimits, visibleSeries('inverter-limits', limitSeries),
+            Object.assign({ yFormat: fmtPct, yMin: 0, yMax: 100 }, viewOpts));
+  renderLegend('inverter-limits-legend', 'inverter-limits', limitSeries);
+
   // Reapply the hover crosshair on top of this fresh render for any chart
   // currently being hovered -- otherwise a periodic poll() redraw (every 2s)
   // would erase it while the mouse sits still.
-  [chartSoc, chartGrid, chartSunSpec, chartInverters].forEach(c => {
+  [chartSoc, chartGrid, chartSunSpec, chartInverters, chartInverterLimits].forEach(c => {
     if (c._hoverT !== null && c._hoverT !== undefined) redrawChart(c);
   });
 
@@ -1371,7 +1408,7 @@ function poll() {
           b => b.hour >= todayBounds.since && b.hour < todayBounds.until);
       }
       renderTiles(data.latest);
-      renderInverterTable(data.latest);
+      renderInverterTable(data.latest, data.last_limit_commands);
       renderCharts();
       renderControls(data);
     })

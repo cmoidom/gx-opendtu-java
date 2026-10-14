@@ -125,7 +125,8 @@ public final class Main {
                     config.sunspecProxy().serialNumber(),
                     config.totalNominalPowerW());
             OpenDTUClient sunSpecOpenDtuClient = new OpenDTUClient(
-                    config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+                    config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password())
+                    .withLimitCommandListener(liveState::recordLimitCommand);
             // Own try/catch, separate from the outer one: a failed fetch here
             // (e.g. OpenDTU unreachable yet at boot) must not prevent the
             // poller/TCP server below from starting -- Vr just stays at its

@@ -504,7 +504,12 @@ public final class ControlLoop {
                 : null;
         Boolean lastPersistedActive = persistedActive;
 
-        OpenDTUApi client = new OpenDTUClient(config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+        OpenDTUClient openDtuClient = new OpenDTUClient(
+                config.opendtu().baseUrl(), config.opendtu().username(), config.opendtu().password());
+        if (liveState != null) {
+            openDtuClient.withLimitCommandListener(liveState::recordLimitCommand);
+        }
+        OpenDTUApi client = openDtuClient;
         GridPowerSmoother smoother = new GridPowerSmoother(config.grid().emaAlpha());
         SoftTargetController controller = new SoftTargetController(
                 config.grid().exportSetpointW(),

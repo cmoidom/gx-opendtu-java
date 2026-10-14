@@ -87,7 +87,8 @@ public final class StatsStore implements AutoCloseable {
             Double batteryCurrentA,
             String injectionControl,
             Double sunspecTargetW,
-            Map<String, Double> inverterActualW) {}
+            Map<String, Double> inverterActualW,
+            Map<String, Double> inverterLimitPct) {}
 
     public StatsStore(Path dbPath) {
         this.dbPath = dbPath;
@@ -118,6 +119,7 @@ public final class StatsStore implements AutoCloseable {
                                 + "t INTEGER, "
                                 + "serial TEXT, "
                                 + "actual_w REAL, "
+                                + "limit_pct REAL, "
                                 + "PRIMARY KEY (t, serial))");
                 statement.execute(
                         "CREATE TABLE IF NOT EXISTS hourly_energy ("
@@ -138,6 +140,8 @@ public final class StatsStore implements AutoCloseable {
                 ensureColumn(statement, "samples", "battery_current_a", "REAL");
                 // Migration for databases created before sunspec_target_w existed.
                 ensureColumn(statement, "samples", "sunspec_target_w", "REAL");
+                // Migration for databases created before the per-inverter limit % chart.
+                ensureColumn(statement, "inverter_samples", "limit_pct", "REAL");
             }
             // Prepared once and reused for the lifetime of this StatsStore
             // (both by recordSample's direct callers and by
@@ -149,7 +153,7 @@ public final class StatsStore implements AutoCloseable {
                             + "battery_current_a, injection_control, sunspec_target_w) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
             insertInverterSampleStmt = connection.prepareStatement(
-                    "INSERT OR REPLACE INTO inverter_samples (t, serial, actual_w) VALUES (?, ?, ?)");
+                    "INSERT OR REPLACE INTO inverter_samples (t, serial, actual_w, limit_pct) VALUES (?, ?, ?, ?)");
         } catch (SQLException e) {
             throw new StatsStoreException("failed to open stats database at " + dbPath, e);
         }
@@ -213,6 +217,7 @@ public final class StatsStore implements AutoCloseable {
         Double sunspecTargetW = (Double) sample.get("sunspec_target_w");
 
         Map<String, Double> inverterActualW = new LinkedHashMap<>();
+        Map<String, Double> inverterLimitPct = new LinkedHashMap<>();
         Object inverters = sample.get("inverters");
         if (inverters instanceof List<?> list) {
             for (Object item : list) {
@@ -222,6 +227,10 @@ public final class StatsStore implements AutoCloseable {
                     if (serial != null && actualW instanceof Double d) {
                         inverterActualW.put(String.valueOf(serial), d);
                     }
+                    // Number, not Double: the OFF path reports a literal 100 (Integer).
+                    if (serial != null && inv.get("limit_relative_pct") instanceof Number pct) {
+                        inverterLimitPct.put(String.valueOf(serial), pct.doubleValue());
+                    }
                 }
             }
         }
@@ -229,7 +238,7 @@ public final class StatsStore implements AutoCloseable {
         try {
             pendingSamples.add(new BufferedSample(
                     t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA,
-                    injectionControl, sunspecTargetW, inverterActualW));
+                    injectionControl, sunspecTargetW, inverterActualW, inverterLimitPct));
         } finally {
             lock.unlock();
         }
@@ -282,6 +291,8 @@ public final class StatsStore implements AutoCloseable {
                         insertInverterSampleStmt.setLong(1, tSeconds);
                         insertInverterSampleStmt.setString(2, entry.getKey());
                         insertInverterSampleStmt.setDouble(3, entry.getValue());
+                        setNullableDouble(insertInverterSampleStmt, 4,
+                                s.inverterLimitPct() != null ? s.inverterLimitPct().get(entry.getKey()) : null);
                         insertInverterSampleStmt.addBatch();
                     }
                 }
@@ -351,7 +362,7 @@ public final class StatsStore implements AutoCloseable {
             long minT = Math.round((Double) rows.get(0).get("t"));
             Map<Long, List<Map<String, Object>>> invertersByT = new LinkedHashMap<>();
             try (PreparedStatement stmt = connection.prepareStatement(
-                    "SELECT t, serial, actual_w FROM inverter_samples WHERE t >= ? ORDER BY t")) {
+                    "SELECT t, serial, actual_w, limit_pct FROM inverter_samples WHERE t >= ? ORDER BY t")) {
                 stmt.setLong(1, minT);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
@@ -359,6 +370,7 @@ public final class StatsStore implements AutoCloseable {
                         Map<String, Object> inv = new LinkedHashMap<>();
                         inv.put("serial", rs.getString("serial"));
                         inv.put("actual_w", rs.getDouble("actual_w"));
+                        inv.put("limit_relative_pct", nullableColumn(rs, "limit_pct"));
                         invertersByT.computeIfAbsent(t, k -> new ArrayList<>()).add(inv);
                     }
                 }
@@ -423,7 +435,7 @@ public final class StatsStore implements AutoCloseable {
 
             Map<Long, List<Map<String, Object>>> invertersByT = new LinkedHashMap<>();
             try (PreparedStatement stmt = connection.prepareStatement(
-                    "SELECT t, serial, actual_w FROM inverter_samples WHERE t >= ? AND t <= ? ORDER BY t")) {
+                    "SELECT t, serial, actual_w, limit_pct FROM inverter_samples WHERE t >= ? AND t <= ? ORDER BY t")) {
                 stmt.setLong(1, since);
                 stmt.setLong(2, until);
                 try (ResultSet rs = stmt.executeQuery()) {
@@ -432,6 +444,7 @@ public final class StatsStore implements AutoCloseable {
                         Map<String, Object> inv = new LinkedHashMap<>();
                         inv.put("serial", rs.getString("serial"));
                         inv.put("actual_w", rs.getDouble("actual_w"));
+                        inv.put("limit_relative_pct", nullableColumn(rs, "limit_pct"));
                         invertersByT.computeIfAbsent(t, k -> new ArrayList<>()).add(inv);
                     }
                 }
@@ -626,7 +639,7 @@ public final class StatsStore implements AutoCloseable {
         try {
             writeSamplesBatch(List.of(new BufferedSample(
                     t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA,
-                    injectionControl, null, inverterActualW)));
+                    injectionControl, null, inverterActualW, null)));
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "failed to persist stats sample", e);
         } finally {

@@ -246,6 +246,30 @@ class OpenDTUClientTest {
         assertThat(decoded).contains("\"limit_type\":1").contains("\"limit_value\":50");
     }
 
+    @Test
+    void limitCommandListenerIsNotifiedOnlyWhenOpenDTUAcceptsTheCommand() throws IOException {
+        AtomicReference<Integer> status = new AtomicReference<>(200);
+        String baseUrl = startServer((exchange) -> {
+            readBody(exchange);
+            exchange.sendResponseHeaders(status.get(), -1);
+            exchange.close();
+        });
+        List<String> notified = new ArrayList<>();
+        OpenDTUClient client = new OpenDTUClient(baseUrl)
+                .withLimitCommandListener((serial, value, unit) -> notified.add(serial + "=" + value + unit));
+
+        client.setAbsoluteLimitW("111", 249.6);
+        client.setRelativeLimitPct("222", 100);
+        status.set(500);
+        try {
+            client.setRelativeLimitPct("333", 5);
+        } catch (OpenDTUException expected) {
+            // rejected command: must not be reported as sent
+        }
+
+        assertThat(notified).containsExactly("111=250.0W", "222=100.0%");
+    }
+
     private static String readBody(HttpExchange exchange) {
         try {
             return new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
