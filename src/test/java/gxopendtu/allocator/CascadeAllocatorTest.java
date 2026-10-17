@@ -163,4 +163,52 @@ class CascadeAllocatorTest {
 
         assertThat(allocator.marginalIndex()).isEqualTo(1);
     }
+
+    @Test
+    void releasesOneInverterPerCallAndAssumesNominalPowerUntilAReadingShowsItsRealProduction() {
+        CascadeAllocator allocator = allocator();
+        // all at floor except small: target 50W
+        allocator.allocate(50.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0);
+        assertThat(allocator.marginalIndex()).isEqualTo(2);
+        // readings at their floors (taken at t=20, after the floors settled)
+        Map<String, Double> atFloors = Map.of("big", 100.0, "mid", 50.0, "small", 20.0);
+
+        // Victron lets 1400W through: small first (one step), not everybody at once
+        Map<String, Double> first = allocator.allocate(1400.0, atFloors, Map.of("big", 0.0, "mid", 0.0, "small", 0.0), 20.0);
+        assertThat(allocator.marginalIndex()).isEqualTo(1);
+        assertThat(first.get("big")).isEqualTo(100.0);
+
+        // small's 20W reading predates its release: its 400W nominal is assumed, not 20W
+        Map<String, Double> second = allocator.allocate(1400.0, atFloors, Map.of("big", 0.0, "mid", 0.0, "small", 2.0), 22.0);
+        assertThat(allocator.marginalIndex()).isEqualTo(1);
+        assertThat(second.get("mid")).isEqualTo(900.0); // 1400 - big's floor 100 - small's assumed 400
+    }
+
+    @Test
+    void aReleasedInverterThatTurnsOutToProduceLittleIsCountedAtItsRealReadingOnceAvailable() {
+        CascadeAllocator allocator = allocator();
+        allocator.allocate(50.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0);
+        allocator.allocate(600.0, Map.of("big", 100.0, "mid", 50.0, "small", 20.0), Map.of("small", 0.0), 20.0); // small released
+
+        // fresh reading of small taken at t=40 (uncapped since t=20): only 30W of sun
+        Map<String, Double> allocation = allocator.allocate(
+                600.0, Map.of("big", 100.0, "mid", 50.0, "small", 30.0), Map.of("small", 0.0, "mid", 0.0), 40.0);
+
+        assertThat(allocation.get("mid")).isEqualTo(470.0); // 600 - big's floor 100 - small's real 30
+    }
+
+    @Test
+    void anInverterOpenDTUHasLostIsTakenOutOfTheCascadeAndItsProductionSubtracted() {
+        CascadeAllocator allocator = allocator();
+        // big unreachable for 8 min, still producing its last-known 677W (the live 2026-10-17 case)
+        Map<String, Double> live = Map.of("big", 677.0, "mid", 300.0, "small", 100.0);
+        Map<String, Double> ages = Map.of("big", 480.0, "mid", 3.0, "small", 5.0);
+
+        Map<String, Double> allocation = allocator.allocate(900.0, live, ages, 600.0);
+
+        // mid takes the curtailment instead: 900 - 677 - small's 100 = 123W
+        assertThat(allocation.get("mid")).isEqualTo(123.0);
+        assertThat(allocation.get("small")).isEqualTo(400.0);
+        assertThat(allocation.get("big")).isEqualTo(2000.0); // never limited yet: keeps its (nominal) limit
+    }
 }

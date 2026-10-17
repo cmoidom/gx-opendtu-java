@@ -585,6 +585,18 @@ moment-là (moins 5 s de mise en place), et n'est comptée qu'une fois. Ordre : 
 nominale décroissante. `ControlLoop` (régulation interne, utilisée quand le
 proxy ne pilote pas) garde le water-filling.
 
+Deux garde-fous ajoutés après l'oscillation du 2026-10-17 (16:40-17:30) :
+(1) la production d'un onduleur non bridé n'est sa lecture que si celle-ci
+montre son vrai potentiel (prise sans limite, ou nettement sous la limite
+alors en vigueur) ; une lecture prise quand il était encore retenu (ex.
+juste après avoir quitté son plancher) fait supposer sa puissance
+nominale, et la libération se fait un onduleur par cycle -- la lecture
+obsolète faisait donner beaucoup trop à l'onduleur en réglage, puis
+injection et coupure brutale de Victron, environ une fois par minute ;
+(2) un onduleur dont les données ont plus de 60 s (perte RF, Mur Ouest
+16:32-16:40) sort de la cascade : sa dernière production connue est
+soustraite comme celle d'un onduleur non pilotable et il garde sa limite.
+
 ## Répartition multi-onduleurs (water-filling)
 
 **Onduleurs non pilotables (`config.inverters[].controllable=false`,
