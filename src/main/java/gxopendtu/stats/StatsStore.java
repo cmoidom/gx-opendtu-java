@@ -742,6 +742,65 @@ public final class StatsStore implements AutoCloseable {
         }
     }
 
+    /**
+     * A replaced inverter (same place, new serial): moves all of
+     * {@code oldSerial}'s rows to {@code newSerial} so its history continues
+     * under the new serial. The hour of the swap can exist under both serials
+     * in inverter_hourly_energy: those are summed. Idempotent.
+     */
+    public void renameInverter(String oldSerial, String newSerial) {
+        lock.lock();
+        try {
+            runInTransaction(List.of(
+                    new String[] {"UPDATE OR IGNORE inverter_samples SET serial = ? WHERE serial = ?", newSerial, oldSerial},
+                    new String[] {"DELETE FROM inverter_samples WHERE serial = ?", oldSerial},
+                    new String[] {"INSERT INTO inverter_hourly_energy (hour, serial, wh) "
+                            + "SELECT hour, ?, wh FROM inverter_hourly_energy WHERE serial = ? AND true "
+                            + "ON CONFLICT (hour, serial) DO UPDATE SET wh = wh + excluded.wh", newSerial, oldSerial},
+                    new String[] {"DELETE FROM inverter_hourly_energy WHERE serial = ?", oldSerial}));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** A removed inverter: deletes all of its rows. Idempotent. */
+    public void purgeInverter(String serial) {
+        lock.lock();
+        try {
+            runInTransaction(List.of(
+                    new String[] {"DELETE FROM inverter_samples WHERE serial = ?", serial},
+                    new String[] {"DELETE FROM inverter_hourly_energy WHERE serial = ?", serial}));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Caller must hold {@code lock}. Each entry: SQL followed by its string parameters. */
+    private void runInTransaction(List<String[]> statements) {
+        try {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                for (String[] statement : statements) {
+                    try (PreparedStatement stmt = connection.prepareStatement(statement[0])) {
+                        for (int i = 1; i < statement.length; i++) {
+                            stmt.setString(i, statement[i]);
+                        }
+                        stmt.executeUpdate();
+                    }
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        } catch (SQLException e) {
+            throw new StatsStoreException("failed to update inverter history", e);
+        }
+    }
+
     /** Deletes every row strictly older than the given epoch-seconds cutoff, in all three tables. */
     public void pruneOlderThan(double cutoffEpochSeconds) {
         lock.lock();

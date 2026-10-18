@@ -68,6 +68,30 @@ class ConfigPageHandlerFormToRawTest {
     }
 
     @Test
+    void editedSerialIsARenameRemovedRowIsAPurgeAndAddedRowIsNeither() throws Exception {
+        JsonNode current = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                "{\"inverters\": [{\"serial\": \"keep\"}, {\"serial\": \"old\"}, {\"serial\": \"gone\"}]}");
+        Map<String, List<String>> form = Map.of(
+                "inverter_serial", List.of("keep", "new", "added"),
+                "inverter_original_serial", List.of("keep", "old", ""));
+
+        assertThat(ConfigPageHandler.inverterChanges(current, form)).containsExactly(
+                gxopendtu.stats.InverterSerialChanges.Change.rename("old", "new"),
+                gxopendtu.stats.InverterSerialChanges.Change.purge("gone"));
+    }
+
+    @Test
+    void aSerialRemovedThenReAddedAsANewRowIsNotPurged() throws Exception {
+        JsonNode current = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                "{\"inverters\": [{\"serial\": \"same\"}]}");
+        Map<String, List<String>> form = Map.of(
+                "inverter_serial", List.of("same"),
+                "inverter_original_serial", List.of(""));
+
+        assertThat(ConfigPageHandler.inverterChanges(current, form)).isEmpty();
+    }
+
+    @Test
     void minBatteryDischargeWRoundTripsWhenProvided() {
         Map<String, List<String>> form = Map.of(
                 "opendtu.base_url", List.of("http://x"),

@@ -11,6 +11,7 @@ import gxopendtu.config.ConfigLoader;
 import gxopendtu.state.HourlyEnergyHistory;
 import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
+import gxopendtu.stats.InverterSerialChanges;
 import gxopendtu.stats.StatsStore;
 
 import java.io.IOException;
@@ -103,7 +104,9 @@ final class ConfigPageHandler implements HttpHandler {
         try {
             raw = formToRaw(form);
             ConfigLoader.parseConfig(raw); // validate before writing
+            List<InverterSerialChanges.Change> changes = inverterChanges(loadRaw(configPath), form);
             writeRaw(configPath, raw);
+            InverterSerialChanges.recordPending(configPath, changes);
         } catch (RuntimeException e) {
             sendHtml(exchange, 400, renderPage(raw, e.getMessage(), "", statsInfo()));
             return;
@@ -256,6 +259,41 @@ final class ConfigPageHandler implements HttpHandler {
     private static String first(Map<String, List<String>> form, String key, String defaultValue) {
         List<String> values = form.get(key);
         return (values != null && !values.isEmpty()) ? values.get(0) : defaultValue;
+    }
+
+    /**
+     * Serial edited in an existing row = the same inverter replaced (history
+     * continues under the new serial); row removed = inverter gone (history
+     * purged). {@code inverter_original_serial} is the serial a row had when
+     * the page was rendered, empty for a row added on the page -- a serial
+     * that is still configured in any row is never purged.
+     */
+    static List<InverterSerialChanges.Change> inverterChanges(JsonNode currentRaw, Map<String, List<String>> form) {
+        List<String> serials = form.getOrDefault("inverter_serial", List.of());
+        List<String> originals = form.getOrDefault("inverter_original_serial", List.of());
+        java.util.Set<String> kept = new java.util.HashSet<>();
+        List<InverterSerialChanges.Change> changes = new java.util.ArrayList<>();
+        for (int i = 0; i < serials.size(); i++) {
+            String serial = serials.get(i).trim();
+            String original = i < originals.size() ? originals.get(i).trim() : "";
+            if (serial.isEmpty()) {
+                continue;
+            }
+            kept.add(serial);
+            if (!original.isEmpty()) {
+                kept.add(original);
+                if (!original.equals(serial)) {
+                    changes.add(InverterSerialChanges.Change.rename(original, serial));
+                }
+            }
+        }
+        for (JsonNode inv : currentRaw.path("inverters")) {
+            String serial = inv.path("serial").asText("");
+            if (!serial.isEmpty() && !kept.contains(serial)) {
+                changes.add(InverterSerialChanges.Change.purge(serial));
+            }
+        }
+        return changes;
     }
 
     static JsonNode formToRaw(Map<String, List<String>> form) {
@@ -423,7 +461,9 @@ final class ConfigPageHandler implements HttpHandler {
         StringBuilder sb = new StringBuilder();
         for (JsonNode inv : inverters) {
             sb.append("<tr class=\"inv-row\">")
-                    .append("<td><input type=\"text\" name=\"inverter_serial\" value=\"")
+                    .append("<td><input type=\"hidden\" name=\"inverter_original_serial\" value=\"")
+                    .append(escape(inv.path("serial").asText("")))
+                    .append("\"><input type=\"text\" name=\"inverter_serial\" value=\"")
                     .append(escape(inv.path("serial").asText("")))
                     .append("\" required></td>")
                     .append("<td><input type=\"text\" name=\"inverter_name\" value=\"")
@@ -539,7 +579,7 @@ final class ConfigPageHandler implements HttpHandler {
                         : "")
                 + "</p>\n"
                 + banner
-                + "<form method=\"post\" action=\"/config/save\">\n"
+                + "<form method=\"post\" action=\"/config/save\" onsubmit=\"return confirmInverterRemovals()\">\n"
                 + "\n"
                 + "  <fieldset>\n"
                 + "    <legend>OpenDTU</legend>\n"
@@ -709,6 +749,9 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    <p class=\"hint\">Decocher \"Pilotable\" pour un onduleur : sa puissance mesuree reste affichee sur le "
                 + "tableau de bord, mais la regulation ne lui envoie plus jamais de commande (jamais de changement de limite), "
                 + "quel que soit le mode (auto, charge batterie prioritaire, forcage manuel).</p>\n"
+                + "    <p class=\"hint\">Onduleur remplace : modifier son numero de serie dans sa ligne (ne pas supprimer "
+                + "la ligne) -- son historique continue sous le nouveau numero. Supprimer une ligne efface definitivement "
+                + "l'historique de cet onduleur. Pris en compte au prochain redemarrage du service.</p>\n"
                 + "    <p class=\"hint\">Ordre de bridage (proxy SunSpec, quand la consigne Victron est appliquee) : "
                 + "les onduleurs sont brides un par un, le 1 d'abord jusqu'a son minimum, puis le 2, etc. -- les "
                 + "autres restent a 100%, donc un changement de consigne ne modifie la limite que d'un seul onduleur. "
@@ -795,7 +838,8 @@ final class ConfigPageHandler implements HttpHandler {
                 + "  const tbody = document.getElementById('inv-tbody');\n"
                 + "  const tr = document.createElement('tr');\n"
                 + "  tr.className = 'inv-row';\n"
-                + "  tr.innerHTML = '<td><input type=\"text\" name=\"inverter_serial\" value=\"' + (serial || '') +\n"
+                + "  tr.innerHTML = '<td><input type=\"hidden\" name=\"inverter_original_serial\" value=\"\">' +\n"
+                + "    '<input type=\"text\" name=\"inverter_serial\" value=\"' + (serial || '') +\n"
                 + "    '\" required></td>' +\n"
                 + "    '<td><input type=\"text\" name=\"inverter_name\" value=\"' + (name || '') + '\" placeholder=\"(optionnel)\"></td>' +\n"
                 + "    '<td><input type=\"number\" name=\"inverter_nominal_power_w\" value=\"' + (power || '') +\n"
@@ -806,6 +850,20 @@ final class ConfigPageHandler implements HttpHandler {
                 + "    '<td><input type=\"number\" name=\"inverter_curtail_priority\" value=\"\" step=\"1\" min=\"1\" placeholder=\"auto\"></td>' +\n"
                 + "    '<td><button type=\"button\" class=\"remove-btn\" onclick=\"this.closest(\\'tr\\').remove()\">&times;</button></td>';\n"
                 + "  tbody.appendChild(tr);\n"
+                + "}\n"
+                + "\n"
+                + "// Serials configured when the page was rendered: one missing from every row at submit\n"
+                + "// means its history gets purged -- ask first (a replaced inverter should be renamed instead).\n"
+                + "const renderedSerials = Array.from(document.querySelectorAll('input[name=\"inverter_original_serial\"]'))\n"
+                + "  .map(i => i.value.trim()).filter(v => v);\n"
+                + "function confirmInverterRemovals() {\n"
+                + "  const stillThere = new Set(Array.from(document.querySelectorAll(\n"
+                + "    'input[name=\"inverter_original_serial\"], input[name=\"inverter_serial\"]')).map(i => i.value.trim()));\n"
+                + "  const removed = renderedSerials.filter(s => !stillThere.has(s));\n"
+                + "  if (!removed.length) return true;\n"
+                + "  return confirm('Onduleur(s) supprime(s) : ' + removed.join(', ') + '\\n\\nLeur historique sera '\n"
+                + "    + 'definitivement efface au prochain redemarrage. S\\'il s\\'agit d\\'un remplacement, annulez et '\n"
+                + "    + 'modifiez plutot le numero de serie dans la ligne existante.\\n\\nContinuer ?');\n"
                 + "}\n"
                 + "\n"
                 + "function existingSerials() {\n"

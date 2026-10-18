@@ -14,6 +14,7 @@ import gxopendtu.state.InverterEnergyHistory;
 import gxopendtu.state.LiveState;
 import gxopendtu.state.ManualOverride;
 import gxopendtu.state.StateStore;
+import gxopendtu.stats.InverterSerialChanges;
 import gxopendtu.stats.StatsStore;
 import gxopendtu.sunspec.SunSpecForwarder;
 import gxopendtu.sunspec.SunSpecPoller;
@@ -90,6 +91,9 @@ public final class Main {
         // long-term stats DB, otherwise every restart (update.sh, systemctl
         // restart, a crash) shows completely empty charts until enough new
         // samples accumulate live -- see LiveState.seedHistory's javadoc.
+        // Serial changes/removals saved on the config page since the last
+        // start, applied before any history is loaded (see InverterSerialChanges).
+        InverterSerialChanges.applyPending(configPath, statsStore);
         liveState.seedHistory(statsStore.loadRecentSamples(LiveState.DEFAULT_MAX_SAMPLES));
         double energyHistoryCutoff =
                 System.currentTimeMillis() / 1000.0 - HourlyEnergyHistory.DEFAULT_RETAIN_HOURS * 3600.0;

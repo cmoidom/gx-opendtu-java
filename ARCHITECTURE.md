@@ -560,6 +560,22 @@ mais une propriété du calcul lui-même. Le seuil filtre ce bruit tout en
 laissant intacte la protection pour une vraie décharge (charge imprévue que le
 solaire pourrait couvrir).
 
+## Remplacement / suppression d'un onduleur (2026-10-18)
+
+Décision utilisateur : numéro de série modifié dans sa ligne de /config =
+même onduleur remplacé, son historique `stats.db` continue sous le nouveau
+numéro ; ligne supprimée = onduleur retiré, son historique est purgé (la
+page demande confirmation). `ConfigPageHandler.inverterChanges` compare le
+champ caché `inverter_original_serial` de chaque ligne au config.json sur
+disque ; les changements sont notés dans `inverter_changes.json` (à côté
+de config.json) et appliqués par `stats/InverterSerialChanges.applyPending`
+au démarrage suivant, avant le chargement de l'historique -- jusque-là le
+processus en cours écrit encore sous l'ancien numéro, ce qui est couvert
+aussi. Renommage : `inverter_samples` et `inverter_hourly_energy` passent
+au nouveau numéro, l'heure du changement présente sous les deux est
+additionnée. Les deux opérations sont idempotentes (rejouées si une erreur
+laisse le fichier en place).
+
 ## Bridage en cascade (forwarder SunSpec, 2026-10-14)
 
 Quand la consigne Victron s'applique (batterie pleine), `SunSpecForwarder`
