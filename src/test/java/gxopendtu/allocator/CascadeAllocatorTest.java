@@ -18,8 +18,9 @@ class CascadeAllocatorTest {
         return allocator.allocate(targetW, live, Map.of(), 0.0);
     }
 
+    /** Switching logic alone: no release margin, no ramp (both tested separately below). */
     private static CascadeAllocator allocator() {
-        return new CascadeAllocator(ORDER, NOMINAL, 5.0); // floors: 100 / 50 / 20 W
+        return new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY); // floors: 100 / 50 / 20 W
     }
 
     @Test
@@ -221,5 +222,25 @@ class CascadeAllocatorTest {
         assertThat(allocation.get("mid")).isEqualTo(123.0);
         assertThat(allocation.get("small")).isEqualTo(400.0);
         assertThat(allocation.get("big")).isEqualTo(2000.0); // never limited yet: keeps its (nominal) limit
+    }
+
+    @Test
+    void thePreviousInverterOnlyResumesBeyondTheReleaseMarginAndTheMarginalLimitRampsUp() {
+        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0); // production margin + ramp
+        Map<String, Double> live = Map.of("big", 100.0, "mid", 50.0, "small", 300.0);
+        allocator.allocate(250.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0); // mid at 50W
+        assertThat(allocator.marginalIndex()).isEqualTo(1);
+
+        // mid would need 900W: it climbs by 100W per call instead of jumping straight there
+        assertThat(allocator.allocate(1300.0, live, Map.of(), 5.0).get("mid")).isEqualTo(150.0);
+        assertThat(allocator.allocate(1300.0, live, Map.of(), 10.0).get("mid")).isEqualTo(250.0);
+
+        // mid would need 1050W: above its 1000W nominal but within the 100W margin -> stays marginal
+        allocator.allocate(1450.0, live, Map.of(), 15.0);
+        assertThat(allocator.marginalIndex()).isEqualTo(1);
+        // 1150W needed: beyond the margin -> big resumes, from its floor, ramping too
+        Map<String, Double> released = allocator.allocate(1550.0, live, Map.of(), 20.0);
+        assertThat(allocator.marginalIndex()).isZero();
+        assertThat(released.get("big")).isEqualTo(200.0);
     }
 }

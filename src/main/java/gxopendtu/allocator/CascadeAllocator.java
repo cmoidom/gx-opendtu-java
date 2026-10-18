@@ -69,11 +69,24 @@ public final class CascadeAllocator {
      * limit history stays what was really sent.
      */
     static final double MARGINAL_DEADBAND_W = 75.0;
+    /**
+     * The previous inverter only resumes once the marginal one would need at
+     * least this much above its nominal power, and the marginal limit rises
+     * by at most {@link #MARGINAL_RAMP_UP_W} per call (decreases stay
+     * immediate). Without them two inverters swapped the marginal role on
+     * every swing of Victron's sawtooth (live 2026-10-18 16:42-17:03: Balcon
+     * reached its 500W, Terasse then got ~250W at once, export, Victron cut,
+     * Terasse back to its floor -- ~3 RF commands/min on each).
+     */
+    static final double RELEASE_MARGIN_W = 100.0;
+    static final double MARGINAL_RAMP_UP_W = 100.0;
     private static final double LIMIT_HISTORY_S = 180.0;
 
     private final List<String> order;
     private final Map<String, Double> nominalPowerW;
     private final double minInverterPct;
+    private final double releaseMarginW;
+    private final double rampUpW;
     private String marginalSerial;
     // serial -> {timeS, limitW} of every limit given to it, oldest first.
     private final Map<String, Deque<double[]>> limitHistory = new HashMap<>();
@@ -83,9 +96,17 @@ public final class CascadeAllocator {
 
     /** {@code order}: the first inverter is curtailed first, the last one only once all others are at their floor. */
     public CascadeAllocator(List<String> order, Map<String, Double> nominalPowerW, double minInverterPct) {
+        this(order, nominalPowerW, minInverterPct, RELEASE_MARGIN_W, MARGINAL_RAMP_UP_W);
+    }
+
+    /** Package-private: lets tests of the switching logic itself disable the release margin / ramp. */
+    CascadeAllocator(List<String> order, Map<String, Double> nominalPowerW, double minInverterPct,
+            double releaseMarginW, double rampUpW) {
         this.order = List.copyOf(order);
         this.nominalPowerW = Map.copyOf(nominalPowerW);
         this.minInverterPct = minInverterPct;
+        this.releaseMarginW = releaseMarginW;
+        this.rampUpW = rampUpW;
     }
 
     /** Back to "nothing curtailed yet" -- called whenever every inverter was sent to 100% by something else. */
@@ -142,7 +163,8 @@ public final class CascadeAllocator {
                 // Releasing goes one inverter per call: the released one's
                 // real production only becomes known on its next reading.
                 if (idx == before && idx > 0
-                        && remainingW(effectiveTargetW, active, idx, potentialW) >= nominalW(active.get(idx))) {
+                        && remainingW(effectiveTargetW, active, idx, potentialW)
+                                >= nominalW(active.get(idx)) + releaseMarginW) {
                     idx--;
                 }
             }
@@ -160,6 +182,9 @@ public final class CascadeAllocator {
                     if (serial.equals(startMarginal) && previousW != null
                             && Math.abs(watts - previousW) < MARGINAL_DEADBAND_W) {
                         watts = previousW;
+                    }
+                    if (previousW != null && watts > previousW + rampUpW) {
+                        watts = previousW + rampUpW;
                     }
                 }
                 allocation.put(serial, watts);

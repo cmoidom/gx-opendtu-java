@@ -60,6 +60,7 @@ final class StatusJsonHandler implements HttpHandler {
             payload.put("manual_override", manualOverride.snapshot());
             payload.put("injection_mode", injectionMode.getMode().name());
             payload.put("last_limit_commands", liveState.lastLimitCommands());
+            payload.put("limit_command_stats", liveState.limitCommandStats(System.currentTimeMillis() / 1000.0));
 
             byte[] body = MAPPER.writeValueAsString(payload).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");

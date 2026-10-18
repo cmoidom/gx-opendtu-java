@@ -174,8 +174,8 @@
 
 <h2>Detail par onduleur</h2>
 <table id="inverters-table">
-  <colgroup><col style="width:19%"><col style="width:8%"><col style="width:7%"><col style="width:6%"><col style="width:7%"><col style="width:8%"><col style="width:8%"><col style="width:18%"><col style="width:19%"></colgroup>
-  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Courant</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Dernier reglage</th><th class="center">Etat</th></tr></thead>
+  <colgroup><col style="width:17%"><col style="width:7%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:7%"><col style="width:7%"><col style="width:16%"><col style="width:11%"><col style="width:16%"></colgroup>
+  <thead><tr><th class="center">Serie</th><th class="num">Puissance</th><th class="num">Courant</th><th class="num">Age (s)</th><th class="num">Limite</th><th class="num">Nominale</th><th class="num">% de la limite</th><th class="center">Dernier reglage</th><th class="center">Commandes (1 h)</th><th class="center">Etat</th></tr></thead>
   <tbody></tbody>
 </table>
 <p class="hint">Pendant la charge batterie prioritaire (regulation OFF), "Limite" affiche
@@ -1263,12 +1263,19 @@ function pendingSince(cmd) {
   return cmd ? ' depuis ' + fmtElapsed(Date.now() / 1000 - cmd.t) : '';
 }
 
-function renderInverterTable(latest, lastLimitCommands) {
+/** "12 (moy. 2 min 05 s)": limit commands sent to this inverter over the last hour and their average spacing. */
+function fmtCommandStats(stat) {
+  if (!stat || !stat.count) return '<span class="hint">0</span>';
+  return stat.count + (stat.avg_interval_s != null ? ' <span class="hint">(moy. ' + fmtElapsed(stat.avg_interval_s) + ')</span>' : '');
+}
+
+function renderInverterTable(latest, lastLimitCommands, commandStats) {
   const commands = lastLimitCommands || {};
+  const stats = commandStats || {};
   const tbody = document.querySelector('#inverters-table tbody');
   const inverters = (latest && latest.inverters) || [];
   if (inverters.length) configuredSerials = new Set(inverters.map(inv => inv.serial));
-  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="9" class="hint">aucune donnee</td></tr>'; return; }
+  if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="10" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
     const age = inv.data_age_s;
@@ -1286,6 +1293,7 @@ function renderInverterTable(latest, lastLimitCommands) {
     '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
     '<td class="num">' + fullPowerCell + '</td>' +
     '<td class="center">' + fmtLastLimitCommand(commands[inv.serial]) + '</td>' +
+    '<td class="center">' + fmtCommandStats(stats[inv.serial]) + '</td>' +
     '<td class="center">' + (inv.controllable === false ? 'non pilote' :
                inv.acknowledged === false ? 'en attente (RF)' + pendingSince(commands[inv.serial]) :
                inv.acknowledged === null ? 'debride (charge batterie)' : 'ok') + '</td></tr>';
@@ -1448,7 +1456,7 @@ function poll() {
           b => b.hour >= todayBounds.since && b.hour < todayBounds.until);
       }
       renderTiles(data.latest);
-      renderInverterTable(data.latest, data.last_limit_commands);
+      renderInverterTable(data.latest, data.last_limit_commands, data.limit_command_stats);
       renderCharts();
       renderControls(data);
     })

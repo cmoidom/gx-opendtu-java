@@ -37,6 +37,7 @@ public final class OpenDTUClient implements OpenDTUApi {
     public static final int LIMIT_TYPE_RELATIVE_NONPERSISTENT = 1;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(OpenDTUClient.class.getName());
 
     private final String baseUrl;
     private final Duration timeout;
@@ -339,6 +340,7 @@ public final class OpenDTUClient implements OpenDTUApi {
 
     /** Only reached when post() didn't throw, i.e. OpenDTU accepted the command. */
     private void notifyLimitSent(String serial, double value, String unit) {
+        LOG.info("[limite] " + serial + " = " + Math.round(value) + " " + unit);
         LimitCommandListener listener = limitCommandListener;
         if (listener != null) {
             listener.limitSent(serial, value, unit);

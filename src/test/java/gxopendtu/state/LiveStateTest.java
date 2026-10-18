@@ -176,4 +176,19 @@ class LiveStateTest {
         assertThat(commands.get("a")).containsEntry("value", 450.0).containsEntry("unit", "W").containsKey("t");
         assertThat(commands.get("b")).containsEntry("value", 100.0).containsEntry("unit", "%");
     }
+
+    @Test
+    void limitCommandStatsCountTheLastHourAndAverageTheSpacing() {
+        LiveState state = new LiveState();
+        state.recordLimitCommand("a", 300.0, "W", 0.0); // more than an hour before "now": dropped
+        state.recordLimitCommand("a", 310.0, "W", 4000.0);
+        state.recordLimitCommand("a", 320.0, "W", 4030.0);
+        state.recordLimitCommand("a", 330.0, "W", 4090.0);
+        state.recordLimitCommand("b", 100.0, "%", 4050.0);
+
+        Map<String, Map<String, Object>> stats = state.limitCommandStats(4100.0);
+
+        assertThat(stats.get("a")).containsEntry("count", 3).containsEntry("avg_interval_s", 45.0);
+        assertThat(stats.get("b")).containsEntry("count", 1).containsEntry("avg_interval_s", null);
+    }
 }

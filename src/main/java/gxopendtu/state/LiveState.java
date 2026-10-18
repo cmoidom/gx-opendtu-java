@@ -43,6 +43,9 @@ public final class LiveState {
     // repeat the same value in every sample) and not persisted: empty again
     // after a restart until the next command is sent.
     private final Map<String, Map<String, Object>> lastLimitCommands = new LinkedHashMap<>();
+    // serial -> times (epoch s) of the limit commands of the last COMMAND_STATS_WINDOW_S
+    private final Map<String, Deque<Double>> recentCommandTimes = new LinkedHashMap<>();
+    static final double COMMAND_STATS_WINDOW_S = 3600.0;
 
     public LiveState() {
         this(DEFAULT_MAX_SAMPLES);
@@ -190,13 +193,44 @@ public final class LiveState {
 
     /** Wired as the OpenDTUClient's LimitCommandListener (both ControlLoop's and the SunSpec forwarder's). */
     public void recordLimitCommand(String serial, double value, String unit) {
+        recordLimitCommand(serial, value, unit, System.currentTimeMillis() / 1000.0);
+    }
+
+    /** Package-private: same, at an explicit time (tests). */
+    void recordLimitCommand(String serial, double value, String unit, double nowS) {
         Map<String, Object> command = new LinkedHashMap<>();
-        command.put("t", System.currentTimeMillis() / 1000.0);
+        command.put("t", nowS);
         command.put("value", value);
         command.put("unit", unit);
         lock.lock();
         try {
             lastLimitCommands.put(serial, Collections.unmodifiableMap(command));
+            recentCommandTimes.computeIfAbsent(serial, s -> new ArrayDeque<>()).addLast(nowS);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Per serial, over the last hour: {count, avg_interval_s} (avg null with
+     * fewer than 2 commands) -- the "Commandes (1 h)" dashboard column.
+     */
+    public Map<String, Map<String, Object>> limitCommandStats(double nowS) {
+        lock.lock();
+        try {
+            Map<String, Map<String, Object>> stats = new LinkedHashMap<>();
+            for (Map.Entry<String, Deque<Double>> entry : recentCommandTimes.entrySet()) {
+                Deque<Double> times = entry.getValue();
+                while (!times.isEmpty() && times.peekFirst() < nowS - COMMAND_STATS_WINDOW_S) {
+                    times.removeFirst();
+                }
+                Map<String, Object> s = new LinkedHashMap<>();
+                s.put("count", times.size());
+                s.put("avg_interval_s", times.size() >= 2
+                        ? (times.peekLast() - times.peekFirst()) / (times.size() - 1) : null);
+                stats.put(entry.getKey(), s);
+            }
+            return stats;
         } finally {
             lock.unlock();
         }

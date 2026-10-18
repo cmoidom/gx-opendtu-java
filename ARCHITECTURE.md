@@ -617,6 +617,14 @@ Zone morte de 75 W sur la limite de l'onduleur en réglage
 consigne Victron et de la production des onduleurs libres, ce qui faisait
 sur un petit onduleur des sauts de 7 % à 71 % et une commande radio presque
 à chaque cycle ; l'écart restant est corrigé par la boucle de Victron.
+Marge de 100 W avant de rendre la main à l'onduleur précédent
+(`RELEASE_MARGIN_W`) et montée de la limite de l'onduleur en réglage d'au
+plus 100 W par cycle (`MARGINAL_RAMP_UP_W`, les baisses restent
+immédiates) : sans elles, Terasse et Balcon se renvoyaient la main à chaque
+dent de scie de la consigne Victron (2026-10-18 16:42-17:03). Chaque
+commande de limite acceptée par OpenDTU est journalisée (`[limite] série =
+valeur`) et comptée sur la dernière heure par onduleur (colonne "Commandes
+(1 h)" du tableau, `limit_command_stats` dans /status.json).
 
 ## Répartition multi-onduleurs (water-filling)
 
