@@ -58,6 +58,17 @@ public final class CascadeAllocator {
     static final double SETTLE_S = 5.0;
     /** Data older than this means OpenDTU has lost the inverter (normal worst case is ~20s). */
     static final double STALE_DATA_S = 60.0;
+    /**
+     * The marginal inverter's limit only moves once the change reaches this
+     * much: it compensates every swing of Victron's cap (+-150-250W from one
+     * cycle to the next) and of the uncapped inverters' real production,
+     * which on a small marginal inverter meant big % jumps and an RF command
+     * almost every cycle (live 2026-10-18 16:10-16:13: Terasse 7% -> 71% ->
+     * 7% compensating Mur Ouest's +-280W). The remaining error is absorbed by
+     * Victron's own loop. Applied here rather than in the forwarder so the
+     * limit history stays what was really sent.
+     */
+    static final double MARGINAL_DEADBAND_W = 75.0;
     private static final double LIMIT_HISTORY_S = 180.0;
 
     private final List<String> order;
@@ -145,6 +156,11 @@ public final class CascadeAllocator {
                     watts = nominalW(serial);
                 } else {
                     watts = Math.max(floorW(serial), Math.min(nominalW(serial), rest));
+                    Double previousW = lastAllocationW.get(serial);
+                    if (serial.equals(startMarginal) && previousW != null
+                            && Math.abs(watts - previousW) < MARGINAL_DEADBAND_W) {
+                        watts = previousW;
+                    }
                 }
                 allocation.put(serial, watts);
             }

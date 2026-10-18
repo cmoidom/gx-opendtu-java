@@ -596,6 +596,11 @@ injection et coupure brutale de Victron, environ une fois par minute ;
 (2) un onduleur dont les données ont plus de 60 s (perte RF, Mur Ouest
 16:32-16:40) sort de la cascade : sa dernière production connue est
 soustraite comme celle d'un onduleur non pilotable et il garde sa limite.
+Zone morte de 75 W sur la limite de l'onduleur en réglage
+(`MARGINAL_DEADBAND_W`, 2026-10-18) : il compensait chaque variation de la
+consigne Victron et de la production des onduleurs libres, ce qui faisait
+sur un petit onduleur des sauts de 7 % à 71 % et une commande radio presque
+à chaque cycle ; l'écart restant est corrigé par la boucle de Victron.
 
 ## Répartition multi-onduleurs (water-filling)
 

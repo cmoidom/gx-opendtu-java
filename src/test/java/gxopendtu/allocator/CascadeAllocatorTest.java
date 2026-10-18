@@ -74,16 +74,27 @@ class CascadeAllocatorTest {
     }
 
     @Test
-    void aSmallChangeOfTargetMovesOnlyTheMarginalInverter() {
+    void aChangeOfTargetMovesOnlyTheMarginalInverter() {
         CascadeAllocator allocator = allocator();
         Map<String, Double> live = Map.of("big", 700.0, "mid", 300.0, "small", 100.0);
 
         Map<String, Double> first = alloc(allocator, 300.0, live);
-        Map<String, Double> second = alloc(allocator, 350.0, live);
+        Map<String, Double> second = alloc(allocator, 400.0, live);
 
         assertThat(second.get("big")).isEqualTo(first.get("big"));
         assertThat(second.get("small")).isEqualTo(first.get("small"));
-        assertThat(second.get("mid")).isEqualTo(first.get("mid") + 50.0);
+        assertThat(second.get("mid")).isEqualTo(first.get("mid") + 100.0);
+    }
+
+    @Test
+    void theMarginalLimitIgnoresChangesSmallerThanTheDeadband() {
+        CascadeAllocator allocator = allocator();
+        Map<String, Double> live = Map.of("big", 700.0, "mid", 300.0, "small", 100.0);
+        alloc(allocator, 300.0, live); // mid marginal at 100W
+
+        assertThat(alloc(allocator, 360.0, live).get("mid")).isEqualTo(100.0); // +60W: kept
+        assertThat(alloc(allocator, 250.0, live).get("mid")).isEqualTo(100.0); // -50W: kept
+        assertThat(alloc(allocator, 380.0, live).get("mid")).isEqualTo(180.0); // +80W: moves
     }
 
     @Test
