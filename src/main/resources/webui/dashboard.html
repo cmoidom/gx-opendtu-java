@@ -255,7 +255,14 @@ const STALE_DATA_AGE_S = 60;
 let hourlyEnergy = [];
 let hourlyInverterEnergy = [];
 
-function inverterLabel(serial) { return inverterNames[serial] || serial; }
+// Serials in the current config (from the latest status). An inverter that
+// was replaced still has energy in the hourly/daily history, but no longer a
+// name: it is labelled as a former inverter instead of a bare serial.
+let configuredSerials = new Set();
+function inverterLabel(serial) {
+  if (inverterNames[serial]) return inverterNames[serial];
+  return (configuredSerials.size && !configuredSerials.has(serial)) ? 'Ancien onduleur (' + serial + ')' : serial;
+}
 
 // Per-chart, per-series show/hide state (legend click) -- keyed by an
 // arbitrary chart id (e.g. 'soc', 'inverters') so the same series key (an
@@ -1260,6 +1267,7 @@ function renderInverterTable(latest, lastLimitCommands) {
   const commands = lastLimitCommands || {};
   const tbody = document.querySelector('#inverters-table tbody');
   const inverters = (latest && latest.inverters) || [];
+  if (inverters.length) configuredSerials = new Set(inverters.map(inv => inv.serial));
   if (!inverters.length) { tbody.innerHTML = '<tr><td colspan="9" class="hint">aucune donnee</td></tr>'; return; }
   tbody.innerHTML = inverters.map(inv => {
     if (inv.name) inverterNames[inv.serial] = inv.name;
@@ -1354,8 +1362,9 @@ function renderCharts() {
     points: history.filter(s => (s.inverters || []).some(inv => inv.serial === serial))
                    .map(s => ({ t: s.t, v: s.inverters.find(inv => inv.serial === serial).actual_w, backfilled: !!s.backfilled })),
   }));
-  drawChart(chartInverters, visibleSeries('inverters', invSeries), Object.assign({ yFormat: fmtW }, viewOpts));
-  renderLegend('inverters-legend', 'inverters', invSeries);
+  const invSeriesWithData = invSeries.filter(s => s.points.length);
+  drawChart(chartInverters, visibleSeries('inverters', invSeriesWithData), Object.assign({ yFormat: fmtW }, viewOpts));
+  renderLegend('inverters-legend', 'inverters', invSeriesWithData);
 
   const limitSeries = inverterOrder.map(serial => ({
     key: serial,
@@ -1367,9 +1376,10 @@ function renderCharts() {
         ? [{ t: s.t, v: inv.limit_relative_pct, backfilled: !!s.backfilled }] : [];
     }),
   }));
-  drawChart(chartInverterLimits, visibleSeries('inverter-limits', limitSeries),
+  const limitSeriesWithData = limitSeries.filter(s => s.points.length);
+  drawChart(chartInverterLimits, visibleSeries('inverter-limits', limitSeriesWithData),
             Object.assign({ yFormat: fmtPct, yMin: 0, yMax: 100 }, viewOpts));
-  renderLegend('inverter-limits-legend', 'inverter-limits', limitSeries);
+  renderLegend('inverter-limits-legend', 'inverter-limits', limitSeriesWithData);
 
   // Reapply the hover crosshair on top of this fresh render for any chart
   // currently being hovered -- otherwise a periodic poll() redraw (every 2s)
