@@ -1199,10 +1199,9 @@ function estimateBatteryEndTime() {
   return { label: rate > 0 ? 'Batterie pleine vers' : 'Batterie vide vers', clockStr: fmtClockTime(etaT) };
 }
 
-// Victron /SystemState/State and ESS BatteryLife state labels (dbus_modbustcp attributes.csv, regs 930 / 2900).
-const VICTRON_SYSTEM_STATES = { 0: 'Arret', 1: 'Basse conso', 2: 'Defaut VE.Bus', 3: 'Charge bulk', 4: 'Absorption',
-  5: 'Floating', 6: 'Stockage', 7: 'Egalisation', 8: 'Passthru', 9: 'Onduleur', 10: 'Assistance', 244: 'Sustain batterie',
-  252: 'Controle externe', 256: 'Decharge', 257: 'Sustain', 258: 'Recharge', 259: 'Recharge planifiee' };
+// Multi (vebus /State) and ESS BatteryLife state labels (dbus_modbustcp attributes.csv, regs 31 / 2900).
+const VEBUS_STATES = { 0: 'Arret', 1: 'Basse conso', 2: 'Defaut', 3: 'Charge bulk', 4: 'Absorption', 5: 'Floating',
+  6: 'Stockage', 7: 'Egalisation', 8: 'Passthru', 9: 'Onduleur', 10: 'Assistance', 11: 'Alimentation', 252: 'Controle externe' };
 const BATTERYLIFE_STATES = { 0: 'BatteryLife inactif', 1: 'Redemarrage', 2: 'Autoconsommation', 3: 'Autoconsommation',
   4: 'Autoconsommation', 5: 'Decharge interdite', 6: 'Charge forcee', 7: 'Sustain', 9: 'Batterie maintenue chargee',
   10: 'BatteryLife inactif', 11: 'BatteryLife inactif (SOC bas)' };
@@ -1219,8 +1218,8 @@ function renderTiles(latest) {
     (batteryEta ? '<div class="tile"><div class="label">' + batteryEta.label + '</div><div class="value">' + batteryEta.clockStr + '</div></div>' : '') +
     (latest.battery_power_w !== null && latest.battery_power_w !== undefined ? '<div class="tile"><div class="label">Puissance batterie</div><div class="value">' + fmtW(latest.battery_power_w) + '</div></div>' : '') +
     ((latest.inverters && latest.inverters.length) ? '<div class="tile"><div class="label">Puissance solaire</div><div class="value">' + fmtW(latest.inverters.reduce((sum, inv) => sum + (inv.actual_w || 0), 0)) + '</div></div>' : '') +
-    (latest.victron_system_state != null ? '<div class="tile"><div class="label">Etat Victron</div><div class="value" style="font-size:0.95rem">'
-      + (VICTRON_SYSTEM_STATES[latest.victron_system_state] || latest.victron_system_state)
+    (latest.vebus_state != null ? '<div class="tile"><div class="label">Etat Victron</div><div class="value" style="font-size:0.95rem">'
+      + (VEBUS_STATES[latest.vebus_state] || latest.vebus_state)
       + (latest.batterylife_state != null ? '<br><span class="hint">' + (BATTERYLIFE_STATES[latest.batterylife_state] || latest.batterylife_state) + '</span>' : '')
       + '</div></div>' : '') +
     (latest.battery_dcl_a != null ? '<div class="tile"><div class="label">Limites BMS</div><div class="value" style="font-size:0.95rem">'

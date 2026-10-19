@@ -565,10 +565,11 @@ solaire pourrait couvrir).
 `battery/VictronStatus`, lu par `ModbusBatterySoc.readVictronStatus` à chaque
 cycle de décision (jamais utilisé pour réguler) : limites de courant du
 BMS (batterie, unité 225, registres 308 décharge / 307 charge, x10),
-`/SystemState/State` (système, unité 100, reg. 930), état BatteryLife de
+état du Multi (vebus, unité 227, reg. 31 -- le `/SystemState/State` du
+système, reg. 930, répond « adresse illégale » sur ce Venus OS), état BatteryLife de
 l'ESS (réglages, unité 100, reg. 2900) et consigne de puissance donnée par
 l'ESS au Multi (vebus, unité 227, reg. 37). Enregistrés dans `samples`
-(colonnes `battery_dcl_a`, `battery_ccl_a`, `victron_system_state`,
+(colonnes `battery_dcl_a`, `battery_ccl_a`, `vebus_state`,
 `batterylife_state`, `ess_setpoint_w`) et affichés sur le tableau de bord
 (tuiles « Etat Victron » / « Limites BMS », courbes sur le graphique
 Batterie). Motivé par une décharge plafonnée à ~800 W le 2026-10-19

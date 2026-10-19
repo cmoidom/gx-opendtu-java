@@ -170,7 +170,7 @@ class StatsStoreTest {
             store.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
             Map<String, Object> row = store.loadRecentSamples(10).get(0);
             assertThat(row).containsEntry("battery_dcl_a", 85.5).containsEntry("battery_ccl_a", 70.3)
-                    .containsEntry("victron_system_state", 256).containsEntry("batterylife_state", 2)
+                    .containsEntry("vebus_state", 256).containsEntry("batterylife_state", 2)
                     .containsEntry("ess_setpoint_w", 480.0);
         }
     }

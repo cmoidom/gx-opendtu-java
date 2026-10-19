@@ -9,13 +9,13 @@ package gxopendtu.battery;
  *
  * @param dischargeLimitA BMS max discharge current (DCL), A
  * @param chargeLimitA BMS max charge current (CCL), A
- * @param systemState com.victronenergy.system /SystemState/State (3=Bulk, 9=Inverting, 256=Discharging...)
+ * @param vebusState state of the Multi, com.victronenergy.vebus /State (3=Bulk, 9=Inverting, 10=Assist...)
  * @param batteryLifeState ESS BatteryLife state (2-4=self-consumption, 5=discharge disabled, 9=keep charged...)
  * @param essSetpointW power setpoint the ESS gives the Multi on its AC input, W (+ = taken from AC)
  */
 public record VictronStatus(
         Double dischargeLimitA,
         Double chargeLimitA,
-        Integer systemState,
+        Integer vebusState,
         Integer batteryLifeState,
         Double essSetpointW) {}

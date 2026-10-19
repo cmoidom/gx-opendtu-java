@@ -149,7 +149,7 @@ public final class LiveState {
             this.victronStatus = new gxopendtu.battery.VictronStatus(
                     (Double) last.get("battery_dcl_a"),
                     (Double) last.get("battery_ccl_a"),
-                    (Integer) last.get("victron_system_state"),
+                    (Integer) last.get("vebus_state"),
                     (Integer) last.get("batterylife_state"),
                     (Double) last.get("ess_setpoint_w"));
         } finally {
@@ -178,7 +178,7 @@ public final class LiveState {
             gxopendtu.battery.VictronStatus v = victronStatus;
             sample.put("battery_dcl_a", v != null ? v.dischargeLimitA() : null);
             sample.put("battery_ccl_a", v != null ? v.chargeLimitA() : null);
-            sample.put("victron_system_state", v != null ? v.systemState() : null);
+            sample.put("vebus_state", v != null ? v.vebusState() : null);
             sample.put("batterylife_state", v != null ? v.batteryLifeState() : null);
             sample.put("ess_setpoint_w", v != null ? v.essSetpointW() : null);
             sample.put("backfilled", false); // see seedHistory/StatsStore#loadRecentSamples

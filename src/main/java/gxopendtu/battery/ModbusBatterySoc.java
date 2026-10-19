@@ -39,12 +39,13 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
     private static final int VOLTAGE_REGISTER = 259;
     private static final int VOLTAGE_UNIT_ID = 225;
     // Victron dbus_modbustcp attributes.csv: battery 307/308 (/Info/MaxCharge/
-    // DischargeCurrent, x10), system 930 (/SystemState/State), settings 2900
+    // DischargeCurrent, x10), vebus 31 (/State -- system 930 /SystemState/State
+    // answers "illegal address" on this Venus OS), settings 2900
     // (/Settings/CGwacs/BatteryLife/State, unit 100), vebus 37
     // (/Hub4/L1/AcPowerSetpoint, int16) -- the Multi is unit 227 on this install.
     private static final int CHARGE_LIMIT_REGISTER = 307;
     private static final int DISCHARGE_LIMIT_REGISTER = 308;
-    private static final int SYSTEM_STATE_REGISTER = 930;
+    private static final int VEBUS_STATE_REGISTER = 31;
     private static final int BATTERYLIFE_STATE_REGISTER = 2900;
     private static final int ESS_SETPOINT_REGISTER = 37;
     private static final int VEBUS_UNIT_ID = 227;
@@ -93,7 +94,7 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
         return new VictronStatus(
                 orNull(() -> readRegister(VOLTAGE_UNIT_ID, DISCHARGE_LIMIT_REGISTER) / 10.0),
                 orNull(() -> readRegister(VOLTAGE_UNIT_ID, CHARGE_LIMIT_REGISTER) / 10.0),
-                orNullInt(() -> readRegister(ModbusConstants.SYSTEM_UNIT_ID, SYSTEM_STATE_REGISTER)),
+                orNullInt(() -> readRegister(VEBUS_UNIT_ID, VEBUS_STATE_REGISTER)),
                 orNullInt(() -> readRegister(ModbusConstants.SYSTEM_UNIT_ID, BATTERYLIFE_STATE_REGISTER)),
                 orNull(() -> (double) RegisterCodec.toSigned16(readRegister(VEBUS_UNIT_ID, ESS_SETPOINT_REGISTER))));
     }

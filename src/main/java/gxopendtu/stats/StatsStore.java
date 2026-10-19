@@ -150,7 +150,7 @@ public final class StatsStore implements AutoCloseable {
                 // Migration for the Victron diagnosis fields (battery.VictronStatus, 2026-10-20).
                 ensureColumn(statement, "samples", "battery_dcl_a", "REAL");
                 ensureColumn(statement, "samples", "battery_ccl_a", "REAL");
-                ensureColumn(statement, "samples", "victron_system_state", "INTEGER");
+                ensureColumn(statement, "samples", "vebus_state", "INTEGER");
                 ensureColumn(statement, "samples", "batterylife_state", "INTEGER");
                 ensureColumn(statement, "samples", "ess_setpoint_w", "REAL");
             }
@@ -162,7 +162,7 @@ public final class StatsStore implements AutoCloseable {
                     "INSERT OR REPLACE INTO samples "
                             + "(t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
                             + "battery_current_a, injection_control, sunspec_target_w, battery_dcl_a, battery_ccl_a, "
-                            + "victron_system_state, batterylife_state, ess_setpoint_w) "
+                            + "vebus_state, batterylife_state, ess_setpoint_w) "
                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             insertInverterSampleStmt = connection.prepareStatement(
                     "INSERT OR REPLACE INTO inverter_samples (t, serial, actual_w, limit_pct) VALUES (?, ?, ?, ?)");
@@ -253,7 +253,7 @@ public final class StatsStore implements AutoCloseable {
                     injectionControl, sunspecTargetW, inverterActualW, inverterLimitPct,
                     (Double) sample.get("battery_dcl_a"),
                     (Double) sample.get("battery_ccl_a"),
-                    (Integer) sample.get("victron_system_state"),
+                    (Integer) sample.get("vebus_state"),
                     (Integer) sample.get("batterylife_state"),
                     (Double) sample.get("ess_setpoint_w")));
         } finally {
@@ -347,7 +347,7 @@ public final class StatsStore implements AutoCloseable {
             try (PreparedStatement stmt = connection.prepareStatement(
                     "SELECT t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
                             + "battery_current_a, injection_control, sunspec_target_w, battery_dcl_a, battery_ccl_a, "
-                            + "victron_system_state, batterylife_state, ess_setpoint_w FROM samples ORDER BY t DESC LIMIT ?")) {
+                            + "vebus_state, batterylife_state, ess_setpoint_w FROM samples ORDER BY t DESC LIMIT ?")) {
                 stmt.setInt(1, limit);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
@@ -363,7 +363,7 @@ public final class StatsStore implements AutoCloseable {
                         sample.put("sunspec_target_w", nullableColumn(rs, "sunspec_target_w"));
                         sample.put("battery_dcl_a", nullableColumn(rs, "battery_dcl_a"));
                         sample.put("battery_ccl_a", nullableColumn(rs, "battery_ccl_a"));
-                        sample.put("victron_system_state", nullableIntColumn(rs, "victron_system_state"));
+                        sample.put("vebus_state", nullableIntColumn(rs, "vebus_state"));
                         sample.put("batterylife_state", nullableIntColumn(rs, "batterylife_state"));
                         sample.put("ess_setpoint_w", nullableColumn(rs, "ess_setpoint_w"));
                         sample.put("consigne_w", null);
@@ -433,7 +433,7 @@ public final class StatsStore implements AutoCloseable {
             try (PreparedStatement stmt = connection.prepareStatement(
                     "SELECT t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
                             + "battery_current_a, injection_control, sunspec_target_w, battery_dcl_a, battery_ccl_a, "
-                            + "victron_system_state, batterylife_state, ess_setpoint_w FROM samples "
+                            + "vebus_state, batterylife_state, ess_setpoint_w FROM samples "
                             + "WHERE t >= ? AND t <= ? ORDER BY t")) {
                 stmt.setLong(1, since);
                 stmt.setLong(2, until);
@@ -451,7 +451,7 @@ public final class StatsStore implements AutoCloseable {
                         sample.put("sunspec_target_w", nullableColumn(rs, "sunspec_target_w"));
                         sample.put("battery_dcl_a", nullableColumn(rs, "battery_dcl_a"));
                         sample.put("battery_ccl_a", nullableColumn(rs, "battery_ccl_a"));
-                        sample.put("victron_system_state", nullableIntColumn(rs, "victron_system_state"));
+                        sample.put("vebus_state", nullableIntColumn(rs, "vebus_state"));
                         sample.put("batterylife_state", nullableIntColumn(rs, "batterylife_state"));
                         sample.put("ess_setpoint_w", nullableColumn(rs, "ess_setpoint_w"));
                         sample.put("consigne_w", null);
