@@ -161,6 +161,21 @@ class StatsStoreTest {
     }
 
     @Test
+    void victronStatusRoundTripsThroughPersistAndLoad(@TempDir Path tmpDir) throws Exception {
+        LiveState liveState = new LiveState();
+        liveState.updateVictronStatus(new gxopendtu.battery.VictronStatus(85.5, 70.3, 256, 2, 480.0));
+        liveState.recordGrid(10.0, 9.0);
+
+        try (StatsStore store = new StatsStore(tmpDir.resolve("stats.db"))) {
+            store.persistSnapshot(liveState, new HourlyEnergyHistory(), new InverterEnergyHistory());
+            Map<String, Object> row = store.loadRecentSamples(10).get(0);
+            assertThat(row).containsEntry("battery_dcl_a", 85.5).containsEntry("battery_ccl_a", 70.3)
+                    .containsEntry("victron_system_state", 256).containsEntry("batterylife_state", 2)
+                    .containsEntry("ess_setpoint_w", 480.0);
+        }
+    }
+
+    @Test
     void persistSnapshotWithoutSunSpecTargetPersistsNull(@TempDir Path tmpDir) throws Exception {
         Path dbPath = tmpDir.resolve("stats.db");
         LiveState liveState = new LiveState();

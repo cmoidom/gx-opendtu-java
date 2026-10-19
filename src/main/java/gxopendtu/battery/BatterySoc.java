@@ -16,4 +16,9 @@ public interface BatterySoc {
 
     /** Dashboard display only. Throws (BatterySocUnavailableException) on read failure. */
     double readVoltageV();
+
+    /** Diagnosis only (dashboard + stats); null when not available. Never throws. */
+    default VictronStatus readVictronStatus() {
+        return null;
+    }
 }

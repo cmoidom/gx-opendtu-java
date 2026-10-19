@@ -560,6 +560,20 @@ mais une propriété du calcul lui-même. Le seuil filtre ce bruit tout en
 laissant intacte la protection pour une vraie décharge (charge imprévue que le
 solaire pourrait couvrir).
 
+## Diagnostic Victron (2026-10-20)
+
+`battery/VictronStatus`, lu par `ModbusBatterySoc.readVictronStatus` à chaque
+cycle de décision (jamais utilisé pour réguler) : limites de courant du
+BMS (batterie, unité 225, registres 308 décharge / 307 charge, x10),
+`/SystemState/State` (système, unité 100, reg. 930), état BatteryLife de
+l'ESS (réglages, unité 100, reg. 2900) et consigne de puissance donnée par
+l'ESS au Multi (vebus, unité 227, reg. 37). Enregistrés dans `samples`
+(colonnes `battery_dcl_a`, `battery_ccl_a`, `victron_system_state`,
+`batterylife_state`, `ess_setpoint_w`) et affichés sur le tableau de bord
+(tuiles « Etat Victron » / « Limites BMS », courbes sur le graphique
+Batterie). Motivé par une décharge plafonnée à ~800 W le 2026-10-19
+18:27-18:55 sans explication visible dans nos données.
+
 ## Remplacement / suppression d'un onduleur (2026-10-18)
 
 Décision utilisateur : numéro de série modifié dans sa ligne de /config =

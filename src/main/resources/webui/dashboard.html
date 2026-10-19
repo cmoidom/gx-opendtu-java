@@ -1199,6 +1199,14 @@ function estimateBatteryEndTime() {
   return { label: rate > 0 ? 'Batterie pleine vers' : 'Batterie vide vers', clockStr: fmtClockTime(etaT) };
 }
 
+// Victron /SystemState/State and ESS BatteryLife state labels (dbus_modbustcp attributes.csv, regs 930 / 2900).
+const VICTRON_SYSTEM_STATES = { 0: 'Arret', 1: 'Basse conso', 2: 'Defaut VE.Bus', 3: 'Charge bulk', 4: 'Absorption',
+  5: 'Floating', 6: 'Stockage', 7: 'Egalisation', 8: 'Passthru', 9: 'Onduleur', 10: 'Assistance', 244: 'Sustain batterie',
+  252: 'Controle externe', 256: 'Decharge', 257: 'Sustain', 258: 'Recharge', 259: 'Recharge planifiee' };
+const BATTERYLIFE_STATES = { 0: 'BatteryLife inactif', 1: 'Redemarrage', 2: 'Autoconsommation', 3: 'Autoconsommation',
+  4: 'Autoconsommation', 5: 'Decharge interdite', 6: 'Charge forcee', 7: 'Sustain', 9: 'Batterie maintenue chargee',
+  10: 'BatteryLife inactif', 11: 'BatteryLife inactif (SOC bas)' };
+
 function renderTiles(latest) {
   const tiles = document.getElementById('tiles');
   if (!latest) { tiles.innerHTML = ''; return; }
@@ -1211,6 +1219,12 @@ function renderTiles(latest) {
     (batteryEta ? '<div class="tile"><div class="label">' + batteryEta.label + '</div><div class="value">' + batteryEta.clockStr + '</div></div>' : '') +
     (latest.battery_power_w !== null && latest.battery_power_w !== undefined ? '<div class="tile"><div class="label">Puissance batterie</div><div class="value">' + fmtW(latest.battery_power_w) + '</div></div>' : '') +
     ((latest.inverters && latest.inverters.length) ? '<div class="tile"><div class="label">Puissance solaire</div><div class="value">' + fmtW(latest.inverters.reduce((sum, inv) => sum + (inv.actual_w || 0), 0)) + '</div></div>' : '') +
+    (latest.victron_system_state != null ? '<div class="tile"><div class="label">Etat Victron</div><div class="value" style="font-size:0.95rem">'
+      + (VICTRON_SYSTEM_STATES[latest.victron_system_state] || latest.victron_system_state)
+      + (latest.batterylife_state != null ? '<br><span class="hint">' + (BATTERYLIFE_STATES[latest.batterylife_state] || latest.batterylife_state) + '</span>' : '')
+      + '</div></div>' : '') +
+    (latest.battery_dcl_a != null ? '<div class="tile"><div class="label">Limites BMS</div><div class="value" style="font-size:0.95rem">'
+      + 'decharge ' + fmtAmp(latest.battery_dcl_a) + '<br>charge ' + fmtAmp(latest.battery_ccl_a) + '</div></div>' : '') +
     '<div class="tile"><div class="label">Regulation</div><div class="value ' + (on ? 'on' : 'off') + '">' + (latest.injection_control || '-') + '</div></div>' +
     (on ? '<div class="tile"><div class="label">Consigne totale</div><div class="value">' + fmtW(latest.consigne_w) + '</div></div>' : '');
 
@@ -1313,6 +1327,12 @@ function renderCharts() {
     { key: 'soc', label: 'SOC', color: cssVar('--series-1'), points: socPoints, axis: 'soc' },
     { key: 'battery_voltage_v', label: 'Tension batterie', color: cssVar('--series-2'), points: voltagePoints, axis: 'volt' },
     { key: 'battery_current_a', label: 'Courant batterie', color: cssVar('--series-3'), points: currentPoints, axis: 'amp' },
+    // BMS limits on the same current axis as the battery current: the discharge
+    // limit drawn negative so it lines up with a discharging (negative) current.
+    { key: 'battery_dcl_a', label: 'Limite decharge BMS', color: cssVar('--series-6'), axis: 'amp',
+      points: history.filter(s => s.battery_dcl_a != null).map(s => ({ t: s.t, v: -s.battery_dcl_a, backfilled: !!s.backfilled })) },
+    { key: 'battery_ccl_a', label: 'Limite charge BMS', color: cssVar('--series-5'), axis: 'amp',
+      points: history.filter(s => s.battery_ccl_a != null).map(s => ({ t: s.t, v: s.battery_ccl_a, backfilled: !!s.backfilled })) },
   ];
   drawChart(chartSoc, visibleSeries('soc', socSeries), Object.assign({
     axes: [

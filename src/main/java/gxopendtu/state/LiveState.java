@@ -38,6 +38,7 @@ public final class LiveState {
     private boolean minInverterFloorWarning;
     private Double recommendedMinInverterPct;
     private Double sunspecTargetW;
+    private gxopendtu.battery.VictronStatus victronStatus;
     // serial -> {t, value, unit} of the last limit command OpenDTU accepted,
     // see recordLimitCommand. Not part of the sampled history (it would just
     // repeat the same value in every sample) and not persisted: empty again
@@ -92,6 +93,16 @@ public final class LiveState {
      * field here -- carried forward into every grid sample recorded until the next update. Null while
      * Victron hasn't written a WMaxLimPct yet (or the SunSpec proxy never started).
      */
+    /** Diagnosis only, see battery.VictronStatus; carried forward into every grid sample like the other fields. */
+    public void updateVictronStatus(gxopendtu.battery.VictronStatus victronStatus) {
+        lock.lock();
+        try {
+            this.victronStatus = victronStatus;
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public void updateSunSpecTarget(Double sunspecTargetW) {
         lock.lock();
         try {
@@ -135,6 +146,12 @@ public final class LiveState {
             this.minInverterFloorWarning = Boolean.TRUE.equals(last.get("min_inverter_floor_warning"));
             this.recommendedMinInverterPct = (Double) last.get("recommended_min_inverter_pct");
             this.sunspecTargetW = (Double) last.get("sunspec_target_w");
+            this.victronStatus = new gxopendtu.battery.VictronStatus(
+                    (Double) last.get("battery_dcl_a"),
+                    (Double) last.get("battery_ccl_a"),
+                    (Integer) last.get("victron_system_state"),
+                    (Integer) last.get("batterylife_state"),
+                    (Double) last.get("ess_setpoint_w"));
         } finally {
             lock.unlock();
         }
@@ -158,6 +175,12 @@ public final class LiveState {
             sample.put("min_inverter_floor_warning", minInverterFloorWarning);
             sample.put("recommended_min_inverter_pct", recommendedMinInverterPct);
             sample.put("sunspec_target_w", sunspecTargetW);
+            gxopendtu.battery.VictronStatus v = victronStatus;
+            sample.put("battery_dcl_a", v != null ? v.dischargeLimitA() : null);
+            sample.put("battery_ccl_a", v != null ? v.chargeLimitA() : null);
+            sample.put("victron_system_state", v != null ? v.systemState() : null);
+            sample.put("batterylife_state", v != null ? v.batteryLifeState() : null);
+            sample.put("ess_setpoint_w", v != null ? v.essSetpointW() : null);
             sample.put("backfilled", false); // see seedHistory/StatsStore#loadRecentSamples
 
             if (history.size() >= maxSamples) {

@@ -658,6 +658,9 @@ public final class ControlLoop {
                     } catch (BatterySocUnavailableException e) {
                         batteryCurrentA = null; // dashboard display only
                     }
+                    if (liveState != null) {
+                        liveState.updateVictronStatus(batteryReader.readVictronStatus()); // diagnosis only
+                    }
 
                     if (configPath != null
                             && (lastPersistedActive == null || hysteresis.isActive() != lastPersistedActive)) {

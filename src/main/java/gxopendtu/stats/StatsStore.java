@@ -88,7 +88,12 @@ public final class StatsStore implements AutoCloseable {
             String injectionControl,
             Double sunspecTargetW,
             Map<String, Double> inverterActualW,
-            Map<String, Double> inverterLimitPct) {}
+            Map<String, Double> inverterLimitPct,
+            Double batteryDclA,
+            Double batteryCclA,
+            Integer victronSystemState,
+            Integer batteryLifeState,
+            Double essSetpointW) {}
 
     public StatsStore(Path dbPath) {
         this.dbPath = dbPath;
@@ -142,6 +147,12 @@ public final class StatsStore implements AutoCloseable {
                 ensureColumn(statement, "samples", "sunspec_target_w", "REAL");
                 // Migration for databases created before the per-inverter limit % chart.
                 ensureColumn(statement, "inverter_samples", "limit_pct", "REAL");
+                // Migration for the Victron diagnosis fields (battery.VictronStatus, 2026-10-20).
+                ensureColumn(statement, "samples", "battery_dcl_a", "REAL");
+                ensureColumn(statement, "samples", "battery_ccl_a", "REAL");
+                ensureColumn(statement, "samples", "victron_system_state", "INTEGER");
+                ensureColumn(statement, "samples", "batterylife_state", "INTEGER");
+                ensureColumn(statement, "samples", "ess_setpoint_w", "REAL");
             }
             // Prepared once and reused for the lifetime of this StatsStore
             // (both by recordSample's direct callers and by
@@ -150,8 +161,9 @@ public final class StatsStore implements AutoCloseable {
             insertSampleStmt = connection.prepareStatement(
                     "INSERT OR REPLACE INTO samples "
                             + "(t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
-                            + "battery_current_a, injection_control, sunspec_target_w) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                            + "battery_current_a, injection_control, sunspec_target_w, battery_dcl_a, battery_ccl_a, "
+                            + "victron_system_state, batterylife_state, ess_setpoint_w) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             insertInverterSampleStmt = connection.prepareStatement(
                     "INSERT OR REPLACE INTO inverter_samples (t, serial, actual_w, limit_pct) VALUES (?, ?, ?, ?)");
         } catch (SQLException e) {
@@ -238,7 +250,12 @@ public final class StatsStore implements AutoCloseable {
         try {
             pendingSamples.add(new BufferedSample(
                     t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA,
-                    injectionControl, sunspecTargetW, inverterActualW, inverterLimitPct));
+                    injectionControl, sunspecTargetW, inverterActualW, inverterLimitPct,
+                    (Double) sample.get("battery_dcl_a"),
+                    (Double) sample.get("battery_ccl_a"),
+                    (Integer) sample.get("victron_system_state"),
+                    (Integer) sample.get("batterylife_state"),
+                    (Double) sample.get("ess_setpoint_w")));
         } finally {
             lock.unlock();
         }
@@ -283,6 +300,11 @@ public final class StatsStore implements AutoCloseable {
                 setNullableDouble(insertSampleStmt, 7, s.batteryCurrentA());
                 insertSampleStmt.setString(8, s.injectionControl());
                 setNullableDouble(insertSampleStmt, 9, s.sunspecTargetW());
+                setNullableDouble(insertSampleStmt, 10, s.batteryDclA());
+                setNullableDouble(insertSampleStmt, 11, s.batteryCclA());
+                setNullableDouble(insertSampleStmt, 12, s.victronSystemState() != null ? s.victronSystemState().doubleValue() : null);
+                setNullableDouble(insertSampleStmt, 13, s.batteryLifeState() != null ? s.batteryLifeState().doubleValue() : null);
+                setNullableDouble(insertSampleStmt, 14, s.essSetpointW());
                 insertSampleStmt.addBatch();
 
                 Map<String, Double> inverterActualW = s.inverterActualW();
@@ -324,7 +346,8 @@ public final class StatsStore implements AutoCloseable {
             List<Map<String, Object>> rows = new ArrayList<>();
             try (PreparedStatement stmt = connection.prepareStatement(
                     "SELECT t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
-                            + "battery_current_a, injection_control, sunspec_target_w FROM samples ORDER BY t DESC LIMIT ?")) {
+                            + "battery_current_a, injection_control, sunspec_target_w, battery_dcl_a, battery_ccl_a, "
+                            + "victron_system_state, batterylife_state, ess_setpoint_w FROM samples ORDER BY t DESC LIMIT ?")) {
                 stmt.setInt(1, limit);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
@@ -338,6 +361,11 @@ public final class StatsStore implements AutoCloseable {
                         sample.put("battery_current_a", nullableColumn(rs, "battery_current_a"));
                         sample.put("injection_control", rs.getString("injection_control"));
                         sample.put("sunspec_target_w", nullableColumn(rs, "sunspec_target_w"));
+                        sample.put("battery_dcl_a", nullableColumn(rs, "battery_dcl_a"));
+                        sample.put("battery_ccl_a", nullableColumn(rs, "battery_ccl_a"));
+                        sample.put("victron_system_state", nullableIntColumn(rs, "victron_system_state"));
+                        sample.put("batterylife_state", nullableIntColumn(rs, "batterylife_state"));
+                        sample.put("ess_setpoint_w", nullableColumn(rs, "ess_setpoint_w"));
                         sample.put("consigne_w", null);
                         sample.put("inverters", List.of());
                         sample.put("min_inverter_floor_warning", false);
@@ -404,7 +432,8 @@ public final class StatsStore implements AutoCloseable {
             List<Map<String, Object>> rows = new ArrayList<>();
             try (PreparedStatement stmt = connection.prepareStatement(
                     "SELECT t, grid_raw_w, grid_ema_w, soc_pct, battery_power_w, battery_voltage_v, "
-                            + "battery_current_a, injection_control, sunspec_target_w FROM samples "
+                            + "battery_current_a, injection_control, sunspec_target_w, battery_dcl_a, battery_ccl_a, "
+                            + "victron_system_state, batterylife_state, ess_setpoint_w FROM samples "
                             + "WHERE t >= ? AND t <= ? ORDER BY t")) {
                 stmt.setLong(1, since);
                 stmt.setLong(2, until);
@@ -420,6 +449,11 @@ public final class StatsStore implements AutoCloseable {
                         sample.put("battery_current_a", nullableColumn(rs, "battery_current_a"));
                         sample.put("injection_control", rs.getString("injection_control"));
                         sample.put("sunspec_target_w", nullableColumn(rs, "sunspec_target_w"));
+                        sample.put("battery_dcl_a", nullableColumn(rs, "battery_dcl_a"));
+                        sample.put("battery_ccl_a", nullableColumn(rs, "battery_ccl_a"));
+                        sample.put("victron_system_state", nullableIntColumn(rs, "victron_system_state"));
+                        sample.put("batterylife_state", nullableIntColumn(rs, "batterylife_state"));
+                        sample.put("ess_setpoint_w", nullableColumn(rs, "ess_setpoint_w"));
                         sample.put("consigne_w", null);
                         sample.put("inverters", List.of());
                         sample.put("min_inverter_floor_warning", false);
@@ -614,6 +648,11 @@ public final class StatsStore implements AutoCloseable {
         }
     }
 
+    private static Integer nullableIntColumn(ResultSet rs, String column) throws SQLException {
+        int v = rs.getInt(column);
+        return rs.wasNull() ? null : v;
+    }
+
     private static Double nullableColumn(ResultSet rs, String column) throws SQLException {
         double v = rs.getDouble(column);
         return rs.wasNull() ? null : v;
@@ -639,7 +678,7 @@ public final class StatsStore implements AutoCloseable {
         try {
             writeSamplesBatch(List.of(new BufferedSample(
                     t, gridRawW, gridEmaW, socPct, batteryPowerW, batteryVoltageV, batteryCurrentA,
-                    injectionControl, null, inverterActualW, null)));
+                    injectionControl, null, inverterActualW, null, null, null, null, null, null)));
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "failed to persist stats sample", e);
         } finally {

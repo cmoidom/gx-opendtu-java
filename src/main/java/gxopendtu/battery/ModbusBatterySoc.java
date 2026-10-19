@@ -38,6 +38,16 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
     private static final int CURRENT_REGISTER = 841;
     private static final int VOLTAGE_REGISTER = 259;
     private static final int VOLTAGE_UNIT_ID = 225;
+    // Victron dbus_modbustcp attributes.csv: battery 307/308 (/Info/MaxCharge/
+    // DischargeCurrent, x10), system 930 (/SystemState/State), settings 2900
+    // (/Settings/CGwacs/BatteryLife/State, unit 100), vebus 37
+    // (/Hub4/L1/AcPowerSetpoint, int16) -- the Multi is unit 227 on this install.
+    private static final int CHARGE_LIMIT_REGISTER = 307;
+    private static final int DISCHARGE_LIMIT_REGISTER = 308;
+    private static final int SYSTEM_STATE_REGISTER = 930;
+    private static final int BATTERYLIFE_STATE_REGISTER = 2900;
+    private static final int ESS_SETPOINT_REGISTER = 37;
+    private static final int VEBUS_UNIT_ID = 227;
 
     private final ModbusTcpClient client;
 
@@ -76,6 +86,32 @@ public final class ModbusBatterySoc implements BatterySoc, AutoCloseable {
     @Override
     public double readVoltageV() {
         return readRegister(VOLTAGE_UNIT_ID, VOLTAGE_REGISTER) / 100.0;
+    }
+
+    @Override
+    public VictronStatus readVictronStatus() {
+        return new VictronStatus(
+                orNull(() -> readRegister(VOLTAGE_UNIT_ID, DISCHARGE_LIMIT_REGISTER) / 10.0),
+                orNull(() -> readRegister(VOLTAGE_UNIT_ID, CHARGE_LIMIT_REGISTER) / 10.0),
+                orNullInt(() -> readRegister(ModbusConstants.SYSTEM_UNIT_ID, SYSTEM_STATE_REGISTER)),
+                orNullInt(() -> readRegister(ModbusConstants.SYSTEM_UNIT_ID, BATTERYLIFE_STATE_REGISTER)),
+                orNull(() -> (double) RegisterCodec.toSigned16(readRegister(VEBUS_UNIT_ID, ESS_SETPOINT_REGISTER))));
+    }
+
+    private static Double orNull(java.util.function.Supplier<Double> read) {
+        try {
+            return read.get();
+        } catch (BatterySocUnavailableException e) {
+            return null;
+        }
+    }
+
+    private static Integer orNullInt(java.util.function.Supplier<Integer> read) {
+        try {
+            return read.get();
+        } catch (BatterySocUnavailableException e) {
+            return null;
+        }
     }
 
     @Override
