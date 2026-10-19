@@ -80,6 +80,16 @@ public final class CascadeAllocator {
      */
     static final double RELEASE_MARGIN_W = 100.0;
     static final double MARGINAL_RAMP_UP_W = 100.0;
+    /**
+     * The marginal limit is never raised above the inverter's own production
+     * plus this headroom (or 10% of its nominal power if larger): beyond it the
+     * limit restricts nothing (not enough sun) and raising it only costs RF
+     * commands -- and lets a sunny spell jump straight into export. Lowering is
+     * never blocked. Live 2026-10-19 17:00-17:40: ~300-400W of evening sun
+     * against a Victron cap rising to ~900W, limits ramped 100W at a time to
+     * 340-800W on inverters producing 37-200W, ~9 commands/min.
+     */
+    static final double PRODUCTION_HEADROOM_W = 100.0;
     private static final double LIMIT_HISTORY_S = 180.0;
 
     private final List<String> order;
@@ -87,6 +97,7 @@ public final class CascadeAllocator {
     private final double minInverterPct;
     private final double releaseMarginW;
     private final double rampUpW;
+    private final double headroomW;
     private String marginalSerial;
     // serial -> {timeS, limitW} of every limit given to it, oldest first.
     private final Map<String, Deque<double[]>> limitHistory = new HashMap<>();
@@ -96,12 +107,13 @@ public final class CascadeAllocator {
 
     /** {@code order}: the first inverter is curtailed first, the last one only once all others are at their floor. */
     public CascadeAllocator(List<String> order, Map<String, Double> nominalPowerW, double minInverterPct) {
-        this(order, nominalPowerW, minInverterPct, RELEASE_MARGIN_W, MARGINAL_RAMP_UP_W);
+        this(order, nominalPowerW, minInverterPct, RELEASE_MARGIN_W, MARGINAL_RAMP_UP_W, PRODUCTION_HEADROOM_W);
     }
 
-    /** Package-private: lets tests of the switching logic itself disable the release margin / ramp. */
+    /** Package-private: lets tests of the switching logic itself disable the release margin / ramp / headroom cap. */
     CascadeAllocator(List<String> order, Map<String, Double> nominalPowerW, double minInverterPct,
-            double releaseMarginW, double rampUpW) {
+            double releaseMarginW, double rampUpW, double headroomW) {
+        this.headroomW = headroomW;
         this.order = List.copyOf(order);
         this.nominalPowerW = Map.copyOf(nominalPowerW);
         this.minInverterPct = minInverterPct;
@@ -185,6 +197,12 @@ public final class CascadeAllocator {
                     }
                     if (previousW != null && watts > previousW + rampUpW) {
                         watts = previousW + rampUpW;
+                    }
+                    double capW = livePowerW.getOrDefault(serial, 0.0)
+                            + Math.max(headroomW, 0.1 * nominalW(serial));
+                    double raiseCeilingW = previousW != null ? Math.max(previousW, capW) : capW;
+                    if (watts > raiseCeilingW) {
+                        watts = Math.max(floorW(serial), raiseCeilingW);
                     }
                 }
                 allocation.put(serial, watts);

@@ -625,6 +625,12 @@ dent de scie de la consigne Victron (2026-10-18 16:42-17:03). Chaque
 commande de limite acceptée par OpenDTU est journalisée (`[limite] série =
 valeur`) et comptée sur la dernière heure par onduleur (colonne "Commandes
 (1 h)" du tableau, `limit_command_stats` dans /status.json).
+La limite de l'onduleur en réglage n'est jamais relevée au-delà de sa
+production réelle + 100 W (ou 10 % de sa nominale), les baisses restant
+libres (`PRODUCTION_HEADROOM_W`, 2026-10-20) : au-delà, elle ne bride rien
+(pas assez de soleil) et ne fait que coûter des commandes radio -- le
+2026-10-19 17:00-17:40, ~9 commandes/min pour ~300-400 W de soleil du soir
+face à une consigne Victron montant à ~900 W.
 
 ## Répartition multi-onduleurs (water-filling)
 

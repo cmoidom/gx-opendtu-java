@@ -146,7 +146,8 @@ class SunSpecForwarderTest {
         SunSpecRegisterMap map = registerMap();
         // 50% of the WHOLE nameplate (800+1000+400=2200) -> 1100W raw target, minus the
         // non-controllable inverter's own uncapped 50W actual production -> 1050W. Cascade
-        // order a, b: b stays uncapped (its 500W live production is subtracted), a takes the rest.
+        // order a, b: b stays uncapped (its 500W live production is subtracted), a takes the rest --
+        // capped at its own 400W production + 100W headroom, since more would restrict nothing.
         setWMaxLim(map, true, 50.0);
         FakeOpenDTUApi fake = new FakeOpenDTUApi()
                 .withLivePowerW(Map.of("a", 400.0, "b", 500.0, "nc", 50.0))
@@ -157,7 +158,7 @@ class SunSpecForwarderTest {
         forwarder.decisionTick();
 
         assertThat(fake.relativeCalls).isEmpty();
-        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 550.0), Map.entry("b", 1000.0));
+        assertThat(fake.absoluteCalls).containsExactlyInAnyOrder(Map.entry("a", 500.0), Map.entry("b", 1000.0));
     }
 
     @Test
@@ -196,8 +197,10 @@ class SunSpecForwarderTest {
         forwarder.decisionTick();
         assertThat(fake.absoluteCalls).hasSize(firstSendCount);
 
-        // A real, meaningful change (50% -> 90%) must still go through.
+        // A real, meaningful change (50% -> 90%) must still go through -- "a" producing more
+        // too, otherwise raising its limit further would restrict nothing.
         setWMaxLim(map, true, 90.0);
+        fake.withLivePowerW(Map.of("a", 480.0, "b", 500.0, "nc", 50.0));
         forwarder.decisionTick();
         assertThat(fake.absoluteCalls).hasSizeGreaterThan(firstSendCount);
     }

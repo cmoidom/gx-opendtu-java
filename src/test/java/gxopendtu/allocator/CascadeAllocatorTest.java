@@ -20,7 +20,7 @@ class CascadeAllocatorTest {
 
     /** Switching logic alone: no release margin, no ramp (both tested separately below). */
     private static CascadeAllocator allocator() {
-        return new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY); // floors: 100 / 50 / 20 W
+        return new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY); // floors: 100 / 50 / 20 W
     }
 
     @Test
@@ -226,7 +226,8 @@ class CascadeAllocatorTest {
 
     @Test
     void thePreviousInverterOnlyResumesBeyondTheReleaseMarginAndTheMarginalLimitRampsUp() {
-        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0); // production margin + ramp
+        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0, CascadeAllocator.RELEASE_MARGIN_W,
+                CascadeAllocator.MARGINAL_RAMP_UP_W, Double.POSITIVE_INFINITY); // release margin + ramp, no headroom cap
         Map<String, Double> live = Map.of("big", 100.0, "mid", 50.0, "small", 300.0);
         allocator.allocate(250.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0); // mid at 50W
         assertThat(allocator.marginalIndex()).isEqualTo(1);
@@ -242,5 +243,24 @@ class CascadeAllocatorTest {
         Map<String, Double> released = allocator.allocate(1550.0, live, Map.of(), 20.0);
         assertThat(allocator.marginalIndex()).isZero();
         assertThat(released.get("big")).isEqualTo(200.0);
+    }
+
+    @Test
+    void theMarginalLimitIsNotRaisedFarAboveWhatTheInverterActuallyProduces() {
+        // the 2026-10-19 17:18 case: low evening sun, Victron's cap far above real production
+        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY, 100.0);
+        allocator.allocate(250.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0); // mid at 50W
+        Map<String, Double> lowSun = Map.of("big", 90.0, "mid", 40.0, "small", 30.0);
+
+        // Victron's cap climbs to 900W: mid would need 750W, but only produces 40W -> 140W, then stays there
+        assertThat(allocator.allocate(900.0, lowSun, Map.of(), 5.0).get("mid")).isEqualTo(140.0);
+        assertThat(allocator.allocate(950.0, lowSun, Map.of(), 10.0).get("mid")).isEqualTo(140.0);
+
+        // the sun comes back: its limit follows production up
+        assertThat(allocator.allocate(950.0, Map.of("big", 90.0, "mid", 135.0, "small", 30.0), Map.of(), 15.0)
+                .get("mid")).isEqualTo(235.0);
+        // and a real curtailment still lowers it at once
+        assertThat(allocator.allocate(200.0, Map.of("big", 90.0, "mid", 230.0, "small", 30.0), Map.of(), 20.0)
+                .get("mid")).isEqualTo(70.0);
     }
 }
