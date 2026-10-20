@@ -101,7 +101,8 @@ public final class ControlLoop {
             Object acknowledged,
             Double dataAgeS,
             boolean controllable,
-            Double acCurrentA) {
+            Double acCurrentA,
+            Double nominalPowerW) {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("serial", serial);
         entry.put("name", name);
@@ -113,6 +114,9 @@ public final class ControlLoop {
         entry.put("data_age_s", dataAgeS);
         entry.put("controllable", controllable);
         entry.put("ac_current_a", acCurrentA);
+        // Configured nameplate: max_power_w above is CapacityEstimator's ceiling for a controllable
+        // inverter, not its nameplate -- the dashboard needs both.
+        entry.put("nominal_power_w", nominalPowerW);
         return entry;
     }
 
@@ -250,7 +254,8 @@ public final class ControlLoop {
                         status != null ? status.acknowledged() : null,
                         dataAgeS.get(serial),
                         controllable,
-                        acCurrentA.get(serial)));
+                        acCurrentA.get(serial),
+                    nominalPowerW.get(serial)));
             }
             liveState.updateDecision(
                     socPct,
@@ -381,7 +386,8 @@ public final class ControlLoop {
                     assumeReleased ? null : (status != null ? status.acknowledged() : null),
                     dataAgeS.get(serial),
                     controllableSerials.contains(serial),
-                    acCurrentA.get(serial)));
+                    acCurrentA.get(serial),
+                    nominalPowerW.get(serial)));
         }
         return result;
     }
@@ -451,7 +457,8 @@ public final class ControlLoop {
                     status != null ? status.acknowledged() : null,
                     dataAgeS.get(serial),
                     controllable,
-                    acCurrentA.get(serial)));
+                    acCurrentA.get(serial),
+                    nominalPowerW.get(serial)));
         }
         return result;
     }

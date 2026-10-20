@@ -90,6 +90,17 @@ public final class CascadeAllocator {
      * 340-800W on inverters producing 37-200W, ~9 commands/min.
      */
     static final double PRODUCTION_HEADROOM_W = 100.0;
+    /**
+     * Minimum time between two limit changes of the same inverter (about one
+     * full round of OpenDTU's one-at-a-time RF polling), except a decrease of
+     * more than {@link #URGENT_DECREASE_W}, which always goes through so a
+     * real export is never left running. Live 2026-10-20 14:30: Mur Ouest got
+     * 10 commands in 68s, then stopped answering for an hour (-700 to -1000W
+     * export); 16:00-17:00 Terasse/Balcon still got ~180 commands following
+     * every cycle-to-cycle swing of Victron's cap.
+     */
+    static final double MIN_COMMAND_INTERVAL_S = 20.0;
+    static final double URGENT_DECREASE_W = 200.0;
     private static final double LIMIT_HISTORY_S = 180.0;
 
     private final List<String> order;
@@ -102,18 +113,22 @@ public final class CascadeAllocator {
     // serial -> {timeS, limitW} of every limit given to it, oldest first.
     private final Map<String, Deque<double[]>> limitHistory = new HashMap<>();
     private final Map<String, Double> lastAllocationW = new HashMap<>();
+    private final Map<String, Double> lastChangeS = new HashMap<>();
+    private final double minCommandIntervalS;
     private Double lastJudgedReadingS;
     private int underuseReadings;
 
     /** {@code order}: the first inverter is curtailed first, the last one only once all others are at their floor. */
     public CascadeAllocator(List<String> order, Map<String, Double> nominalPowerW, double minInverterPct) {
-        this(order, nominalPowerW, minInverterPct, RELEASE_MARGIN_W, MARGINAL_RAMP_UP_W, PRODUCTION_HEADROOM_W);
+        this(order, nominalPowerW, minInverterPct, RELEASE_MARGIN_W, MARGINAL_RAMP_UP_W, PRODUCTION_HEADROOM_W,
+                MIN_COMMAND_INTERVAL_S);
     }
 
     /** Package-private: lets tests of the switching logic itself disable the release margin / ramp / headroom cap. */
     CascadeAllocator(List<String> order, Map<String, Double> nominalPowerW, double minInverterPct,
-            double releaseMarginW, double rampUpW, double headroomW) {
+            double releaseMarginW, double rampUpW, double headroomW, double minCommandIntervalS) {
         this.headroomW = headroomW;
+        this.minCommandIntervalS = minCommandIntervalS;
         this.order = List.copyOf(order);
         this.nominalPowerW = Map.copyOf(nominalPowerW);
         this.minInverterPct = minInverterPct;
@@ -126,6 +141,7 @@ public final class CascadeAllocator {
         marginalSerial = null;
         limitHistory.clear();
         lastAllocationW.clear();
+        lastChangeS.clear();
         forgetUnderuse();
     }
 
@@ -221,6 +237,16 @@ public final class CascadeAllocator {
         Map<String, Double> ordered = new LinkedHashMap<>();
         for (String serial : order) {
             double watts = allocation.get(serial);
+            Double previousW = lastAllocationW.get(serial);
+            if (previousW != null && Math.abs(watts - previousW) >= 1.0) {
+                Double changedS = lastChangeS.get(serial);
+                boolean urgentDecrease = previousW - watts > URGENT_DECREASE_W;
+                if (changedS != null && nowS - changedS < minCommandIntervalS && !urgentDecrease) {
+                    watts = previousW; // too soon after this inverter's last change: keep it
+                } else {
+                    lastChangeS.put(serial, nowS);
+                }
+            }
             ordered.put(serial, watts);
             recordLimit(serial, nowS, watts);
             lastAllocationW.put(serial, watts);

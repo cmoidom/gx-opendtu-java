@@ -1243,10 +1243,11 @@ function renderTiles(latest) {
 // Within this fraction of its currently commanded limit, an inverter counts as "producing flat out".
 const FULL_POWER_RATIO = 0.9;
 
-/** Absolute commanded limit in watts for this inverter's current mode -- allocated_w when the control loop
- * set one this cycle, otherwise the inverter is running unrestricted (release-for-charging, non-pilote, or
- * an override that doesn't apply to it) and its own nominal power is the effective ceiling. */
+/** Limit in watts actually in force on the inverter: OpenDTU's own relative limit applied to its nameplate.
+ * Not allocated_w -- with the SunSpec proxy forwarding, the internal control loop only computes (dry-run)
+ * and its allocation is never sent: 166 W against its 25 W showed "664 %" (2026-10-20). */
 function effectiveLimitW(inv) {
+  if (inv.limit_relative_pct != null && inv.nominal_power_w) return inv.limit_relative_pct / 100 * inv.nominal_power_w;
   return inv.allocated_w != null ? inv.allocated_w : inv.max_power_w;
 }
 
@@ -1303,7 +1304,7 @@ function renderInverterTable(latest, lastLimitCommands, commandStats) {
     '<td class="num">' + fmtAmp(inv.ac_current_a) + '</td>' +
     '<td class="num">' + ageCell + '</td>' +
     '<td class="num">' + fmtPct(inv.limit_relative_pct) + '</td>' +
-    '<td class="num">' + fmtW(inv.max_power_w) + '</td>' +
+    '<td class="num">' + fmtW(inv.nominal_power_w != null ? inv.nominal_power_w : inv.max_power_w) + '</td>' +
     '<td class="num">' + fullPowerCell + '</td>' +
     '<td class="center">' + fmtLastLimitCommand(commands[inv.serial]) + '</td>' +
     '<td class="center">' + fmtCommandStats(stats[inv.serial]) + '</td>' +

@@ -646,6 +646,11 @@ libres (`PRODUCTION_HEADROOM_W`, 2026-10-20) : au-delà, elle ne bride rien
 (pas assez de soleil) et ne fait que coûter des commandes radio -- le
 2026-10-19 17:00-17:40, ~9 commandes/min pour ~300-400 W de soleil du soir
 face à une consigne Victron montant à ~900 W.
+Délai minimum de 20 s entre deux changements de limite d'un même onduleur
+(`MIN_COMMAND_INTERVAL_S`, environ un tour de lecture radio d'OpenDTU), sauf
+une baisse de plus de 200 W qui passe toujours (injection) : le
+2026-10-20 à 14h30, Mur Ouest a reçu 10 commandes en 68 s puis n'a plus
+répondu pendant une heure (injection de -700 à -1000 W).
 
 ## Répartition multi-onduleurs (water-filling)
 

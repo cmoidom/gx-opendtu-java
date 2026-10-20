@@ -41,6 +41,7 @@ public final class SunSpecForwarder {
     private final double totalNominalPowerW;
     private final Map<String, Double> nominalPowerW;
     private final CascadeAllocator cascade;
+    private java.util.function.DoubleSupplier clockS = () -> System.currentTimeMillis() / 1000.0;
     private final double minChangeW;
     private final BatterySoc batteryReader;
     private final boolean verboseTraces;
@@ -96,6 +97,11 @@ public final class SunSpecForwarder {
         }
     }
 
+    /** Package-private, tests: decision ticks run instantly, so they step time themselves. */
+    void useClock(java.util.function.DoubleSupplier clockS) {
+        this.clockS = clockS;
+    }
+
     /** Package-private: the actual decision logic, callable directly in tests without waiting on real threads. */
     void decisionTick() {
         try {
@@ -138,7 +144,7 @@ public final class SunSpecForwarder {
                 allocation = controllableSerials.stream().collect(Collectors.toMap(
                         s -> s, s -> nominalPowerW.getOrDefault(s, 0.0)));
             } else {
-                allocation = cascade.allocate(targetW, livePowerW, dataAgeS, System.currentTimeMillis() / 1000.0);
+                allocation = cascade.allocate(targetW, livePowerW, dataAgeS, clockS.getAsDouble());
             }
 
             if (verboseTraces) {

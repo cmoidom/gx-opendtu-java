@@ -77,8 +77,12 @@ class SunSpecForwarderTest {
     }
 
     private SunSpecForwarder forwarder(FakeOpenDTUApi fake, SunSpecRegisterMap map, BatterySoc batteryReader) {
-        return new SunSpecForwarder(
+        SunSpecForwarder forwarder = new SunSpecForwarder(
                 fake, map, ALL, CONTROLLABLE, CONTROLLABLE, NOMINAL, 0.0, 5.0, 5.0, batteryReader, false);
+        // each tick 30s after the previous one: beyond the per-inverter minimum command interval
+        double[] now = {0.0};
+        forwarder.useClock(() -> now[0] += 30.0);
+        return forwarder;
     }
 
     private static SunSpecRegisterMap registerMap() {

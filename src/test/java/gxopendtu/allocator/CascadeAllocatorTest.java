@@ -20,7 +20,7 @@ class CascadeAllocatorTest {
 
     /** Switching logic alone: no release margin, no ramp (both tested separately below). */
     private static CascadeAllocator allocator() {
-        return new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY); // floors: 100 / 50 / 20 W
+        return new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, 0.0); // floors: 100 / 50 / 20 W
     }
 
     @Test
@@ -227,7 +227,7 @@ class CascadeAllocatorTest {
     @Test
     void thePreviousInverterOnlyResumesBeyondTheReleaseMarginAndTheMarginalLimitRampsUp() {
         CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0, CascadeAllocator.RELEASE_MARGIN_W,
-                CascadeAllocator.MARGINAL_RAMP_UP_W, Double.POSITIVE_INFINITY); // release margin + ramp, no headroom cap
+                CascadeAllocator.MARGINAL_RAMP_UP_W, Double.POSITIVE_INFINITY, 0.0); // release margin + ramp only
         Map<String, Double> live = Map.of("big", 100.0, "mid", 50.0, "small", 300.0);
         allocator.allocate(250.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0); // mid at 50W
         assertThat(allocator.marginalIndex()).isEqualTo(1);
@@ -248,7 +248,7 @@ class CascadeAllocatorTest {
     @Test
     void theMarginalLimitIsNotRaisedFarAboveWhatTheInverterActuallyProduces() {
         // the 2026-10-19 17:18 case: low evening sun, Victron's cap far above real production
-        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY, 100.0);
+        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY, 100.0, 0.0);
         allocator.allocate(250.0, Map.of("big", 700.0, "mid", 300.0, "small", 100.0), Map.of(), 0.0); // mid at 50W
         Map<String, Double> lowSun = Map.of("big", 90.0, "mid", 40.0, "small", 30.0);
 
@@ -262,5 +262,20 @@ class CascadeAllocatorTest {
         // and a real curtailment still lowers it at once
         assertThat(allocator.allocate(200.0, Map.of("big", 90.0, "mid", 230.0, "small", 30.0), Map.of(), 20.0)
                 .get("mid")).isEqualTo(70.0);
+    }
+
+    @Test
+    void anInverterIsNotCommandedAgainWithinTheMinimumIntervalExceptForALargeDecrease() {
+        CascadeAllocator allocator = new CascadeAllocator(ORDER, NOMINAL, 5.0, 0.0, Double.POSITIVE_INFINITY,
+                Double.POSITIVE_INFINITY, 20.0);
+        Map<String, Double> live = Map.of("big", 700.0, "mid", 300.0, "small", 100.0);
+        allocator.allocate(400.0, live, Map.of(), 0.0); // mid at 200W
+        assertThat(allocator.allocate(500.0, live, Map.of(), 5.0).get("mid")).isEqualTo(300.0); // first change: goes
+
+        assertThat(allocator.allocate(600.0, live, Map.of(), 10.0).get("mid")).isEqualTo(300.0); // 5s later: held
+        assertThat(allocator.allocate(420.0, live, Map.of(), 15.0).get("mid")).isEqualTo(300.0); // -80W: still held
+        assertThat(allocator.allocate(600.0, live, Map.of(), 25.0).get("mid")).isEqualTo(400.0); // 20s later: goes
+        // a decrease of more than 200W never waits (export)
+        assertThat(allocator.allocate(250.0, live, Map.of(), 30.0).get("mid")).isEqualTo(50.0);
     }
 }
